@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+{% load static %}
+{% load tz %}
+{% load currency %}
+{% block title %}Panel Único Pyme — Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- CINTA de actividad (últimos eventos) -->
+{% if ticker %}
+<div class="ticker-wrap mb-3">
+  <div class="ticker d-flex align-items-center">
+    {% for a in ticker %}
+    <span class="ticker-item px-2">
+      <i class="bi bi-activity me-1 text-primary"></i>
+      {{ a.message }}
+      <small class="text-muted">— {{ a.created_at|localtime|date:"d/m H:i" }}</small>
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-lg-4">
+    <h1 class="h3 mb-1 section-title">Dashboard</h1>
+    <div class="text-muted">Ventas • Inventario • Mensajes</div>
+  </div>
+
+  <div class="col-6 col-lg-2">
+    <div class="card p-3 text-center">
+      <div class="small text-muted">Productos</div>
+      <div class="fs-4 fw-bold">{{ total_products }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-2">
+    <div class="card p-3 text-center">
+      <div class="small text-muted">Unidades totales</div>
+      <div class="fs-4 fw-bold">{{ total_units }}</div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-4">
+    <div class="card p-3 text-center">
+      <div class="small text-muted">Inventario</div>
+      <div class="fs-5 fw-bold">{{ inventory_value|clp }}</div>
+      <div class="small text-muted">US$ {{ inventory_value|clp_to_usd }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- NAV -->
+  <div class="col-12 col-md-3">
+    <div class="nav flex-column nav-pills" role="tablist" aria-orientation="vertical">
+      <button class="nav-link active text-start" data-bs-toggle="pill" data-bs-target="#tab-inventory" type="button">
+        <i class="bi bi-clipboard-data me-2"></i> Inventario
+      </button>
+      <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#tab-sales" type="button">
+        <i class="bi bi-bag-plus me-2"></i> Nueva venta
+      </button>
+      <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#tab-messages" type="button">
+        <i class="bi bi-chat-dots me-2"></i> Mensajes
+      </button>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="col-12 col-md-9">
+    <div class="tab-content">
+
+      <!-- INVENTARIO -->
+      <div class="tab-pane fade show active" id="tab-inventory">
+        <div class="card h-100">
+          <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <h5 class="mb-0"><i class="bi bi-clipboard-data"></i> Inventario rápido</h5>
+            <div class="input-group" style="max-width:320px;">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input id="inventory-search" type="search" class="form-control" placeholder="Buscar por SKU o nombre…">
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- alta rápida -->
+            <form class="row g-2 align-items-end" method="post" action="/add-product/">
+              {% csrf_token %}
+              <div class="col-12 col-sm-4">
+                <label class="form-label">Producto</label>
+                <input name="name" class="form-control" placeholder="Nombre" required>
+              </div>
+              <div class="col-6 col-sm-2">
+                <label class="form-label">SKU</label>
+                <input name="sku" class="form-control" placeholder="ABC001" required>
+              </div>
+              <div class="col-6 col-sm-2">
+                <label class="form-label">Stock</label>
+                <input name="stock" type="number" class="form-control" value="10" min="0">
+              </div>
+              <div class="col-6 col-sm-2">
+                <label class="form-label">Precio</label>
+                <input name="price" type="number" step="0.01" class="form-control" value="0">
+              </div>
+              <div class="col-6 col-sm-2 d-grid">
+                <button class="btn btn-primary"><i class="bi bi-plus-circle"></i> Agregar</button>
+              </div>
+            </form>
+
+            <!-- tabla -->
+            <div class="table-responsive mt-3">
+              <table class="table table-sm table-hover table-striped align-middle" id="inventory-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>SKU</th>
+                    <th>Producto</th>
+                    <th class="text-end">Stock</th>
+                    <th class="text-end">Precio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for p in products %}
+                  <tr>
+                    <td data-col="sku"><span class="badge badge-soft">{{ p.sku }}</span></td>
+                    <td data-col="name">{{ p.name }}</td>
+                    <td class="text-end {% if p.stock <= 5 %}stock-low{% endif %}">
+                      {% if p.stock <= 0 %}
+                        <span class="badge text-bg-secondary">Sin stock</span>
+                      {% else %}
+                        {{ p.stock }}
+                      {% endif %}
+                    </td>
+                    <td class="text-end">${{ p.price|floatformat:2 }}</td>
+                  </tr>
+                  {% empty %}
+                  <tr>
+                    <td colspan="4" class="text-center text-muted py-4">Sin productos</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- reposición rápida -->
+            <hr>
+            <h6 class="mb-2"><i class="bi bi-arrow-repeat"></i> Reposición rápida</h6>
+            <form class="row g-2 align-items-end" method="post" action="/restock/">
+              {% csrf_token %}
+              <div class="col-12 col-sm-6">
+                <label class="form-label">Producto sin stock</label>
+                <select name="product_id" class="form-select" required>
+                  <option value="">Seleccionar…</option>
+                  {% for p in out_of_stock_products %}
+                    <option value="{{ p.id }}">{{ p.name }} ({{ p.sku }})</option>
+                  {% empty %}
+                    <option value="" disabled>No hay productos sin stock</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-6 col-sm-3">
+                <label class="form-label">Cantidad</label>
+                <input type="number" class="form-control" name="qty" min="1" value="10" required>
+              </div>
+              <div class="col-6 col-sm-3 d-grid">
+                <button class="btn btn-outline-primary"><i class="bi bi-check2-circle"></i> Reponer</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Actividad reciente (pedidos) -->
+        <div class="card mt-3">
+          <div class="card-header"><i class="bi bi-clock-history me-1"></i> Actividad reciente</div>
+          <div class="card-body">
+            <ul class="list-group list-group-flush">
+              {% for o in orders %}
+              <li class="list-group-item d-flex justify-content-between">
+                <div>
+                  <strong>{{ o.customer.name }}</strong> — {{ o.qty }} × {{ o.product.name }}
+                  <div class="small text-muted">{{ o.created_at|localtime|date:"d/m/Y H:i" }}</div>
+                </div>
+                <span class="badge text-bg-light">ID #{{ o.id }}</span>
+              </li>
+              {% empty %}
+              <li class="list-group-item text-center text-muted">Sin pedidos</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- VENTAS -->
+      <div class="tab-pane fade" id="tab-sales">
+        <div class="card h-100">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-bag-plus"></i> Nueva venta</h5>
+          </div>
+          <div class="card-body">
+            <form class="row g-2 align-items-end" method="post" action="/order/">
+              {% csrf_token %}
+              <div class="col-12 col-md-6">
+                <label class="form-label">Producto</label>
+                <select name="product_id" id="sale-product-select" class="form-select" required>
+                  <option value="">Seleccionar…</option>
+                  {% for p in products %}
+                    <option value="{{ p.id }}" data-stock="{{ p.stock }}" data-price="{{ p.price }}" {% if p.stock <= 0 %}disabled{% endif %}>
+                      {{ p.name }} {% if p.stock <= 0 %}(Sin stock){% else %}(Stock: {{ p.stock }}){% endif %}
+                    </option>
+                  {% endfor %}
+                </select>
+                <div class="small text-muted mt-1">
+                  Precio: <span id="sale-unit-price">—</span> •
+                  Total: <span id="sale-total-price">—</span>
+                </div>
+              </div>
+
+              <div class="col-12 col-md-3">
+                <label class="form-label">Cliente</label>
+                <input name="customer" class="form-control" placeholder="Nombre" required>
+              </div>
+
+              <div class="col-6 col-md-2">
+                <label class="form-label">Cant.</label>
+                <input name="qty" id="sale-quantity-input" type="number" min="1" value="1" class="form-control">
+                <div class="text-muted small mt-1"><span id="stock-available-hint"></span></div>
+                <div id="stock-error-message" class="text-danger small mt-1" style="display:none;"></div>
+              </div>
+
+              <div class="col-6 col-md-1 d-grid">
+                <button type="submit" id="sale-submit-button" class="btn btn-success" disabled>
+                  <i class="bi bi-check2-circle"></i>
+                </button>
+              </div>
+            </form>
+
+            <hr class="my-4">
+            <h6 class="text-muted mb-3"><i class="bi bi-clock-history"></i> Últimos pedidos</h6>
+            <ul class="list-group list-group-flush">
+              {% for o in orders %}
+              <li class="list-group-item d-flex justify-content-between">
+                <div>
+                  <strong>{{ o.customer.name }}</strong> — {{ o.qty }} × {{ o.product.name }}
+                  <div class="small text-muted">{{ o.created_at|localtime|date:"d/m H:i" }}</div>
+                </div>
+                <span class="badge text-bg-light">ID #{{ o.id }}</span>
+              </li>
+              {% empty %}
+              <li class="list-group-item text-center text-muted">Sin pedidos</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- MENSAJES -->
+      <div class="tab-pane fade" id="tab-messages">
+        <div class="card">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <h5 class="mb-0"><i class="bi bi-chat-dots"></i> Mensajes a clientes</h5>
+          </div>
+          <div class="card-body">
+            <form class="row g-2 align-items-end" method="post" action="/message/">
+              {% csrf_token %}
+              <div class="col-12 col-md-3">
+                <label class="form-label">Cliente</label>
+                <input name="customer" class="form-control" placeholder="Nombre" required>
+              </div>
+              <div class="col-12 col-md-8">
+                <label class="form-label">Mensaje</label>
+                <input name="text" class="form-control" placeholder="Escribe un mensaje…" required>
+              </div>
+              <div class="col-12 col-md-1 d-grid">
+                <button class="btn btn-outline-primary"><i class="bi bi-send"></i></button>
+              </div>
+            </form>
+
+            <div class="mt-3">
+              <h6 class="text-muted mb-2"><i class="bi bi-inbox"></i> Últimos mensajes</h6>
+              <ul class="list-group list-group-flush">
+                {% for m in messages %}
+                <li class="list-group-item">
+                  <div class="d-flex align-items-start gap-3">
+                    <div class="list-avatar">{{ m.customer.name|slice:":1"|upper }}</div>
+                    <div>
+                      <div><strong>A {{ m.customer.name }}</strong><span class="text-body"> — “{{ m.text }}”</span></div>
+                      <div class="small text-muted">{{ m.created_at|localtime|date:"d/m/Y H:i" }}</div>
+
+                      {% if m.last_order %}
+                      <div class="mt-1">
+                        <span class="badge text-bg-light">Compra reciente</span>
+                        <div class="small text-muted mt-1">
+                          {{ m.last_order.qty }} × {{ m.last_order.product.name }}
+                          • Unit: {{ m.last_order.product.price|clp }}
+                          • Total: {{ m.last_order.product.price|mul:m.last_order.qty|clp }}
+                        </div>
+                      </div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </li>
+                {% empty %}
+                <li class="list-group-item text-center text-muted">Sin mensajes</li>
+                {% endfor %}
+              </ul>
+            </div>
+
+            <div class="alert alert-info mt-3 mb-0">
+              <i class="bi bi-lightbulb"></i> Tip: puedes filtrar productos por nombre o SKU en la pestaña Inventario.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/sales.js' %}?v=3"></script>
+{% endblock %}
