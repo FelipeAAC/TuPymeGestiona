@@ -20,22 +20,24 @@ def _fetch_rate_from_api():
         r = requests.get(url, timeout=6)
         r.raise_for_status()
         data = r.json()
-        rate = float(data["rates"]["USD"])
-        return rate
+        return float(data["rates"]["USD"])
     except Exception:
         return None
 
 def get_usd_rate():
     """
-    Devuelve cuántos USD vale 1 CLP (float).
-    Cacheado para evitar pegarle seguido a la API.
+    Devuelve la tasa USD/CLP: cuántos dólares vale 1 peso chileno.
     """
     rate = cache.get(CACHE_KEY)
-    if rate:
+    if rate is not None:
         return rate
+
     rate = _fetch_rate_from_api()
-    if rate:
+    if rate is not None:
         cache.set(CACHE_KEY, rate, TTL)
         return rate
+
     default_clp_per_usd = float(getattr(settings, "EXCHANGE_RATE_DEFAULT", 950.0))
+    if default_clp_per_usd == 0:
+        return 0.0
     return 1.0 / default_clp_per_usd

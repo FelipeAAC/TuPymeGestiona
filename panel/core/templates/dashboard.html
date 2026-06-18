@@ -52,13 +52,16 @@
   <!-- NAV -->
   <div class="col-12 col-md-3">
     <div class="nav flex-column nav-pills" role="tablist" aria-orientation="vertical">
-      <button class="nav-link active text-start" data-bs-toggle="pill" data-bs-target="#tab-inventory" type="button">
+      <button class="nav-link {% if active_tab == 'inventory' %}active{% endif %} text-start" data-bs-toggle="pill" data-bs-target="#tab-inventory" type="button">
         <i class="bi bi-clipboard-data me-2"></i> Inventario
       </button>
-      <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#tab-sales" type="button">
+      <button class="nav-link {% if active_tab == 'sales' %}active{% endif %} text-start" data-bs-toggle="pill" data-bs-target="#tab-sales" type="button">
         <i class="bi bi-bag-plus me-2"></i> Nueva venta
       </button>
-      <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#tab-messages" type="button">
+      <button class="nav-link {% if active_tab == 'orders' %}active{% endif %} text-start" data-bs-toggle="pill" data-bs-target="#tab-orders" type="button">
+        <i class="bi bi-receipt me-2"></i> Pedidos
+      </button>
+      <button class="nav-link {% if active_tab == 'messages' %}active{% endif %} text-start" data-bs-toggle="pill" data-bs-target="#tab-messages" type="button">
         <i class="bi bi-chat-dots me-2"></i> Mensajes
       </button>
     </div>
@@ -69,13 +72,24 @@
     <div class="tab-content">
 
       <!-- INVENTARIO -->
-      <div class="tab-pane fade show active" id="tab-inventory">
+      <div class="tab-pane fade {% if active_tab == 'inventory' %}show active{% endif %}" id="tab-inventory">
         <div class="card h-100">
           <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
             <h5 class="mb-0"><i class="bi bi-clipboard-data"></i> Inventario rápido</h5>
-            <div class="input-group" style="max-width:320px;">
-              <span class="input-group-text"><i class="bi bi-search"></i></span>
-              <input id="inventory-search" type="search" class="form-control" placeholder="Buscar por SKU o nombre…">
+            <div class="d-flex gap-2" style="max-width:500px;">
+              <div class="input-group" style="flex:1;">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input id="inventory-search" type="search" class="form-control" placeholder="Buscar por código o nombre…">
+              </div>
+              <select id="inventory-filter-category" class="form-select" style="max-width:150px;">
+                <option value="">Todas las categorías</option>
+                <option value="Tecnología">Tecnología</option>
+                <option value="Alimentos">Alimentos</option>
+                <option value="Estética">Estética</option>
+                <option value="Medicamentos">Medicamentos</option>
+                <option value="Ropa">Ropa</option>
+                <option value="Otro">Otro</option>
+              </select>
             </div>
           </div>
 
@@ -84,23 +98,39 @@
             <form class="row g-2 align-items-end" method="post" action="/add-product/">
               {% csrf_token %}
               <div class="col-12 col-sm-4">
-                <label class="form-label">Producto</label>
+                <label class="form-label">Nombre del Producto</label>
                 <input name="name" class="form-control" placeholder="Nombre" required>
               </div>
               <div class="col-6 col-sm-2">
-                <label class="form-label">SKU</label>
+                <label class="form-label">Código de producto
+                  <button type="button" class="btn btn-sm btn-link p-0 ms-2" data-bs-toggle="popover" title="Código de producto" data-bs-content="Código único para identificar el producto. Úsalo para búsquedas y sincronización con POS.">
+                    <i class="bi bi-info-circle"></i>
+                  </button>
+                </label>
                 <input name="sku" class="form-control" placeholder="ABC001" required>
               </div>
-              <div class="col-6 col-sm-2">
+              <div class="col-6 col-sm-1">
+                <label class="form-label">Categoría</label>
+                <select name="category" class="form-select form-select-sm">
+                  <option value="">Seleccionar</option>
+                  <option value="Tecnología">Tecnología</option>
+                  <option value="Alimentos">Alimentos</option>
+                  <option value="Estética">Estética</option>
+                  <option value="Medicamentos">Medicamentos</option>
+                  <option value="Ropa">Ropa</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+              <div class="col-4 col-sm-1">
                 <label class="form-label">Stock</label>
-                <input name="stock" type="number" class="form-control" value="10" min="0">
+                <input name="stock" type="number" class="form-control form-control-sm" value="10" min="0">
               </div>
-              <div class="col-6 col-sm-2">
+              <div class="col-4 col-sm-1">
                 <label class="form-label">Precio</label>
-                <input name="price" type="number" step="0.01" class="form-control" value="0">
+                <input name="price" type="number" step="1" class="form-control form-control-sm" value="0" placeholder="0">
               </div>
-              <div class="col-6 col-sm-2 d-grid">
-                <button class="btn btn-primary"><i class="bi bi-plus-circle"></i> Agregar</button>
+              <div class="col-4 col-sm-1 d-grid">
+                <button class="btn btn-primary btn-sm"><i class="bi bi-plus-circle"></i></button>
               </div>
             </form>
 
@@ -109,17 +139,20 @@
               <table class="table table-sm table-hover table-striped align-middle" id="inventory-table">
                 <thead class="table-light">
                   <tr>
-                    <th>SKU</th>
+                    <th>Código Producto</th>
                     <th>Producto</th>
+                    <th>Categoría</th>
                     <th class="text-end">Stock</th>
                     <th class="text-end">Precio</th>
+                    <th class="text-end">Última actualización</th>
                   </tr>
                 </thead>
                 <tbody>
                   {% for p in products %}
-                  <tr>
-                    <td data-col="sku"><span class="badge badge-soft">{{ p.sku }}</span></td>
+                  <tr data-category="{{ p.category|default:'' }}">
+                    <td data-col="sku"><span class="badge badge-soft" style="font-size:.85rem;">{{ p.sku }}</span></td>
                     <td data-col="name">{{ p.name }}</td>
+                    <td><span class="badge text-bg-light">{{ p.category|default:"—" }}</span></td>
                     <td class="text-end {% if p.stock <= 5 %}stock-low{% endif %}">
                       {% if p.stock <= 0 %}
                         <span class="badge text-bg-secondary">Sin stock</span>
@@ -127,11 +160,12 @@
                         {{ p.stock }}
                       {% endif %}
                     </td>
-                    <td class="text-end">${{ p.price|floatformat:2 }}</td>
+                    <td class="text-end">{{ p.price|clp }}</td>
+                    <td class="text-end text-nowrap">{{ p.updated_at|default:"-"|localtime|date:"d/m/Y H:i" }}</td>
                   </tr>
                   {% empty %}
                   <tr>
-                    <td colspan="4" class="text-center text-muted py-4">Sin productos</td>
+                    <td colspan="6" class="text-center text-muted py-4">Sin productos</td>
                   </tr>
                   {% endfor %}
                 </tbody>
@@ -147,7 +181,7 @@
                 <label class="form-label">Producto sin stock</label>
                 <select name="product_id" class="form-select" required>
                   <option value="">Seleccionar…</option>
-                  {% for p in out_of_stock_products %}
+                  {% for p in all_products %}
                     <option value="{{ p.id }}">{{ p.name }} ({{ p.sku }})</option>
                   {% empty %}
                     <option value="" disabled>No hay productos sin stock</option>
@@ -187,25 +221,25 @@
       </div>
 
       <!-- VENTAS -->
-      <div class="tab-pane fade" id="tab-sales">
+      <div class="tab-pane fade {% if active_tab == 'sales' %}show active{% endif %}" id="tab-sales">
         <div class="card h-100">
           <div class="card-header">
             <h5 class="mb-0"><i class="bi bi-bag-plus"></i> Nueva venta</h5>
           </div>
           <div class="card-body">
-            <form class="row g-2 align-items-end" method="post" action="/order/">
+            <form id="sale-form" class="row g-2 align-items-center" method="post" action="/order/">
               {% csrf_token %}
               <div class="col-12 col-md-6">
                 <label class="form-label">Producto</label>
                 <select name="product_id" id="sale-product-select" class="form-select" required>
                   <option value="">Seleccionar…</option>
                   {% for p in products %}
-                    <option value="{{ p.id }}" data-stock="{{ p.stock }}" data-price="{{ p.price }}" {% if p.stock <= 0 %}disabled{% endif %}>
+                    <option value="{{ p.id }}" data-stock="{{ p.stock }}" data-price="{{ p.price|floatformat:0 }}" {% if p.stock <= 0 %}disabled{% endif %}>
                       {{ p.name }} {% if p.stock <= 0 %}(Sin stock){% else %}(Stock: {{ p.stock }}){% endif %}
                     </option>
                   {% endfor %}
                 </select>
-                <div class="small text-muted mt-1">
+                <div class="small text-muted mt-1 sale-meta">
                   Precio: <span id="sale-unit-price">—</span> •
                   Total: <span id="sale-total-price">—</span>
                 </div>
@@ -214,6 +248,7 @@
               <div class="col-12 col-md-3">
                 <label class="form-label">Cliente</label>
                 <input name="customer" class="form-control" placeholder="Nombre" required>
+                <div class="sale-meta" aria-hidden="true"></div>
               </div>
 
               <div class="col-6 col-md-2">
@@ -224,11 +259,24 @@
               </div>
 
               <div class="col-6 col-md-1 d-grid">
+                <button type="button" id="add-to-cart-button" class="btn btn-outline-secondary" title="Agregar al carrito">
+                  <i class="bi bi-plus-circle"></i>
+                </button>
+              </div>
+              <div class="col-6 col-md-1 d-grid">
                 <button type="submit" id="sale-submit-button" class="btn btn-success" disabled>
                   <i class="bi bi-check2-circle"></i>
                 </button>
               </div>
+              <input type="hidden" name="cart_items" id="cart-items-input" value="">
             </form>
+
+            <!-- Carrito visual -->
+            <div class="mt-3">
+              <h6 class="mb-2">Carrito</h6>
+              <ul id="cart-list" class="list-group mb-2"></ul>
+              <div class="small text-muted">Agrega productos con el botón <i class="bi bi-plus-circle"></i>. Luego presiona enviar para registrar el pedido.</div>
+            </div>
 
             <hr class="my-4">
             <h6 class="text-muted mb-3"><i class="bi bi-clock-history"></i> Últimos pedidos</h6>
@@ -249,60 +297,139 @@
         </div>
       </div>
 
+      <!-- PEDIDOS -->
+      <div class="tab-pane fade {% if active_tab == 'orders' %}show active{% endif %}" id="tab-orders">
+        <div class="card">
+          <div class="card-header"><i class="bi bi-receipt"></i> Pedidos</div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-sm orders-table">
+                <thead>
+                  <tr>
+                    <th>Pedido</th>
+                    <th>Cliente</th>
+                    <th>Fecha</th>
+                    <th>Items</th>
+                    <th class="text-end">Total</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for og in order_groups %}
+                  <tr>
+                    <td>{{ og.order_number }}</td>
+                    <td>{{ og.customer.name }} (ID: {{ og.customer.id }})</td>
+                    <td>{{ og.created_at|localtime|date:"d/m/Y H:i" }}</td>
+                    <td>
+                      <ul class="mb-0">
+                        {% for item in og.items %}
+                          <li>{{ item.qty }} × {{ item.product.name }}</li>
+                        {% endfor %}
+                      </ul>
+                    </td>
+                    <td class="text-end">{{ og.total|default:0|clp }}</td>
+                    <td>
+                      <a href="?selected_order={{ og.order_number }}#messages" class="btn btn-sm btn-link me-1" title="Abrir chat"><i class="bi bi-chat-dots"></i></a>
+                      <button type="button" class="btn btn-sm btn-link open-order-detail" data-order-number="{{ og.order_number }}" data-customer="{{ og.customer.name }}" data-created-at="{{ og.created_at|localtime|date:'d/m/Y H:i' }}" title="Detalle"><i class="bi bi-eye"></i></button>
+                    </td>
+                  </tr>
+                  {% empty %}
+                  <tr><td colspan="6" class="text-muted text-center">Sin pedidos</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- MENSAJES -->
-      <div class="tab-pane fade" id="tab-messages">
+      <div class="tab-pane fade {% if active_tab == 'messages' %}show active{% endif %}" id="tab-messages">
         <div class="card">
           <div class="card-header d-flex align-items-center justify-content-between">
             <h5 class="mb-0"><i class="bi bi-chat-dots"></i> Mensajes a clientes</h5>
           </div>
           <div class="card-body">
-            <form class="row g-2 align-items-end" method="post" action="/message/">
-              {% csrf_token %}
-              <div class="col-12 col-md-3">
-                <label class="form-label">Cliente</label>
-                <input name="customer" class="form-control" placeholder="Nombre" required>
+            <div class="row">
+              <div class="col-12 col-md-4 mb-3 mb-md-0">
+                <div class="list-group" id="chat-users">
+                  {% for g in messages_grouped %}
+                    <a href="?selected_order={{ g.order_number }}#messages" class="list-group-item list-group-item-action d-flex justify-content-between {% if selected_order_number == g.order_number %}active{% endif %}">
+                      <div>
+                        <div class="d-flex align-items-center gap-2">
+                          <div class="list-avatar">{{ g.customer.name|slice:":1"|upper }}</div>
+                          <div>
+                            <div class="fw-bold">{{ g.customer.name }}</div>
+                              {% with last_msg=g.messages|last %}
+                                <div class="small text-muted">{% if last_msg %}{{ last_msg.text|truncatechars:60 }}{% else %}Pedido {{ g.order_number }} • {{ g.items|length }} items{% endif %}</div>
+                              {% endwith %}
+                          </div>
+                        </div>
+                        <div class="small text-muted">Pedido: {{ g.order_number }}</div>
+                      </div>
+                      <div class="text-end small text-muted">{{ g.created_at|localtime|date:"d/m H:i" }}</div>
+                    </a>
+                  {% empty %}
+                    <div class="small text-muted p-3">Sin conversaciones</div>
+                  {% endfor %}
+                </div>
               </div>
               <div class="col-12 col-md-8">
-                <label class="form-label">Mensaje</label>
-                <input name="text" class="form-control" placeholder="Escribe un mensaje…" required>
-              </div>
-              <div class="col-12 col-md-1 d-grid">
-                <button class="btn btn-outline-primary"><i class="bi bi-send"></i></button>
-              </div>
-            </form>
-
-            <div class="mt-3">
-              <h6 class="text-muted mb-2"><i class="bi bi-inbox"></i> Últimos mensajes</h6>
-              <ul class="list-group list-group-flush">
-                {% for m in messages %}
-                <li class="list-group-item">
-                  <div class="d-flex align-items-start gap-3">
-                    <div class="list-avatar">{{ m.customer.name|slice:":1"|upper }}</div>
-                    <div>
-                      <div><strong>A {{ m.customer.name }}</strong><span class="text-body"> — “{{ m.text }}”</span></div>
-                      <div class="small text-muted">{{ m.created_at|localtime|date:"d/m/Y H:i" }}</div>
-
-                      {% if m.last_order %}
-                      <div class="mt-1">
-                        <span class="badge text-bg-light">Compra reciente</span>
-                        <div class="small text-muted mt-1">
-                          {{ m.last_order.qty }} × {{ m.last_order.product.name }}
-                          • Unit: {{ m.last_order.product.price|clp }}
-                          • Total: {{ m.last_order.product.price|mul:m.last_order.qty|clp }}
-                        </div>
+                <div class="chat-window p-3 border rounded d-flex flex-column" style="min-height:350px; max-height:550px; background:var(--card);">
+                  <div style="flex: 1; overflow-y: auto; margin-bottom: 1rem;">
+                    {% if selected_order %}
+                      <div class="mb-3 pb-2 border-bottom">
+                        <div class="fw-bold">Pedido {{ selected_order.order_number }}</div>
+                        <div class="small text-muted">{{ selected_order.customer.name }} • {{ selected_order.created_at|localtime|date:"d/m/Y H:i" }}</div>
+                        <div class="small text-muted mt-1"><strong>Items:</strong></div>
+                        <ul class="small ps-3 mb-1">
+                          {% for it in selected_order.items %}
+                            <li>{{ it.qty }} × {{ it.product.name }}</li>
+                          {% endfor %}
+                        </ul>
+                        <div class="small"><strong>Total:</strong> {{ selected_order.total|clp }}</div>
                       </div>
-                      {% endif %}
-                    </div>
-                  </div>
-                </li>
-                {% empty %}
-                <li class="list-group-item text-center text-muted">Sin mensajes</li>
-                {% endfor %}
-              </ul>
-            </div>
 
-            <div class="alert alert-info mt-3 mb-0">
-              <i class="bi bi-lightbulb"></i> Tip: puedes filtrar productos por nombre o SKU en la pestaña Inventario.
+                      {% for msg in selected_order.messages %}
+                        <div class="chat-message {% if msg.sender == 'customer' %}customer{% else %}admin text-end{% endif %} mb-3">
+                          <div class="d-flex {% if msg.sender == 'customer' %}justify-content-start{% else %}justify-content-end{% endif %}">
+                            <div class="{% if msg.sender == 'customer' %}d-inline-block p-2 rounded{% else %}d-inline-block p-2 rounded bg-primary text-white{% endif %}" style="max-width:70%; word-wrap:break-word;">{{ msg.text }}</div>
+                          </div>
+                          <div class="small text-muted mt-1 {% if msg.sender == 'admin' %}text-end{% endif %}">{{ msg.sender|capfirst }} • {{ msg.created_at|localtime|date:"d/m H:i" }}</div>
+                        </div>
+                      {% empty %}
+                        <div class="small text-muted p-2">Sin mensajes en este pedido aún.</div>
+                      {% endfor %}
+                    {% else %}
+                      <div class="small text-muted d-flex align-items-center justify-content-center" style="height:100%;">Selecciona una conversación a la izquierda.</div>
+                    {% endif %}
+                  </div>
+                </div>
+
+                <form class="row g-2 align-items-end mt-3" method="post" action="/message/">
+                  {% csrf_token %}
+                  {% if selected_order %}
+                    <input type="hidden" name="customer_id" value="{{ selected_order.customer.id }}">
+                    <input type="hidden" name="order_number" value="{{ selected_order.order_number }}">
+                    <div class="col-9">
+                      <input name="text" class="form-control" placeholder="Escribe un mensaje…" required>
+                    </div>
+                    <div class="col-3 d-grid">
+                      <button class="btn btn-primary"><i class="bi bi-send"></i> Enviar</button>
+                    </div>
+                  {% else %}
+                    <div class="col-4">
+                      <input name="customer" class="form-control" placeholder="Cliente (nombre)" required>
+                    </div>
+                    <div class="col-5">
+                      <input name="text" class="form-control" placeholder="Escribe un mensaje…" required>
+                    </div>
+                    <div class="col-3 d-grid">
+                      <button class="btn btn-primary"><i class="bi bi-send"></i> Enviar</button>
+                    </div>
+                  {% endif %}
+                </form>
+              </div>
             </div>
           </div>
         </div>
@@ -311,6 +438,27 @@
     </div>
   </div>
 </div>
+
+<!-- Order detail modal -->
+<div class="modal fade" id="orderDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Detalle del pedido</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div id="order-detail-body">
+          <!-- populated by JS -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}

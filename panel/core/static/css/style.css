@@ -115,6 +115,63 @@ body {
   border-color: var(--border) !important;
 }
 
+/* Inventory table padding tweaks for readability */
+#inventory-table th, #inventory-table td {
+  padding: 0.75rem 0.9rem;
+}
+
+/* Reserve space under inputs in sales form so columns align */
+.sale-meta { min-height: 1.5rem; display: block; }
+
+/* Chat styles */
+.chat-window { background: var(--card); }
+.chat-message.customer { text-align: left; }
+.chat-message.admin { text-align: right; }
+.chat-message .rounded { border-radius: 12px; max-width: 85%; display: inline-block; padding: .5rem .75rem; word-wrap: break-word; overflow-wrap: break-word; }
+.chat-message.customer .rounded { background: color-mix(in oklab, var(--bg) 80%, #000 20%); color: var(--text); }
+.chat-message.admin .rounded { background: var(--brand); color: #fff; }
+
+/* Chat message better spacing on mobile */
+@media (max-width: 576px) {
+  .chat-message .rounded { max-width: 95%; font-size: .85rem; }
+  .chat-message { margin-bottom: 1rem !important; }
+}
+
+/* Cart list */
+#cart-list { max-height: 200px; overflow:auto; }
+
+/* cart qty input small */
+.cart-qty { padding: .25rem .5rem; text-align: center; }
+.cart-decr { width: 36px; height: 30px; padding: .1rem .35rem; }
+
+/* Código de producto estilo mejorado */
+.form-control-sm, .form-select-sm {
+  font-size: .875rem;
+  padding: .375rem .5rem;
+}
+
+/* modal tweaks */
+.modal .modal-body { color: var(--text); }
+
+/* chat window scrollable y con mejor altura */
+.chat-window {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.chat-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Orders tab */
+.orders-table td, .orders-table th { padding: .65rem .9rem; }
+
+
+
 /* Badges “claras” en dark */
 .badge.text-bg-light {
   background-color: color-mix(in oklab, var(--card) 80%, #fff 20%) !important;
@@ -180,3 +237,119 @@ body {
 
 /* Footer */
 footer{ color: var(--muted); border-top:1px solid var(--border); background:var(--card); }
+
+/* ===================== */
+/*    RESPONSIVE DESIGN   */
+/* ===================== */
+
+/* Inventory form: expand on smaller screens */
+.card-body > form.row {
+  margin-bottom: 1.5rem;
+}
+
+.col-12.col-sm-4, .col-12.col-sm-3, .col-12.col-sm-2, .col-12.col-md-4, .col-12.col-md-6, .col-12.col-md-8, .col-12.col-md-9 {
+  margin-bottom: .5rem;
+}
+
+@media (max-width: 768px) {
+  .col-12.col-sm-4, .col-12.col-sm-3, .col-12.col-sm-2 {
+    margin-bottom: .75rem;
+  }
+  
+  .form-label {
+    font-size: .9rem;
+    margin-bottom: .25rem;
+  }
+  
+  .form-control, .form-select {
+    padding: .5rem;
+    font-size: .95rem;
+  }
+  
+  .table-responsive {
+    font-size: .85rem;
+  }
+  
+  .btn-sm {
+    padding: .3rem .5rem;
+    font-size: .8rem;
+  }
+  
+  #inventory-search, #inventory-filter-category {
+    font-size: .9rem;
+  }
+  
+  .nav-pills {
+    flex-wrap: wrap;
+  }
+  
+  .nav-pills .nav-link {
+    padding: .5rem .75rem;
+    font-size: .9rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .card-body > form.row {
+    gap: .5rem !important;
+  }
+  
+  .card-body > form.row [class*="col-"] {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+  
+  .card-body > form.row .d-grid {
+    margin-top: .25rem;
+  }
+  
+  .form-label {
+    font-size: .85rem;
+  }
+  
+  .form-control, .form-select {
+    padding: .4rem;
+    font-size: .85rem;
+  }
+  
+  .table-responsive {
+    font-size: .75rem;
+  }
+  
+  .btn-sm {
+    padding: .25rem .4rem;
+    font-size: .7rem;
+  }
+  
+  .card {
+    margin-bottom: 1rem;
+  }
+  
+  .card-body {
+    padding: .75rem;
+  }
+  
+  .row.g-3, .row.g-4, .row.g-2 {
+    gap: .5rem !important;
+  }
+  
+  .col-12.col-md-3, .col-12.col-md-4, .col-12.col-md-8, .col-12.col-md-9 {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+  
+  .list-group-item {
+    padding: .5rem;
+    font-size: .85rem;
+  }
+  
+  .chat-window {
+    min-height: 250px !important;
+    max-height: 400px !important;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-size: 1rem;
+    margin-bottom: .5rem;
+  }
+}

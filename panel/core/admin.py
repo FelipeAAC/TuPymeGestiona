@@ -8,10 +8,11 @@ class CustomerAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ("id", "sku", "name", "stock", "price")
+    list_display = ("id", "sku", "name", "category", "stock", "price", "created_at", "updated_at")
     list_editable = ("stock", "price")
     search_fields = ("sku", "name")
-    list_filter = ("stock",)
+    list_filter = ("stock", "category")
+    readonly_fields = ("created_at", "updated_at")
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):

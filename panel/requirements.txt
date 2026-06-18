@@ -1,0 +1,4 @@
+# Requisitos para ejecutar TuPymeGestiona en desarrollo
+# Python 3.8+
+Django==5.2.7
+requests>=2.31.0,<3.0
