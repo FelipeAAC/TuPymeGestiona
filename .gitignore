@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+backend/.venv/
+
+# Django
+backend/db.sqlite3
+
+# Environment variables
+.env
+*.env
+
+# Node
+node_modules/
+
+# Angular
+.angular/
+dist/
+
+# React / Vite
+admin-frontend/dist/
+
+# VS Code
+.vscode/
