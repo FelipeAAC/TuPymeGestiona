@@ -58,40 +58,62 @@
         <p>Ingresa tus credenciales para acceder a tu cuenta.</p>
       </header>
 
-      <form class="login-form">
+      <form class="login-form" [formGroup]="loginForm" (ngSubmit)="onSubmit()" novalidate>
         <div class="form-field">
           <label for="username">Correo electrónico o usuario</label>
 
           <input
             id="username"
-            name="username"
             type="text"
+            formControlName="identifier"
             placeholder="nombre@empresa.cl"
             autocomplete="username"
+            [class.input-error]="identifier.invalid && identifier.touched"
           />
+
+          @if (identifier.invalid && identifier.touched) {
+            <span class="field-error"> Ingresa tu correo electrónico o usuario. </span>
+          }
         </div>
 
         <div class="form-field">
           <div class="password-label">
             <label for="password">Contraseña</label>
+
             <button class="text-button" type="button">¿Olvidaste tu contraseña?</button>
           </div>
 
-          <input
-            id="password"
-            name="password"
-            type="password"
-            placeholder="Ingresa tu contraseña"
-            autocomplete="current-password"
-          />
+          <div class="password-input">
+            <input
+              id="password"
+              formControlName="password"
+              [type]="showPassword ? 'text' : 'password'"
+              placeholder="Ingresa tu contraseña"
+              autocomplete="current-password"
+              [class.input-error]="password.invalid && password.touched"
+            />
+
+            <button
+              class="password-toggle"
+              type="button"
+              (click)="togglePasswordVisibility()"
+              [attr.aria-label]="showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+            >
+              {{ showPassword ? 'Ocultar' : 'Mostrar' }}
+            </button>
+          </div>
+
+          @if (password.invalid && password.touched) {
+            <span class="field-error"> Ingresa tu contraseña. </span>
+          }
         </div>
 
         <label class="remember-option">
-          <input type="checkbox" name="remember" />
+          <input type="checkbox" formControlName="rememberMe" />
           <span>Recordar sesión</span>
         </label>
 
-        <button class="login-button" type="button">Iniciar sesión</button>
+        <button class="login-button" type="submit">Iniciar sesión</button>
       </form>
 
       <p class="login-help">

@@ -369,6 +369,48 @@
   }
 }
 
+.password-input {
+  position: relative;
+}
+
+.password-input input {
+  padding-right: 82px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  padding: 4px;
+  border: 0;
+  color: #4f46e5;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover {
+  color: #3730a3;
+}
+
+.form-field input.input-error {
+  border-color: #dc2626;
+}
+
+.form-field input.input-error:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.field-error {
+  color: #dc2626;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 @media (max-width: 480px) {
   .login-panel {
     padding-inline: 20px;
