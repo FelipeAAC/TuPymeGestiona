@@ -1,7 +1,8 @@
 import { Routes } from '@angular/router';
 
 import { authGuard } from './core/auth/auth.guard';
-import { AppHome } from './pages/app-home/app-home';
+import { AppShell } from './layouts/app-shell/app-shell';
+import { Dashboard } from './pages/dashboard/dashboard';
 import { Login } from './pages/login/login';
 
 export const routes: Routes = [
@@ -16,8 +17,19 @@ export const routes: Routes = [
   },
   {
     path: 'app',
-    component: AppHome,
+    component: AppShell,
     canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        redirectTo: 'dashboard',
+        pathMatch: 'full',
+      },
+      {
+        path: 'dashboard',
+        component: Dashboard,
+      },
+    ],
   },
   {
     path: '**',

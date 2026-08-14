@@ -1,0 +1,37 @@
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark">TG</div>
+
+      <div>
+        <strong>TuPymeGestiona</strong>
+        <span>Gestión empresarial</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav" aria-label="Navegación principal">
+      <a routerLink="/app/dashboard" routerLinkActive="active"> Dashboard </a>
+
+      <span class="nav-placeholder">Productos</span>
+      <span class="nav-placeholder">Inventario</span>
+      <span class="nav-placeholder">Clientes</span>
+      <span class="nav-placeholder">Pedidos</span>
+      <span class="nav-placeholder">Ventas</span>
+      <span class="nav-placeholder">Mensajes</span>
+    </nav>
+  </aside>
+
+  <div class="app-main">
+    <header class="app-header">
+      <div>
+        <span class="header-context">TuPymeGestiona</span>
+      </div>
+
+      <div class="header-user">Usuario</div>
+    </header>
+
+    <main class="app-content">
+      <router-outlet />
+    </main>
+  </div>
+</div>
