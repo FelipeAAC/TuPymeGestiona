@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { finalize } from 'rxjs';
+import { Router } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
 
@@ -14,6 +15,7 @@ import { AuthService } from '../../core/auth/auth.service';
 export class Login {
   private readonly formBuilder = inject(NonNullableFormBuilder);
   private readonly authService = inject(AuthService);
+  private readonly router = inject(Router);
 
   readonly showPassword = signal(false);
   readonly isSubmitting = signal(false);
@@ -61,8 +63,8 @@ export class Login {
         }),
       )
       .subscribe({
-        next: (user) => {
-          this.authSuccess.set(`Sesión iniciada correctamente como ${user.username}.`);
+        next: () => {
+          void this.router.navigate(['/app/dashboard']);
         },
 
         error: (error: HttpErrorResponse) => {
