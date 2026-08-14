@@ -87,7 +87,7 @@
             <input
               id="password"
               formControlName="password"
-              [type]="showPassword ? 'text' : 'password'"
+              [type]="showPassword() ? 'text' : 'password'"
               placeholder="Ingresa tu contraseña"
               autocomplete="current-password"
               [class.input-error]="password.invalid && password.touched"
@@ -97,9 +97,9 @@
               class="password-toggle"
               type="button"
               (click)="togglePasswordVisibility()"
-              [attr.aria-label]="showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+              [attr.aria-label]="showPassword() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
             >
-              {{ showPassword ? 'Ocultar' : 'Mostrar' }}
+              {{ showPassword() ? 'Ocultar' : 'Mostrar' }}
             </button>
           </div>
 
@@ -107,13 +107,25 @@
             <span class="field-error"> Ingresa tu contraseña. </span>
           }
         </div>
+        @if (authError()) {
+          <div class="auth-alert auth-alert--error" role="alert">
+            {{ authError() }}
+          </div>
+        }
 
+        @if (authSuccess()) {
+          <div class="auth-alert auth-alert--success" role="status">
+            {{ authSuccess() }}
+          </div>
+        }
         <label class="remember-option">
           <input type="checkbox" formControlName="rememberMe" />
           <span>Recordar sesión</span>
         </label>
 
-        <button class="login-button" type="submit">Iniciar sesión</button>
+        <button class="login-button" type="submit" [disabled]="isSubmitting()">
+          {{ isSubmitting() ? 'Ingresando...' : 'Iniciar sesión' }}
+        </button>
       </form>
 
       <p class="login-help">
