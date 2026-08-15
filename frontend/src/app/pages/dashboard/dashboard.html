@@ -1,5 +1,105 @@
-<section>
-  <p>Resumen general</p>
-  <h1>Dashboard</h1>
-  <p>Bienvenido a TuPymeGestiona.</p>
+<section class="dashboard">
+  <header class="dashboard-header">
+    <div>
+      <span class="dashboard-eyebrow">Resumen general</span>
+      <h1>Dashboard</h1>
+      <p>Vista general de la operación de TuPymeGestiona.</p>
+    </div>
+  </header>
+
+  <section class="summary-grid" aria-label="Resumen de indicadores">
+    <article class="summary-card">
+      <span class="summary-label">Ventas de hoy</span>
+      <strong class="summary-value">—</strong>
+      <span class="summary-status">Pendiente de conectar</span>
+    </article>
+
+    <article class="summary-card">
+      <span class="summary-label">Pedidos pendientes</span>
+      <strong class="summary-value">—</strong>
+      <span class="summary-status">Pendiente de conectar</span>
+    </article>
+
+    <article class="summary-card">
+      <span class="summary-label">Stock bajo</span>
+      <strong class="summary-value">—</strong>
+      <span class="summary-status">Pendiente de conectar</span>
+    </article>
+
+    <article class="summary-card">
+      <span class="summary-label">Mensajes sin leer</span>
+      <strong class="summary-value">—</strong>
+      <span class="summary-status">Pendiente de conectar</span>
+    </article>
+  </section>
+
+  <section class="dashboard-grid">
+    <article class="dashboard-panel">
+      <header class="panel-header">
+        <div>
+          <span class="panel-eyebrow">Actividad</span>
+          <h2>Actividad reciente</h2>
+        </div>
+      </header>
+
+      <div class="empty-state">
+        <div class="empty-state-icon" aria-hidden="true">◎</div>
+
+        <div>
+          <strong>Aún no hay actividad para mostrar</strong>
+          <p>
+            Los movimientos recientes aparecerán aquí cuando conectemos los primeros módulos de
+            negocio.
+          </p>
+        </div>
+      </div>
+    </article>
+
+    <article class="dashboard-panel">
+      <header class="panel-header">
+        <div>
+          <span class="panel-eyebrow">Sistema</span>
+          <h2>Estado de módulos</h2>
+        </div>
+      </header>
+
+      <div class="module-list">
+        <div class="module-item">
+          <div>
+            <strong>Autenticación</strong>
+            <span>Sesión y acceso protegido</span>
+          </div>
+
+          <span class="module-status ready">Operativo</span>
+        </div>
+
+        <div class="module-item">
+          <div>
+            <strong>Organización</strong>
+            <span>Empresas, sucursales y bodegas</span>
+          </div>
+
+          <span class="module-status pending">Pendiente</span>
+        </div>
+
+        <div class="module-item">
+          <div>
+            <strong>Catálogo</strong>
+            <span>Productos y variantes</span>
+          </div>
+
+          <span class="module-status pending">Pendiente</span>
+        </div>
+
+        <div class="module-item">
+          <div>
+            <strong>Inventario</strong>
+            <span>Stock y movimientos</span>
+          </div>
+
+          <span class="module-status pending">Pendiente</span>
+        </div>
+      </div>
+    </article>
+  </section>
 </section>
