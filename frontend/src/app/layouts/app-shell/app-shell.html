@@ -27,7 +27,32 @@
         <span class="header-context">TuPymeGestiona</span>
       </div>
 
-      <div class="header-user">Usuario</div>
+      <div class="header-user">
+        @if (currentUser(); as user) {
+          <div class="header-user-info">
+            <strong>{{ user.username }}</strong>
+
+            @if (user.email) {
+              <span>{{ user.email }}</span>
+            }
+          </div>
+
+          <button
+            type="button"
+            class="logout-button"
+            [disabled]="isLoggingOut()"
+            (click)="logout()"
+          >
+            {{ isLoggingOut() ? 'Cerrando...' : 'Cerrar sesión' }}
+          </button>
+        }
+
+        @if (logoutError()) {
+          <span class="logout-error" role="alert">
+            {{ logoutError() }}
+          </span>
+        }
+      </div>
     </header>
 
     <main class="app-content">
