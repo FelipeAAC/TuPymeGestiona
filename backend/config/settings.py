@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     # TuPymeGestiona
     "accounts",
     "organizations",
+    "catalog",
 ]
 
 MIDDLEWARE = [
