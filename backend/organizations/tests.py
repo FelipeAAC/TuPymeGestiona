@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 
+from .authorization import has_permission
 from .models import (
     Branch,
     Company,
@@ -823,6 +824,324 @@ class RbacModelsTests(TestCase):
                 role=role,
                 branch=None,
             )
+
+
+class EffectivePermissionTests(TestCase):
+    def setUp(self):
+        self.company_a = Company.objects.create(
+            name="Empresa Permission A",
+        )
+        self.company_b = Company.objects.create(
+            name="Empresa Permission B",
+        )
+
+        self.branch_a = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-PERM-A",
+            name="Sucursal Permission A",
+        )
+        self.branch_a_2 = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-PERM-A2",
+            name="Sucursal Permission A 2",
+        )
+        self.branch_b = Branch.objects.create(
+            company=self.company_b,
+            code="SUC-PERM-B",
+            name="Sucursal Permission B",
+        )
+
+        self.user = User.objects.create_user(
+            username="permission-user",
+            email="permission-user@example.com",
+            password="test-password",
+        )
+
+        self.membership = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        MembershipBranch.objects.create(
+            membership=self.membership,
+            branch=self.branch_a,
+        )
+
+    def create_role_with_permission(
+        self,
+        *,
+        permission_code,
+        scope_behavior,
+        branch=None,
+        role_status=CompanyRole.Status.ACTIVE,
+    ):
+        permission = Permission.objects.create(
+            code=permission_code,
+            scope_behavior=scope_behavior,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name=f"Rol {permission_code}",
+            status=role_status,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership,
+            role=role,
+            branch=branch,
+        )
+
+        return permission, role
+
+    def test_company_only_permission_requires_company_wide_assignment(self):
+        self.create_role_with_permission(
+            permission_code="company.settings.manage",
+            scope_behavior=Permission.ScopeBehavior.COMPANY_ONLY,
+            branch=None,
+        )
+
+        self.assertTrue(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="company.settings.manage",
+            )
+        )
+
+    def test_tenant_global_permission_allows_company_wide_assignment(self):
+        self.create_role_with_permission(
+            permission_code="products.view",
+            scope_behavior=Permission.ScopeBehavior.TENANT_GLOBAL,
+            branch=None,
+        )
+
+        self.assertTrue(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="products.view",
+            )
+        )
+
+    def test_tenant_global_permission_allows_branch_assignment(self):
+        self.create_role_with_permission(
+            permission_code="customers.view",
+            scope_behavior=Permission.ScopeBehavior.TENANT_GLOBAL,
+            branch=self.branch_a,
+        )
+
+        self.assertTrue(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="customers.view",
+            )
+        )
+
+    def test_branch_scoped_company_wide_assignment_allows_any_company_branch(self):
+        self.create_role_with_permission(
+            permission_code="inventory.view",
+            scope_behavior=Permission.ScopeBehavior.BRANCH_SCOPED,
+            branch=None,
+        )
+
+        self.assertTrue(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="inventory.view",
+                branch=self.branch_a,
+            )
+        )
+
+        self.assertTrue(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="inventory.view",
+                branch=self.branch_a_2,
+            )
+        )
+
+    def test_branch_scoped_branch_assignment_allows_matching_branch(self):
+        self.create_role_with_permission(
+            permission_code="sales.create",
+            scope_behavior=Permission.ScopeBehavior.BRANCH_SCOPED,
+            branch=self.branch_a,
+        )
+
+        self.assertTrue(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="sales.create",
+                branch=self.branch_a,
+            )
+        )
+
+    def test_branch_scoped_branch_assignment_denies_other_branch(self):
+        self.create_role_with_permission(
+            permission_code="orders.manage",
+            scope_behavior=Permission.ScopeBehavior.BRANCH_SCOPED,
+            branch=self.branch_a,
+        )
+
+        self.assertFalse(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="orders.manage",
+                branch=self.branch_a_2,
+            )
+        )
+
+    def test_branch_scoped_branch_assignment_requires_branch_context(self):
+        self.create_role_with_permission(
+            permission_code="inventory.adjust",
+            scope_behavior=Permission.ScopeBehavior.BRANCH_SCOPED,
+            branch=self.branch_a,
+        )
+
+        self.assertFalse(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="inventory.adjust",
+            )
+        )
+
+    def test_non_active_membership_does_not_authorize(self):
+        self.create_role_with_permission(
+            permission_code="products.edit",
+            scope_behavior=Permission.ScopeBehavior.TENANT_GLOBAL,
+            branch=None,
+        )
+
+        for status in (
+            CompanyMembership.Status.INVITED,
+            CompanyMembership.Status.SUSPENDED,
+            CompanyMembership.Status.LEFT,
+        ):
+            with self.subTest(status=status):
+                self.membership.status = status
+                self.membership.save(update_fields=["status"])
+
+                self.assertFalse(
+                    has_permission(
+                        user=self.user,
+                        company=self.company_a,
+                        permission_code="products.edit",
+                    )
+                )
+
+        self.membership.status = CompanyMembership.Status.ACTIVE
+        self.membership.save(update_fields=["status"])
+
+    def test_inactive_role_does_not_authorize(self):
+        self.create_role_with_permission(
+            permission_code="customers.edit",
+            scope_behavior=Permission.ScopeBehavior.TENANT_GLOBAL,
+            branch=None,
+            role_status=CompanyRole.Status.INACTIVE,
+        )
+
+        self.assertFalse(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="customers.edit",
+            )
+        )
+
+    def test_assignment_from_other_company_does_not_authorize(self):
+        other_membership = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_b,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        permission = Permission.objects.create(
+            code="reports.view",
+            scope_behavior=Permission.ScopeBehavior.TENANT_GLOBAL,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_b,
+            name="Rol Reports B",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=other_membership,
+            role=role,
+            branch=None,
+        )
+
+        self.assertFalse(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="reports.view",
+            )
+        )
+
+    def test_branch_from_other_company_does_not_authorize(self):
+        self.create_role_with_permission(
+            permission_code="stock.view",
+            scope_behavior=Permission.ScopeBehavior.BRANCH_SCOPED,
+            branch=None,
+        )
+
+        self.assertFalse(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="stock.view",
+                branch=self.branch_b,
+            )
+        )
+
+    def test_unknown_permission_code_does_not_authorize(self):
+        self.assertFalse(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="permission.does.not.exist",
+            )
+        )
+
+    def test_permission_is_resolved_by_code_not_role_name(self):
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="products.delete",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership,
+            role=role,
+            branch=None,
+        )
+
+        self.assertFalse(
+            has_permission(
+                user=self.user,
+                company=self.company_a,
+                permission_code="products.delete",
+            )
+        )
 
 
 class OrganizationContextApiTests(TestCase):
