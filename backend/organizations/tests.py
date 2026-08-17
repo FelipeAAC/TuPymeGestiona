@@ -1,11 +1,18 @@
-from django.test import TestCase
-
-# Create your tests here.
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 
-from .models import Branch, Company, Warehouse
+from .models import (
+    Branch,
+    Company,
+    CompanyMembership,
+    MembershipBranch,
+    Warehouse,
+)
+
+
+User = get_user_model()
 
 
 class OrganizationModelsTests(TestCase):
@@ -113,3 +120,98 @@ class OrganizationModelsTests(TestCase):
 
         self.assertEqual(warehouse_a.code, warehouse_b.code)
         self.assertNotEqual(warehouse_a.company, warehouse_b.company)
+
+
+class CompanyMembershipModelsTests(TestCase):
+    def setUp(self):
+        self.company_a = Company.objects.create(name="Empresa A")
+        self.company_b = Company.objects.create(name="Empresa B")
+
+        self.branch_a = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-A",
+            name="Sucursal A",
+        )
+
+        self.branch_b = Branch.objects.create(
+            company=self.company_b,
+            code="SUC-B",
+            name="Sucursal B",
+        )
+
+        self.user = User.objects.create_user(
+            username="felipe",
+            email="felipe@example.com",
+            password="test-password",
+        )
+
+        self.membership = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+        )
+
+    def test_membership_connects_user_and_company(self):
+        self.assertEqual(self.membership.user, self.user)
+        self.assertEqual(self.membership.company, self.company_a)
+
+    def test_membership_defaults_to_invited(self):
+        self.assertEqual(
+            self.membership.status,
+            CompanyMembership.Status.INVITED,
+        )
+
+    def test_user_can_belong_to_different_companies(self):
+        second_membership = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_b,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.assertEqual(second_membership.company, self.company_b)
+
+    def test_user_cannot_have_duplicate_membership_inside_company(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CompanyMembership.objects.create(
+                    user=self.user,
+                    company=self.company_a,
+                )
+
+    def test_membership_can_exist_without_branches(self):
+        self.assertFalse(self.membership.branch_memberships.exists())
+
+    def test_membership_can_belong_to_branch_of_same_company(self):
+        membership_branch = MembershipBranch(
+            membership=self.membership,
+            branch=self.branch_a,
+        )
+
+        membership_branch.full_clean()
+        membership_branch.save()
+
+        self.assertEqual(membership_branch.membership, self.membership)
+        self.assertEqual(membership_branch.branch, self.branch_a)
+
+    def test_membership_cannot_use_branch_from_another_company(self):
+        membership_branch = MembershipBranch(
+            membership=self.membership,
+            branch=self.branch_b,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            membership_branch.full_clean()
+
+        self.assertIn("branch", context.exception.message_dict)
+
+    def test_membership_branch_cannot_be_duplicated(self):
+        MembershipBranch.objects.create(
+            membership=self.membership,
+            branch=self.branch_a,
+        )
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                MembershipBranch.objects.create(
+                    membership=self.membership,
+                    branch=self.branch_a,
+                )

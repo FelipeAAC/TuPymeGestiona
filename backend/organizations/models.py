@@ -1,6 +1,4 @@
-from django.db import models
-
-# Create your models here.
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -85,3 +83,85 @@ class Warehouse(models.Model):
 
     def __str__(self):
         return f"{self.company} - {self.name}"
+
+
+class CompanyMembership(models.Model):
+    class Status(models.TextChoices):
+        INVITED = "INVITED", "Invitado"
+        ACTIVE = "ACTIVE", "Activo"
+        SUSPENDED = "SUSPENDED", "Suspendido"
+        LEFT = "LEFT", "Desvinculado"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="company_memberships",
+    )
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        related_name="memberships",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.INVITED,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["company_id", "user_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "company"],
+                name="uniq_membership_user_company",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} - {self.company}"
+
+
+class MembershipBranch(models.Model):
+    membership = models.ForeignKey(
+        CompanyMembership,
+        on_delete=models.PROTECT,
+        related_name="branch_memberships",
+    )
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="membership_branches",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["membership_id", "branch_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["membership", "branch"],
+                name="uniq_membership_branch",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if (
+            self.membership_id
+            and self.branch_id
+            and self.membership.company_id != self.branch.company_id
+        ):
+            raise ValidationError(
+                {
+                    "branch": (
+                        "La sucursal debe pertenecer a la misma empresa que la membresia."
+                    )
+                }
+            )
+
+    def __str__(self):
+        return f"{self.membership} - {self.branch}"
