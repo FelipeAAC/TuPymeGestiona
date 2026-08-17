@@ -260,3 +260,28 @@ class CompanyRole(models.Model):
 
     def __str__(self):
         return f"{self.company} - {self.name}"
+
+
+class CompanyRolePermission(models.Model):
+    role = models.ForeignKey(
+        CompanyRole,
+        on_delete=models.PROTECT,
+        related_name="permission_links",
+    )
+    permission = models.ForeignKey(
+        Permission,
+        on_delete=models.PROTECT,
+        related_name="role_links",
+    )
+
+    class Meta:
+        ordering = ["role_id", "permission_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["role", "permission"],
+                name="uniq_company_role_permission",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.role} - {self.permission}"

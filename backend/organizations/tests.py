@@ -8,6 +8,7 @@ from .models import (
     Company,
     CompanyMembership,
     CompanyRole,
+    CompanyRolePermission,
     MembershipBranch,
     Permission,
     Warehouse,
@@ -356,3 +357,115 @@ class RbacModelsTests(TestCase):
             role.full_clean()
 
         self.assertIn("status", context.exception.message_dict)
+
+    def test_role_can_exist_without_permissions(self):
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Operador",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        self.assertFalse(role.permission_links.exists())
+
+    def test_role_permission_connects_role_and_permission(self):
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Operador",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        permission = Permission.objects.create(
+            code="products.view",
+            scope_behavior=Permission.ScopeBehavior.TENANT_GLOBAL,
+        )
+
+        role_permission = CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        self.assertEqual(role_permission.role, role)
+        self.assertEqual(role_permission.permission, permission)
+        self.assertIn(role_permission, role.permission_links.all())
+        self.assertIn(role_permission, permission.role_links.all())
+
+    def test_role_can_have_multiple_permissions(self):
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Operador",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        permission_view = Permission.objects.create(
+            code="products.view",
+            scope_behavior=Permission.ScopeBehavior.TENANT_GLOBAL,
+        )
+
+        permission_edit = Permission.objects.create(
+            code="products.edit",
+            scope_behavior=Permission.ScopeBehavior.TENANT_GLOBAL,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission_view,
+        )
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission_edit,
+        )
+
+        self.assertEqual(role.permission_links.count(), 2)
+
+    def test_same_permission_can_be_used_by_roles_from_different_companies(self):
+        permission = Permission.objects.create(
+            code="products.view",
+            scope_behavior=Permission.ScopeBehavior.TENANT_GLOBAL,
+        )
+
+        role_a = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Operador",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        role_b = CompanyRole.objects.create(
+            company=self.company_b,
+            name="Operador",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role_a,
+            permission=permission,
+        )
+        CompanyRolePermission.objects.create(
+            role=role_b,
+            permission=permission,
+        )
+
+        self.assertEqual(permission.role_links.count(), 2)
+
+    def test_role_permission_cannot_be_duplicated(self):
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Operador",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        permission = Permission.objects.create(
+            code="products.view",
+            scope_behavior=Permission.ScopeBehavior.TENANT_GLOBAL,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CompanyRolePermission.objects.create(
+                    role=role,
+                    permission=permission,
+                )
