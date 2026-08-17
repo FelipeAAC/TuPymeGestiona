@@ -283,5 +283,157 @@ class CompanyRolePermission(models.Model):
             ),
         ]
 
+    def clean(self):
+        super().clean()
+
+        if (
+            self.role_id
+            and self.permission_id
+            and self.permission.scope_behavior
+            == Permission.ScopeBehavior.COMPANY_ONLY
+            and self.role.assignments.filter(branch__isnull=False).exists()
+        ):
+            raise ValidationError(
+                {
+                    "permission": (
+                        "No se puede agregar un permiso COMPANY_ONLY "
+                        "a un rol con asignaciones por sucursal."
+                    )
+                }
+            )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.role} - {self.permission}"
+
+
+class RoleAssignment(models.Model):
+    membership = models.ForeignKey(
+        CompanyMembership,
+        on_delete=models.PROTECT,
+        related_name="role_assignments",
+    )
+    role = models.ForeignKey(
+        CompanyRole,
+        on_delete=models.PROTECT,
+        related_name="assignments",
+    )
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="role_assignments",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["membership_id", "role_id", "branch_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["membership", "role", "branch"],
+                name="uniq_role_assignment_scope",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if (
+            self.membership_id
+            and self.role_id
+            and self.membership.company_id != self.role.company_id
+        ):
+            raise ValidationError(
+                {
+                    "role": (
+                        "El rol debe pertenecer a la misma empresa que la membresia."
+                    )
+                }
+            )
+
+        if self.branch_id:
+            if (
+                self.membership_id
+                and self.branch.company_id != self.membership.company_id
+            ):
+                raise ValidationError(
+                    {
+                        "branch": (
+                            "La sucursal debe pertenecer a la misma empresa que la membresia."
+                        )
+                    }
+                )
+
+            if (
+                self.role_id
+                and self.branch.company_id != self.role.company_id
+            ):
+                raise ValidationError(
+                    {
+                        "branch": (
+                            "La sucursal debe pertenecer a la misma empresa que el rol."
+                        )
+                    }
+                )
+
+            if self.membership_id and not MembershipBranch.objects.filter(
+                membership=self.membership,
+                branch=self.branch,
+            ).exists():
+                raise ValidationError(
+                    {
+                        "branch": (
+                            "La membresia debe estar adscrita a la sucursal antes de asignar un rol en ella."
+                        )
+                    }
+                )
+
+            if self.role_id and CompanyRolePermission.objects.filter(
+                role=self.role,
+                permission__scope_behavior=Permission.ScopeBehavior.COMPANY_ONLY,
+            ).exists():
+                raise ValidationError(
+                    {
+                        "branch": (
+                            "Un rol con permisos COMPANY_ONLY no puede asignarse a una sucursal."
+                        )
+                    }
+                )
+
+        if self.membership_id and self.role_id:
+            assignments = RoleAssignment.objects.filter(
+                membership=self.membership,
+                role=self.role,
+            )
+
+            if self.pk:
+                assignments = assignments.exclude(pk=self.pk)
+
+            if self.branch_id:
+                if assignments.filter(branch__isnull=True).exists():
+                    raise ValidationError(
+                        {
+                            "branch": (
+                                "No se pueden mezclar asignaciones de empresa y de sucursal para la misma membresia y rol."
+                            )
+                        }
+                    )
+            elif assignments.exists():
+                raise ValidationError(
+                    {
+                        "branch": (
+                            "No se puede crear una asignacion de empresa si ya existen asignaciones para este rol."
+                        )
+                    }
+                )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        scope = self.branch if self.branch_id else "Toda la empresa"
+        return f"{self.membership} - {self.role} - {scope}"

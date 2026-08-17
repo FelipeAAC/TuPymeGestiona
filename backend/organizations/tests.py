@@ -11,6 +11,7 @@ from .models import (
     CompanyRolePermission,
     MembershipBranch,
     Permission,
+    RoleAssignment,
     Warehouse,
 )
 
@@ -469,3 +470,356 @@ class RbacModelsTests(TestCase):
                     role=role,
                     permission=permission,
                 )
+
+    def test_role_assignment_can_be_company_wide(self):
+        user = User.objects.create_user(
+            username="company-user",
+            email="company-user@example.com",
+            password="test-password",
+        )
+
+        membership = CompanyMembership.objects.create(
+            user=user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Administrador",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        assignment = RoleAssignment(
+            membership=membership,
+            role=role,
+            branch=None,
+        )
+
+        assignment.full_clean()
+        assignment.save()
+
+        self.assertIsNone(assignment.branch)
+
+    def test_role_assignment_can_be_branch_scoped(self):
+        user = User.objects.create_user(
+            username="branch-user",
+            email="branch-user@example.com",
+            password="test-password",
+        )
+
+        membership = CompanyMembership.objects.create(
+            user=user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        branch = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-RBAC",
+            name="Sucursal RBAC",
+        )
+
+        MembershipBranch.objects.create(
+            membership=membership,
+            branch=branch,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Vendedor",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        assignment = RoleAssignment(
+            membership=membership,
+            role=role,
+            branch=branch,
+        )
+
+        assignment.full_clean()
+        assignment.save()
+
+        self.assertEqual(assignment.branch, branch)
+
+    def test_role_assignment_rejects_role_from_another_company(self):
+        user = User.objects.create_user(
+            username="wrong-role-user",
+            email="wrong-role@example.com",
+            password="test-password",
+        )
+
+        membership = CompanyMembership.objects.create(
+            user=user,
+            company=self.company_a,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_b,
+            name="Rol Empresa B",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        assignment = RoleAssignment(
+            membership=membership,
+            role=role,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            assignment.full_clean()
+
+        self.assertIn("role", context.exception.message_dict)
+
+    def test_branch_assignment_requires_membership_branch(self):
+        user = User.objects.create_user(
+            username="no-branch-user",
+            email="no-branch@example.com",
+            password="test-password",
+        )
+
+        membership = CompanyMembership.objects.create(
+            user=user,
+            company=self.company_a,
+        )
+
+        branch = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-NO-MB",
+            name="Sucursal Sin Adscripcion",
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Operador Sucursal",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        assignment = RoleAssignment(
+            membership=membership,
+            role=role,
+            branch=branch,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            assignment.full_clean()
+
+        self.assertIn("branch", context.exception.message_dict)
+
+    def test_cannot_mix_company_wide_and_branch_assignments(self):
+        user = User.objects.create_user(
+            username="mixed-scope-user",
+            email="mixed-scope@example.com",
+            password="test-password",
+        )
+
+        membership = CompanyMembership.objects.create(
+            user=user,
+            company=self.company_a,
+        )
+
+        branch = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-MIX",
+            name="Sucursal Mix",
+        )
+
+        MembershipBranch.objects.create(
+            membership=membership,
+            branch=branch,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Rol Mixto",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        RoleAssignment.objects.create(
+            membership=membership,
+            role=role,
+            branch=None,
+        )
+
+        branch_assignment = RoleAssignment(
+            membership=membership,
+            role=role,
+            branch=branch,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            branch_assignment.full_clean()
+
+        self.assertIn("branch", context.exception.message_dict)
+
+    def test_company_only_permission_blocks_branch_assignment(self):
+        user = User.objects.create_user(
+            username="company-only-user",
+            email="company-only@example.com",
+            password="test-password",
+        )
+
+        membership = CompanyMembership.objects.create(
+            user=user,
+            company=self.company_a,
+        )
+
+        branch = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-COMPANY-ONLY",
+            name="Sucursal Company Only",
+        )
+
+        MembershipBranch.objects.create(
+            membership=membership,
+            branch=branch,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Administrador Empresa",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        permission = Permission.objects.create(
+            code="company.manage",
+            scope_behavior=Permission.ScopeBehavior.COMPANY_ONLY,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        assignment = RoleAssignment(
+            membership=membership,
+            role=role,
+            branch=branch,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            assignment.full_clean()
+
+        self.assertIn("branch", context.exception.message_dict)
+
+    def test_company_only_permission_cannot_be_added_after_branch_assignment(self):
+        user = User.objects.create_user(
+            username="late-company-only-user",
+            email="late-company-only@example.com",
+            password="test-password",
+        )
+
+        membership = CompanyMembership.objects.create(
+            user=user,
+            company=self.company_a,
+        )
+
+        branch = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-LATE",
+            name="Sucursal Late",
+        )
+
+        MembershipBranch.objects.create(
+            membership=membership,
+            branch=branch,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Operador Branch",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        RoleAssignment.objects.create(
+            membership=membership,
+            role=role,
+            branch=branch,
+        )
+
+        permission = Permission.objects.create(
+            code="company.settings.manage",
+            scope_behavior=Permission.ScopeBehavior.COMPANY_ONLY,
+        )
+
+        link = CompanyRolePermission(
+            role=role,
+            permission=permission,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            link.full_clean()
+
+        self.assertIn("permission", context.exception.message_dict)
+
+    def test_duplicate_company_wide_assignment_is_rejected(self):
+        user = User.objects.create_user(
+            username="duplicate-company-user",
+            email="duplicate-company@example.com",
+            password="test-password",
+        )
+
+        membership = CompanyMembership.objects.create(
+            user=user,
+            company=self.company_a,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Rol Company Duplicate",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        RoleAssignment.objects.create(
+            membership=membership,
+            role=role,
+            branch=None,
+        )
+
+        with self.assertRaises(ValidationError):
+            RoleAssignment.objects.create(
+                membership=membership,
+                role=role,
+                branch=None,
+            )
+
+    def test_cannot_create_company_wide_after_branch_assignment(self):
+        user = User.objects.create_user(
+            username="reverse-mixed-user",
+            email="reverse-mixed@example.com",
+            password="test-password",
+        )
+
+        membership = CompanyMembership.objects.create(
+            user=user,
+            company=self.company_a,
+        )
+
+        branch = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-REVERSE-MIX",
+            name="Sucursal Reverse Mix",
+        )
+
+        MembershipBranch.objects.create(
+            membership=membership,
+            branch=branch,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Rol Reverse Mix",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        RoleAssignment.objects.create(
+            membership=membership,
+            role=role,
+            branch=branch,
+        )
+
+        with self.assertRaises(ValidationError):
+            RoleAssignment.objects.create(
+                membership=membership,
+                role=role,
+                branch=None,
+            )
