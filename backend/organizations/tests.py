@@ -7,7 +7,9 @@ from .models import (
     Branch,
     Company,
     CompanyMembership,
+    CompanyRole,
     MembershipBranch,
+    Permission,
     Warehouse,
 )
 
@@ -215,3 +217,142 @@ class CompanyMembershipModelsTests(TestCase):
                     membership=self.membership,
                     branch=self.branch_a,
                 )
+
+
+class RbacModelsTests(TestCase):
+    def setUp(self):
+        self.company_a = Company.objects.create(name="Empresa A")
+        self.company_b = Company.objects.create(name="Empresa B")
+
+    def test_permission_code_is_globally_unique(self):
+        Permission.objects.create(
+            code="products.view",
+            scope_behavior=Permission.ScopeBehavior.TENANT_GLOBAL,
+        )
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Permission.objects.create(
+                    code="products.view",
+                    scope_behavior=Permission.ScopeBehavior.BRANCH_SCOPED,
+                )
+
+    def test_permission_scope_behaviors_are_the_expected_three(self):
+        values = {
+            value
+            for value, _label in Permission.ScopeBehavior.choices
+        }
+
+        self.assertEqual(
+            values,
+            {
+                Permission.ScopeBehavior.COMPANY_ONLY,
+                Permission.ScopeBehavior.TENANT_GLOBAL,
+                Permission.ScopeBehavior.BRANCH_SCOPED,
+            },
+        )
+
+    def test_permission_rejects_invalid_scope_behavior(self):
+        permission = Permission(
+            code="products.invalid",
+            scope_behavior="INVALID",
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            permission.full_clean()
+
+        self.assertIn("scope_behavior", context.exception.message_dict)
+
+    def test_role_belongs_to_company(self):
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Administrador",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        self.assertEqual(role.company, self.company_a)
+        self.assertIn(role, self.company_a.roles.all())
+
+    def test_role_name_is_normalized(self):
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="  Administrador   General  ",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        self.assertEqual(
+            role.name_normalized,
+            "administrador general",
+        )
+
+    def test_valid_role_passes_full_clean(self):
+        role = CompanyRole(
+            company=self.company_a,
+            name="  Administrador   General  ",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        role.full_clean()
+
+        self.assertEqual(
+            role.name_normalized,
+            "administrador general",
+        )
+
+    def test_normalized_role_name_is_unique_inside_company(self):
+        CompanyRole.objects.create(
+            company=self.company_a,
+            name="Administrador General",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CompanyRole.objects.create(
+                    company=self.company_a,
+                    name="  ADMINISTRADOR   GENERAL ",
+                    status=CompanyRole.Status.INACTIVE,
+                )
+
+    def test_same_role_name_can_exist_in_different_companies(self):
+        role_a = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Administrador",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        role_b = CompanyRole.objects.create(
+            company=self.company_b,
+            name="ADMINISTRADOR",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        self.assertEqual(
+            role_a.name_normalized,
+            role_b.name_normalized,
+        )
+        self.assertNotEqual(role_a.company, role_b.company)
+
+    def test_role_rejects_empty_normalized_name(self):
+        role = CompanyRole(
+            company=self.company_a,
+            name="   ",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            role.full_clean()
+
+        self.assertIn("name", context.exception.message_dict)
+
+    def test_role_rejects_invalid_status(self):
+        role = CompanyRole(
+            company=self.company_a,
+            name="Administrador",
+            status="INVALID",
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            role.full_clean()
+
+        self.assertIn("status", context.exception.message_dict)

@@ -1,3 +1,5 @@
+import unicodedata
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -165,3 +167,96 @@ class MembershipBranch(models.Model):
 
     def __str__(self):
         return f"{self.membership} - {self.branch}"
+
+
+def normalize_role_name(value):
+    normalized = unicodedata.normalize("NFKC", value)
+    normalized = " ".join(normalized.split())
+    return normalized.casefold()
+
+
+class Permission(models.Model):
+    class ScopeBehavior(models.TextChoices):
+        COMPANY_ONLY = "COMPANY_ONLY", "Solo empresa"
+        TENANT_GLOBAL = "TENANT_GLOBAL", "Global de empresa"
+        BRANCH_SCOPED = "BRANCH_SCOPED", "Por sucursal"
+
+    code = models.CharField(
+        max_length=100,
+        unique=True,
+    )
+    scope_behavior = models.CharField(
+        max_length=20,
+        choices=ScopeBehavior.choices,
+    )
+
+    class Meta:
+        ordering = ["code"]
+
+    def __str__(self):
+        return self.code
+
+
+class CompanyRole(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Activo"
+        INACTIVE = "INACTIVE", "Inactivo"
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        related_name="roles",
+    )
+    name = models.CharField(max_length=150)
+    name_normalized = models.CharField(
+        max_length=150,
+        editable=False,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+    )
+
+    class Meta:
+        ordering = ["company_id", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "name_normalized"],
+                name="uniq_role_company_name_normalized",
+            ),
+        ]
+
+    def clean_fields(self, exclude=None):
+        self.name_normalized = normalize_role_name(self.name)
+        super().clean_fields(exclude=exclude)
+
+    def clean(self):
+        super().clean()
+
+        self.name_normalized = normalize_role_name(self.name)
+
+        if not self.name_normalized:
+            raise ValidationError(
+                {
+                    "name": "El nombre del rol no puede estar vacio.",
+                }
+            )
+
+    def save(self, *args, **kwargs):
+        self.name_normalized = normalize_role_name(self.name)
+
+        if not self.name_normalized:
+            raise ValidationError(
+                {
+                    "name": "El nombre del rol no puede estar vacio.",
+                }
+            )
+
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "name" in update_fields:
+            kwargs["update_fields"] = set(update_fields) | {"name_normalized"}
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.company} - {self.name}"
