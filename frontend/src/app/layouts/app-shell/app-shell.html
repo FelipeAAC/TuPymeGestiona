@@ -23,8 +23,35 @@
 
   <div class="app-main">
     <header class="app-header">
-      <div>
-        <span class="header-context">TuPymeGestiona</span>
+      <div class="organization-context">
+        @if (isOrganizationContextLoading()) {
+          <span class="header-context">Cargando empresa...</span>
+        } @else if (organizationContextError()) {
+          <span class="organization-context-error" role="alert">
+            {{ organizationContextError() }}
+          </span>
+        } @else if (memberships().length === 0) {
+          <span class="header-context">Sin empresas disponibles</span>
+        } @else if (memberships().length === 1) {
+          @if (selectedMembership(); as membership) {
+            <div class="selected-company">
+              <span>Empresa</span>
+              <strong>{{ membership.company.name }}</strong>
+            </div>
+          }
+        } @else {
+          <label class="company-selector">
+            <span>Empresa</span>
+
+            <select [value]="selectedMembership()?.id ?? ''" (change)="selectCompany($event)">
+              @for (membership of memberships(); track membership.id) {
+                <option [value]="membership.id">
+                  {{ membership.company.name }}
+                </option>
+              }
+            </select>
+          </label>
+        }
       </div>
 
       <div class="header-user">
