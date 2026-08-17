@@ -823,3 +823,154 @@ class RbacModelsTests(TestCase):
                 role=role,
                 branch=None,
             )
+
+
+class OrganizationContextApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="context-user",
+            email="context-user@example.com",
+            password="test-password",
+        )
+
+        self.other_user = User.objects.create_user(
+            username="other-context-user",
+            email="other-context-user@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(name="Empresa A")
+        self.company_b = Company.objects.create(name="Empresa B")
+        self.company_c = Company.objects.create(name="Empresa C")
+
+        self.active_membership = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.suspended_membership = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_b,
+            status=CompanyMembership.Status.SUSPENDED,
+        )
+
+        self.other_membership = CompanyMembership.objects.create(
+            user=self.other_user,
+            company=self.company_c,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.branch_a = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-CONTEXT-1",
+            name="Sucursal Contexto 1",
+        )
+
+        self.branch_a_2 = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-CONTEXT-2",
+            name="Sucursal Contexto 2",
+        )
+
+        MembershipBranch.objects.create(
+            membership=self.active_membership,
+            branch=self.branch_a,
+        )
+
+        MembershipBranch.objects.create(
+            membership=self.active_membership,
+            branch=self.branch_a_2,
+        )
+
+    def test_context_requires_authentication(self):
+        response = self.client.get(
+            "/api/organizations/context/",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_context_returns_active_memberships_for_current_user(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            "/api/organizations/context/",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        memberships = response.json()["memberships"]
+
+        self.assertEqual(len(memberships), 1)
+        self.assertEqual(
+            memberships[0]["id"],
+            self.active_membership.id,
+        )
+        self.assertEqual(
+            memberships[0]["status"],
+            CompanyMembership.Status.ACTIVE,
+        )
+
+    def test_context_does_not_return_other_users_memberships(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            "/api/organizations/context/",
+        )
+
+        membership_ids = {
+            membership["id"]
+            for membership in response.json()["memberships"]
+        }
+
+        self.assertNotIn(
+            self.other_membership.id,
+            membership_ids,
+        )
+
+    def test_context_does_not_return_suspended_memberships(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            "/api/organizations/context/",
+        )
+
+        membership_ids = {
+            membership["id"]
+            for membership in response.json()["memberships"]
+        }
+
+        self.assertNotIn(
+            self.suspended_membership.id,
+            membership_ids,
+        )
+
+    def test_context_returns_company_and_membership_branches(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            "/api/organizations/context/",
+        )
+
+        membership = response.json()["memberships"][0]
+
+        self.assertEqual(
+            membership["company"],
+            {
+                "id": self.company_a.id,
+                "name": "Empresa A",
+            },
+        )
+
+        branch_ids = {
+            branch["id"]
+            for branch in membership["branches"]
+        }
+
+        self.assertEqual(
+            branch_ids,
+            {
+                self.branch_a.id,
+                self.branch_a_2.id,
+            },
+        )
