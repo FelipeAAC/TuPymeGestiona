@@ -6,8 +6,10 @@ from rest_framework.response import Response
 from organizations.authorization import has_permission
 from organizations.models import CompanyMembership
 
-from catalog.models import Product
+from catalog.models import Brand, Category, Product
 from catalog.serializers import (
+    BrandSummarySerializer,
+    CategorySummarySerializer,
     ProductCreateSerializer,
     ProductSerializer,
 )
@@ -58,6 +60,78 @@ def product_list_view(request):
         return _create_product(request)
 
     return _list_products(request)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def product_options_view(request):
+    raw_company_id = request.query_params.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El parametro company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El parametro company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=PRODUCTS_MANAGE_PERMISSION_CODE,
+    ):
+        return Response(
+            {
+                "detail": "No tienes permiso para administrar los productos.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    categories = Category.objects.filter(
+        company=company,
+    )
+
+    brands = Brand.objects.filter(
+        company=company,
+    )
+
+    return Response(
+        {
+            "categories": CategorySummarySerializer(
+                categories,
+                many=True,
+            ).data,
+            "brands": BrandSummarySerializer(
+                brands,
+                many=True,
+            ).data,
+        }
+    )
 
 
 def _list_products(request):

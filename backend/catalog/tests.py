@@ -958,3 +958,237 @@ class ProductCreateApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+
+class ProductOptionsApiTests(TestCase):
+    def setUp(self):
+        self.url = "/api/catalog/products/options/"
+
+        self.user = User.objects.create_user(
+            username="catalog-options-user",
+            email="catalog-options-user@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(
+            name="Empresa Options A",
+        )
+        self.company_b = Company.objects.create(
+            name="Empresa Options B",
+        )
+
+        self.membership_a = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.category_a = Category.objects.create(
+            company=self.company_a,
+            name="Categoria Options A",
+        )
+        self.category_b = Category.objects.create(
+            company=self.company_b,
+            name="Categoria Options B",
+        )
+
+        self.brand_a = Brand.objects.create(
+            company=self.company_a,
+            name="Marca Options A",
+        )
+        self.brand_b = Brand.objects.create(
+            company=self.company_b,
+            name="Marca Options B",
+        )
+
+    def grant_products_manage(
+        self,
+        *,
+        company=None,
+        membership=None,
+    ):
+        company = company or self.company_a
+        membership = membership or self.membership_a
+
+        permission = Permission.objects.get(
+            code=PRODUCTS_MANAGE_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=company,
+            name=f"Catalog Options Manager {company.pk}",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=membership,
+            role=role,
+            branch=None,
+        )
+
+    def test_product_options_requires_authentication(self):
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_options_requires_company_parameter(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_product_options_rejects_invalid_company_parameter(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": "invalid",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_product_options_denies_company_without_active_membership(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_b.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_options_denies_active_membership_without_manage_permission(
+        self,
+    ):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_products_view_permission_does_not_allow_product_options(self):
+        permission = Permission.objects.get(
+            code=PRODUCTS_VIEW_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Options View Only",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_options_returns_only_requested_company_data(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+
+        self.assertEqual(
+            data["categories"],
+            [
+                {
+                    "id": self.category_a.pk,
+                    "name": "Categoria Options A",
+                }
+            ],
+        )
+
+        self.assertEqual(
+            data["brands"],
+            [
+                {
+                    "id": self.brand_a.pk,
+                    "name": "Marca Options A",
+                }
+            ],
+        )
+
+        category_names = {
+            category["name"]
+            for category in data["categories"]
+        }
+
+        brand_names = {
+            brand["name"]
+            for brand in data["brands"]
+        }
+
+        self.assertNotIn(
+            "Categoria Options B",
+            category_names,
+        )
+
+        self.assertNotIn(
+            "Marca Options B",
+            brand_names,
+        )
+
+    def test_suspended_membership_does_not_authorize_product_options(self):
+        self.grant_products_manage()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
