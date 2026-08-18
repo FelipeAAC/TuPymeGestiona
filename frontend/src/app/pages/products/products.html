@@ -21,73 +21,262 @@
       <strong>Sin empresa seleccionada</strong>
       <p>Necesitas una empresa activa para consultar productos.</p>
     </div>
-  } @else if (isLoading()) {
-    <div class="state-card">
-      <strong>Cargando productos...</strong>
-      <p>Estamos consultando el catálogo de la empresa seleccionada.</p>
-    </div>
-  } @else if (errorMessage()) {
-    <div class="state-card state-card-error" role="alert">
-      <strong>No pudimos mostrar el catálogo</strong>
-      <p>{{ errorMessage() }}</p>
-    </div>
-  } @else if (products().length === 0) {
-    <div class="state-card">
-      <strong>No hay productos todavía</strong>
-      <p>Esta empresa aún no tiene productos registrados.</p>
-    </div>
   } @else {
-    <div class="product-list">
-      @for (product of products(); track product.id) {
-        <article class="product-card">
-          <div class="product-main">
-            <div class="product-title">
-              <h2>{{ product.name }}</h2>
-
-              <span class="status-badge" [class.status-active]="product.status === 'ACTIVE'">
-                {{ product.status }}
-              </span>
-            </div>
-
-            <div class="product-metadata">
-              <span>
-                Categoría:
-                <strong>{{ product.category.name }}</strong>
-              </span>
-
-              <span>
-                Marca:
-                <strong>{{ product.brand?.name ?? 'Sin marca' }}</strong>
-              </span>
-            </div>
+    @if (isOptionsLoading()) {
+      <div class="management-status">Comprobando permisos de administración...</div>
+    } @else if (optionsErrorMessage()) {
+      <div class="state-card state-card-error" role="alert">
+        <strong>No pudimos preparar la creación de productos</strong>
+        <p>{{ optionsErrorMessage() }}</p>
+      </div>
+    } @else if (canManageProducts()) {
+      <section class="create-panel">
+        <header class="create-panel-header">
+          <div>
+            <span class="panel-label">Administración</span>
+            <h2>Nuevo producto</h2>
+            <p>Registra el producto y su primera variante.</p>
           </div>
+        </header>
 
-          <div class="variants">
-            <span class="variants-title">Variantes</span>
+        @if (categories().length === 0) {
+          <div class="create-warning">
+            <strong>No hay categorías disponibles.</strong>
+            <span> Necesitas registrar al menos una categoría antes de crear un producto. </span>
+          </div>
+        } @else {
+          <form class="product-form" [formGroup]="createForm" (ngSubmit)="onSubmit()" novalidate>
+            <div class="form-section">
+              <div class="form-section-heading">
+                <h3>Producto</h3>
+                <p>Información general del producto.</p>
+              </div>
 
-            @if (product.variants.length === 0) {
-              <span class="variant-empty"> Sin variantes registradas </span>
-            } @else {
-              @for (variant of product.variants; track variant.id) {
-                <div class="variant-row">
-                  <div>
-                    <strong>{{ variant.sku }}</strong>
+              <div class="form-grid">
+                <div class="form-field form-field-wide">
+                  <label for="product-name">
+                    Nombre
+                    <span>*</span>
+                  </label>
 
-                    @if (variant.gtin) {
-                      <span>GTIN {{ variant.gtin }}</span>
-                    }
-                  </div>
+                  <input
+                    id="product-name"
+                    type="text"
+                    formControlName="name"
+                    maxlength="200"
+                    placeholder="Ej. Polera básica algodón"
+                  />
 
-                  <div class="variant-price">
-                    <span>Precio base</span>
-                    <strong>{{ variant.base_price }}</strong>
-                  </div>
+                  @if (createForm.controls.name.invalid && createForm.controls.name.touched) {
+                    <small class="field-error"> Ingresa un nombre válido para el producto. </small>
+                  }
                 </div>
-              }
+
+                <div class="form-field">
+                  <label for="product-category">
+                    Categoría
+                    <span>*</span>
+                  </label>
+
+                  <select id="product-category" formControlName="categoryId">
+                    <option [ngValue]="0">Selecciona una categoría</option>
+
+                    @for (category of categories(); track category.id) {
+                      <option [ngValue]="category.id">
+                        {{ category.name }}
+                      </option>
+                    }
+                  </select>
+
+                  @if (
+                    createForm.controls.categoryId.invalid && createForm.controls.categoryId.touched
+                  ) {
+                    <small class="field-error"> Selecciona una categoría. </small>
+                  }
+                </div>
+
+                <div class="form-field">
+                  <label for="product-brand">
+                    Marca
+                    <span class="optional-label">Opcional</span>
+                  </label>
+
+                  <select id="product-brand" formControlName="brandId">
+                    <option [ngValue]="0">Sin marca</option>
+
+                    @for (brand of brands(); track brand.id) {
+                      <option [ngValue]="brand.id">
+                        {{ brand.name }}
+                      </option>
+                    }
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="form-section-heading">
+                <h3>Primera variante</h3>
+                <p>SKU, GTIN y precio base inicial.</p>
+              </div>
+
+              <div class="form-grid form-grid-variant">
+                <div class="form-field">
+                  <label for="variant-sku">
+                    SKU
+                    <span>*</span>
+                  </label>
+
+                  <input
+                    id="variant-sku"
+                    type="text"
+                    formControlName="sku"
+                    maxlength="100"
+                    placeholder="Ej. POL-ALG-NEG-M"
+                  />
+
+                  @if (createForm.controls.sku.invalid && createForm.controls.sku.touched) {
+                    <small class="field-error"> Ingresa un SKU válido. </small>
+                  }
+                </div>
+
+                <div class="form-field">
+                  <label for="variant-gtin">
+                    GTIN
+                    <span class="optional-label">Opcional</span>
+                  </label>
+
+                  <input
+                    id="variant-gtin"
+                    type="text"
+                    formControlName="gtin"
+                    maxlength="32"
+                    placeholder="Código de barras"
+                  />
+                </div>
+
+                <div class="form-field">
+                  <label for="variant-price">
+                    Precio base
+                    <span>*</span>
+                  </label>
+
+                  <input
+                    id="variant-price"
+                    type="number"
+                    formControlName="basePrice"
+                    step="0.01"
+                    placeholder="0.00"
+                  />
+
+                  @if (
+                    createForm.controls.basePrice.invalid && createForm.controls.basePrice.touched
+                  ) {
+                    <small class="field-error"> Ingresa un precio base. </small>
+                  }
+                </div>
+              </div>
+            </div>
+
+            @if (createErrorMessage()) {
+              <div class="form-alert form-alert-error" role="alert">
+                {{ createErrorMessage() }}
+              </div>
             }
-          </div>
-        </article>
+
+            @if (createSuccessMessage()) {
+              <div class="form-alert form-alert-success" role="status">
+                {{ createSuccessMessage() }}
+              </div>
+            }
+
+            <div class="form-actions">
+              <button class="primary-button" type="submit" [disabled]="isCreating()">
+                {{ isCreating() ? 'Creando producto...' : 'Crear producto' }}
+              </button>
+            </div>
+          </form>
+        }
+      </section>
+    }
+
+    <section class="products-section">
+      <header class="products-section-header">
+        <div>
+          <span class="panel-label">Catálogo actual</span>
+          <h2>Productos registrados</h2>
+        </div>
+      </header>
+
+      @if (isLoading()) {
+        <div class="state-card">
+          <strong>Cargando productos...</strong>
+          <p>Estamos consultando el catálogo de la empresa seleccionada.</p>
+        </div>
+      } @else if (errorMessage()) {
+        <div class="state-card state-card-error" role="alert">
+          <strong>No pudimos mostrar el catálogo</strong>
+          <p>{{ errorMessage() }}</p>
+        </div>
+      } @else if (products().length === 0) {
+        <div class="state-card">
+          <strong>No hay productos todavía</strong>
+          <p>Esta empresa aún no tiene productos registrados.</p>
+        </div>
+      } @else {
+        <div class="product-list">
+          @for (product of products(); track product.id) {
+            <article class="product-card">
+              <div class="product-main">
+                <div class="product-title">
+                  <h2>{{ product.name }}</h2>
+
+                  <span class="status-badge" [class.status-active]="product.status === 'ACTIVE'">
+                    {{ product.status }}
+                  </span>
+                </div>
+
+                <div class="product-metadata">
+                  <span>
+                    Categoría:
+                    <strong>{{ product.category.name }}</strong>
+                  </span>
+
+                  <span>
+                    Marca:
+                    <strong>{{ product.brand?.name ?? 'Sin marca' }}</strong>
+                  </span>
+                </div>
+              </div>
+
+              <div class="variants">
+                <span class="variants-title">Variantes</span>
+
+                @if (product.variants.length === 0) {
+                  <span class="variant-empty"> Sin variantes registradas </span>
+                } @else {
+                  @for (variant of product.variants; track variant.id) {
+                    <div class="variant-row">
+                      <div>
+                        <strong>{{ variant.sku }}</strong>
+
+                        @if (variant.gtin) {
+                          <span>GTIN {{ variant.gtin }}</span>
+                        }
+                      </div>
+
+                      <div class="variant-price">
+                        <span>Precio base</span>
+                        <strong>{{ variant.base_price }}</strong>
+                      </div>
+                    </div>
+                  }
+                }
+              </div>
+            </article>
+          }
+        </div>
       }
-    </div>
+    </section>
   }
 </section>

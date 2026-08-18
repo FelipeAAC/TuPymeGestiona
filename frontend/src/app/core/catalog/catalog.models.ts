@@ -30,3 +30,25 @@ export interface CatalogProduct {
 export interface CatalogProductListResponse {
   products: CatalogProduct[];
 }
+
+export interface CatalogProductOptionsResponse {
+  categories: CatalogCategory[];
+  brands: CatalogBrand[];
+}
+
+export interface CatalogProductVariantCreateInput {
+  sku: string;
+  gtin: string;
+  base_price: string;
+}
+
+export interface CatalogProductCreateInput {
+  name: string;
+  category: number;
+  brand: number | null;
+  variant: CatalogProductVariantCreateInput;
+}
+
+export interface CatalogProductCreateResponse {
+  product: CatalogProduct;
+}
