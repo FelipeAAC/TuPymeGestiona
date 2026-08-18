@@ -276,6 +276,16 @@ class ProductListApiTests(TestCase):
             status=ProductVariant.Status.ACTIVE,
         )
 
+    def test_products_view_permission_is_seeded(self):
+        permission = Permission.objects.get(
+            code=PRODUCTS_VIEW_PERMISSION_CODE,
+        )
+
+        self.assertEqual(
+            permission.scope_behavior,
+            Permission.ScopeBehavior.TENANT_GLOBAL,
+        )
+
     def grant_products_view(
         self,
         *,
@@ -285,11 +295,8 @@ class ProductListApiTests(TestCase):
         company = company or self.company_a
         membership = membership or self.membership_a
 
-        permission, _ = Permission.objects.get_or_create(
+        permission = Permission.objects.get(
             code=PRODUCTS_VIEW_PERMISSION_CODE,
-            defaults={
-                "scope_behavior": Permission.ScopeBehavior.TENANT_GLOBAL,
-            },
         )
 
         role = CompanyRole.objects.create(
