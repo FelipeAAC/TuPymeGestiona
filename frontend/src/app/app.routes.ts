@@ -4,6 +4,7 @@ import { authGuard } from './core/auth/auth.guard';
 import { AppShell } from './layouts/app-shell/app-shell';
 import { Dashboard } from './pages/dashboard/dashboard';
 import { Login } from './pages/login/login';
+import { Products } from './pages/products/products';
 
 export const routes: Routes = [
   {
@@ -28,6 +29,10 @@ export const routes: Routes = [
       {
         path: 'dashboard',
         component: Dashboard,
+      },
+      {
+        path: 'products',
+        component: Products,
       },
     ],
   },

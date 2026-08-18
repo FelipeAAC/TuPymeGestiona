@@ -1,0 +1,93 @@
+<section class="products-page">
+  <header class="products-header">
+    <div>
+      <span class="section-label">Catálogo</span>
+      <h1>Productos</h1>
+
+      @if (selectedMembership(); as membership) {
+        <p>
+          Productos disponibles en
+          <strong>{{ membership.company.name }}</strong
+          >.
+        </p>
+      } @else {
+        <p>Selecciona una empresa para consultar su catálogo.</p>
+      }
+    </div>
+  </header>
+
+  @if (!selectedMembership()) {
+    <div class="state-card">
+      <strong>Sin empresa seleccionada</strong>
+      <p>Necesitas una empresa activa para consultar productos.</p>
+    </div>
+  } @else if (isLoading()) {
+    <div class="state-card">
+      <strong>Cargando productos...</strong>
+      <p>Estamos consultando el catálogo de la empresa seleccionada.</p>
+    </div>
+  } @else if (errorMessage()) {
+    <div class="state-card state-card-error" role="alert">
+      <strong>No pudimos mostrar el catálogo</strong>
+      <p>{{ errorMessage() }}</p>
+    </div>
+  } @else if (products().length === 0) {
+    <div class="state-card">
+      <strong>No hay productos todavía</strong>
+      <p>Esta empresa aún no tiene productos registrados.</p>
+    </div>
+  } @else {
+    <div class="product-list">
+      @for (product of products(); track product.id) {
+        <article class="product-card">
+          <div class="product-main">
+            <div class="product-title">
+              <h2>{{ product.name }}</h2>
+
+              <span class="status-badge" [class.status-active]="product.status === 'ACTIVE'">
+                {{ product.status }}
+              </span>
+            </div>
+
+            <div class="product-metadata">
+              <span>
+                Categoría:
+                <strong>{{ product.category.name }}</strong>
+              </span>
+
+              <span>
+                Marca:
+                <strong>{{ product.brand?.name ?? 'Sin marca' }}</strong>
+              </span>
+            </div>
+          </div>
+
+          <div class="variants">
+            <span class="variants-title">Variantes</span>
+
+            @if (product.variants.length === 0) {
+              <span class="variant-empty"> Sin variantes registradas </span>
+            } @else {
+              @for (variant of product.variants; track variant.id) {
+                <div class="variant-row">
+                  <div>
+                    <strong>{{ variant.sku }}</strong>
+
+                    @if (variant.gtin) {
+                      <span>GTIN {{ variant.gtin }}</span>
+                    }
+                  </div>
+
+                  <div class="variant-price">
+                    <span>Precio base</span>
+                    <strong>{{ variant.base_price }}</strong>
+                  </div>
+                </div>
+              }
+            }
+          </div>
+        </article>
+      }
+    </div>
+  }
+</section>
