@@ -9,6 +9,8 @@ from organizations.models import CompanyMembership
 from catalog.models import Brand, Category, Product
 from catalog.serializers import (
     BrandSummarySerializer,
+    CategoryCreateSerializer,
+    CategoryDetailSerializer,
     CategorySummarySerializer,
     ProductCreateSerializer,
     ProductSerializer,
@@ -17,6 +19,7 @@ from catalog.serializers import (
 
 PRODUCTS_VIEW_PERMISSION_CODE = "catalog.products.view"
 PRODUCTS_MANAGE_PERMISSION_CODE = "catalog.products.manage"
+CATEGORIES_MANAGE_PERMISSION_CODE = "catalog.categories.manage"
 
 
 def _parse_company_id(raw_company_id):
@@ -131,6 +134,76 @@ def product_options_view(request):
                 many=True,
             ).data,
         }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def category_create_view(request):
+    raw_company_id = request.data.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El campo company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El campo company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=CATEGORIES_MANAGE_PERMISSION_CODE,
+    ):
+        return Response(
+            {
+                "detail": "No tienes permiso para administrar las categorias.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    serializer = CategoryCreateSerializer(
+        data=request.data,
+        context={
+            "company": company,
+        },
+    )
+    serializer.is_valid(
+        raise_exception=True,
+    )
+
+    category = serializer.save()
+
+    return Response(
+        {
+            "category": CategoryDetailSerializer(category).data,
+        },
+        status=status.HTTP_201_CREATED,
     )
 
 

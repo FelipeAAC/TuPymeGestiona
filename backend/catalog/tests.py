@@ -15,6 +15,7 @@ from organizations.models import (
 
 from .models import Brand, Category, Product, ProductVariant
 from .views import (
+    CATEGORIES_MANAGE_PERMISSION_CODE,
     PRODUCTS_MANAGE_PERMISSION_CODE,
     PRODUCTS_VIEW_PERMISSION_CODE,
 )
@@ -1204,3 +1205,270 @@ class CategoryPermissionSeedTests(TestCase):
             permission.scope_behavior,
             Permission.ScopeBehavior.COMPANY_ONLY,
         )
+
+
+class CategoryCreateApiTests(TestCase):
+    def setUp(self):
+        self.url = "/api/catalog/categories/"
+
+        self.user = User.objects.create_user(
+            username="catalog-category-create-user",
+            email="catalog-category-create-user@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(
+            name="Empresa Category A",
+        )
+        self.company_b = Company.objects.create(
+            name="Empresa Category B",
+        )
+
+        self.membership_a = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.parent_a = Category.objects.create(
+            company=self.company_a,
+            name="Categoria Padre A",
+        )
+
+        self.parent_b = Category.objects.create(
+            company=self.company_b,
+            name="Categoria Padre B",
+        )
+
+    def grant_categories_manage(self):
+        permission = Permission.objects.get(
+            code=CATEGORIES_MANAGE_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Category Manager",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+    def test_category_create_requires_authentication(self):
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Categoria Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_category_create_requires_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "name": "Categoria Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_category_create_rejects_invalid_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": "invalid",
+                "name": "Categoria Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_category_create_denies_company_without_active_membership(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_b.pk,
+                "name": "Categoria Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_category_create_denies_without_manage_permission(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Categoria Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_products_manage_permission_does_not_allow_category_create(self):
+        permission = Permission.objects.get(
+            code=PRODUCTS_MANAGE_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Products Only",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Categoria Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_category_create_creates_root_category(self):
+        self.grant_categories_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Categoria Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        category = Category.objects.get(
+            company=self.company_a,
+            name="Categoria Nueva",
+        )
+
+        self.assertIsNone(category.parent)
+
+        self.assertEqual(
+            response.json()["category"],
+            {
+                "id": category.pk,
+                "name": "Categoria Nueva",
+                "parent": None,
+            },
+        )
+
+    def test_category_create_allows_parent_from_same_company(self):
+        self.grant_categories_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Subcategoria Nueva",
+                "parent": self.parent_a.pk,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        category = Category.objects.get(
+            company=self.company_a,
+            name="Subcategoria Nueva",
+        )
+
+        self.assertEqual(
+            category.parent,
+            self.parent_a,
+        )
+
+        self.assertEqual(
+            response.json()["category"]["parent"],
+            {
+                "id": self.parent_a.pk,
+                "name": "Categoria Padre A",
+            },
+        )
+
+    def test_category_create_rejects_parent_from_other_company(self):
+        self.grant_categories_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Subcategoria Invalida",
+                "parent": self.parent_b.pk,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        self.assertFalse(
+            Category.objects.filter(
+                company=self.company_a,
+                name="Subcategoria Invalida",
+            ).exists()
+        )
+
+    def test_suspended_membership_does_not_authorize_category_create(self):
+        self.grant_categories_manage()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Categoria Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)

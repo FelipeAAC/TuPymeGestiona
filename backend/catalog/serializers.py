@@ -23,6 +23,54 @@ class CategorySummarySerializer(serializers.ModelSerializer):
         )
 
 
+class CategoryDetailSerializer(serializers.ModelSerializer):
+    parent = CategorySummarySerializer(
+        read_only=True,
+    )
+
+    class Meta:
+        model = Category
+        fields = (
+            "id",
+            "name",
+            "parent",
+        )
+
+
+class CategoryCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(
+        max_length=150,
+    )
+    parent = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.none(),
+        required=False,
+        allow_null=True,
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        company = self.context.get("company")
+
+        if company is not None:
+            self.fields["parent"].queryset = Category.objects.filter(
+                company=company,
+            )
+
+    def create(self, validated_data):
+        company = self.context["company"]
+
+        try:
+            return Category.objects.create(
+                company=company,
+                **validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                _validation_error_detail(exc),
+            ) from exc
+
+
 class BrandSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = Brand

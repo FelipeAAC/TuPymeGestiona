@@ -14,4 +14,9 @@ urlpatterns = [
         views.product_options_view,
         name="catalog-product-options",
     ),
+    path(
+        "categories/",
+        views.category_create_view,
+        name="catalog-category-create",
+    ),
 ]
