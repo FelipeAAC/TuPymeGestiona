@@ -5,6 +5,12 @@ export interface CatalogCategory {
   name: string;
 }
 
+export interface CatalogCategoryDetail {
+  id: number;
+  name: string;
+  parent: CatalogCategory | null;
+}
+
 export interface CatalogBrand {
   id: number;
   name: string;
@@ -51,4 +57,17 @@ export interface CatalogProductCreateInput {
 
 export interface CatalogProductCreateResponse {
   product: CatalogProduct;
+}
+
+export interface CatalogCategoryListResponse {
+  categories: CatalogCategoryDetail[];
+}
+
+export interface CatalogCategoryCreateInput {
+  name: string;
+  parent: number | null;
+}
+
+export interface CatalogCategoryCreateResponse {
+  category: CatalogCategoryDetail;
 }

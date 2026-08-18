@@ -1,0 +1,160 @@
+<section class="categories-page">
+  <header class="categories-header">
+    <div>
+      <span class="section-label">Catálogo</span>
+      <h1>Categorías</h1>
+
+      @if (selectedMembership(); as membership) {
+        <p>
+          Organiza el catálogo de
+          <strong>{{ membership.company.name }}</strong>
+          mediante categorías y subcategorías.
+        </p>
+      } @else {
+        <p>Selecciona una empresa para administrar sus categorías.</p>
+      }
+    </div>
+  </header>
+
+  @if (!selectedMembership()) {
+    <div class="state-card">
+      <strong>Sin empresa seleccionada</strong>
+      <p>Necesitas una empresa activa para administrar categorías.</p>
+    </div>
+  } @else {
+    @if (isLoading()) {
+      <div class="state-card">
+        <strong>Cargando categorías...</strong>
+        <p>Estamos consultando las categorías de la empresa seleccionada.</p>
+      </div>
+    } @else if (errorMessage()) {
+      <div class="state-card state-card-error" role="alert">
+        <strong>No pudimos mostrar las categorías</strong>
+        <p>{{ errorMessage() }}</p>
+      </div>
+    } @else {
+      @if (canManageCategories()) {
+        <section class="create-panel">
+          <header class="create-panel-header">
+            <div>
+              <span class="panel-label">Administración</span>
+              <h2>Nueva categoría</h2>
+              <p>
+                Crea una categoría principal o selecciónala como hija de una categoría existente.
+              </p>
+            </div>
+          </header>
+
+          <form class="category-form" [formGroup]="createForm" (ngSubmit)="onSubmit()" novalidate>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="category-name">
+                  Nombre
+                  <span>*</span>
+                </label>
+
+                <input
+                  id="category-name"
+                  type="text"
+                  formControlName="name"
+                  maxlength="150"
+                  placeholder="Ej. Vestuario"
+                />
+
+                @if (createForm.controls.name.invalid && createForm.controls.name.touched) {
+                  <small class="field-error"> Ingresa un nombre válido para la categoría. </small>
+                }
+              </div>
+
+              <div class="form-field">
+                <label for="category-parent">
+                  Categoría padre
+                  <span class="optional-label">Opcional</span>
+                </label>
+
+                <select id="category-parent" formControlName="parentId">
+                  <option [ngValue]="0">Sin categoría padre</option>
+
+                  @for (category of categories(); track category.id) {
+                    <option [ngValue]="category.id">
+                      {{ category.name }}
+                    </option>
+                  }
+                </select>
+
+                <small class="field-help"> Déjalo vacío para crear una categoría principal. </small>
+              </div>
+            </div>
+
+            @if (createErrorMessage()) {
+              <div class="form-alert form-alert-error" role="alert">
+                {{ createErrorMessage() }}
+              </div>
+            }
+
+            @if (createSuccessMessage()) {
+              <div class="form-alert form-alert-success" role="status">
+                {{ createSuccessMessage() }}
+              </div>
+            }
+
+            <div class="form-actions">
+              <button class="primary-button" type="submit" [disabled]="isCreating()">
+                {{ isCreating() ? 'Creando categoría...' : 'Crear categoría' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      }
+
+      <section class="categories-section">
+        <header class="categories-section-header">
+          <div>
+            <span class="panel-label">Catálogo actual</span>
+            <h2>Categorías registradas</h2>
+          </div>
+
+          <span class="category-count">
+            {{ categories().length }}
+            {{ categories().length === 1 ? 'categoría' : 'categorías' }}
+          </span>
+        </header>
+
+        @if (categories().length === 0) {
+          <div class="state-card">
+            <strong>No hay categorías todavía</strong>
+            <p>Esta empresa aún no tiene categorías registradas.</p>
+          </div>
+        } @else {
+          <div class="category-list">
+            @for (category of categories(); track category.id) {
+              <article class="category-card">
+                <div class="category-main">
+                  <span class="category-type" [class.category-type-child]="category.parent">
+                    {{ category.parent ? 'Subcategoría' : 'Categoría principal' }}
+                  </span>
+
+                  <h3>{{ category.name }}</h3>
+
+                  @if (category.parent) {
+                    <p>
+                      Pertenece a
+                      <strong>{{ category.parent.name }}</strong>
+                    </p>
+                  } @else {
+                    <p>Sin categoría padre.</p>
+                  }
+                </div>
+
+                <div class="category-id">
+                  <span>ID</span>
+                  <strong>{{ category.id }}</strong>
+                </div>
+              </article>
+            }
+          </div>
+        }
+      </section>
+    }
+  }
+</section>
