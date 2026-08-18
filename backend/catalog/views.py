@@ -137,9 +137,81 @@ def product_options_view(request):
     )
 
 
-@api_view(["POST"])
+@api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
-def category_create_view(request):
+def category_list_create_view(request):
+    if request.method == "POST":
+        return _create_category(request)
+
+    return _list_categories(request)
+
+
+def _list_categories(request):
+    raw_company_id = request.query_params.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El parametro company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El parametro company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=CATEGORIES_MANAGE_PERMISSION_CODE,
+    ):
+        return Response(
+            {
+                "detail": "No tienes permiso para administrar las categorias.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    categories = (
+        Category.objects.filter(
+            company=company,
+        )
+        .select_related("parent")
+    )
+
+    return Response(
+        {
+            "categories": CategoryDetailSerializer(
+                categories,
+                many=True,
+            ).data,
+        }
+    )
+
+
+def _create_category(request):
     raw_company_id = request.data.get("company")
 
     if raw_company_id in (None, ""):

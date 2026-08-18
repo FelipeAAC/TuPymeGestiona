@@ -16,7 +16,7 @@ urlpatterns = [
     ),
     path(
         "categories/",
-        views.category_create_view,
-        name="catalog-category-create",
+        views.category_list_create_view,
+        name="catalog-category-list-create",
     ),
 ]

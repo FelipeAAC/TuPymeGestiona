@@ -1472,3 +1472,127 @@ class CategoryCreateApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_category_list_requires_authentication(self):
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_category_list_requires_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_category_list_rejects_invalid_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": "invalid",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_category_list_denies_company_without_active_membership(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_b.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_category_list_denies_without_manage_permission(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_category_list_returns_only_company_categories(self):
+        child_a = Category.objects.create(
+            company=self.company_a,
+            parent=self.parent_a,
+            name="Subcategoria Lista A",
+        )
+
+        self.grant_categories_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        categories = response.json()["categories"]
+
+        self.assertEqual(
+            categories,
+            [
+                {
+                    "id": self.parent_a.pk,
+                    "name": "Categoria Padre A",
+                    "parent": None,
+                },
+                {
+                    "id": child_a.pk,
+                    "name": "Subcategoria Lista A",
+                    "parent": {
+                        "id": self.parent_a.pk,
+                        "name": "Categoria Padre A",
+                    },
+                },
+            ],
+        )
+
+        category_ids = {
+            category["id"]
+            for category in categories
+        }
+
+        self.assertNotIn(
+            self.parent_b.pk,
+            category_ids,
+        )
+
+    def test_suspended_membership_does_not_authorize_category_list(self):
+        self.grant_categories_manage()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
