@@ -19,6 +19,8 @@ from .views import PRODUCTS_VIEW_PERMISSION_CODE
 
 User = get_user_model()
 
+PRODUCTS_MANAGE_PERMISSION_CODE = "catalog.products.manage"
+
 
 class CatalogModelsTests(TestCase):
     def setUp(self):
@@ -284,6 +286,16 @@ class ProductListApiTests(TestCase):
         self.assertEqual(
             permission.scope_behavior,
             Permission.ScopeBehavior.TENANT_GLOBAL,
+        )
+
+    def test_products_manage_permission_is_seeded(self):
+        permission = Permission.objects.get(
+            code=PRODUCTS_MANAGE_PERMISSION_CODE,
+        )
+
+        self.assertEqual(
+            permission.scope_behavior,
+            Permission.ScopeBehavior.COMPANY_ONLY,
         )
 
     def grant_products_view(
