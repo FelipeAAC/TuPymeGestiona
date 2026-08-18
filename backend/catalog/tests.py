@@ -1192,3 +1192,15 @@ class ProductOptionsApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+
+class CategoryPermissionSeedTests(TestCase):
+    def test_categories_manage_permission_is_seeded(self):
+        permission = Permission.objects.get(
+            code="catalog.categories.manage",
+        )
+
+        self.assertEqual(
+            permission.scope_behavior,
+            Permission.ScopeBehavior.COMPANY_ONLY,
+        )
