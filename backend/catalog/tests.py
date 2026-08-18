@@ -14,12 +14,13 @@ from organizations.models import (
 )
 
 from .models import Brand, Category, Product, ProductVariant
-from .views import PRODUCTS_VIEW_PERMISSION_CODE
+from .views import (
+    PRODUCTS_MANAGE_PERMISSION_CODE,
+    PRODUCTS_VIEW_PERMISSION_CODE,
+)
 
 
 User = get_user_model()
-
-PRODUCTS_MANAGE_PERMISSION_CODE = "catalog.products.manage"
 
 
 class CatalogModelsTests(TestCase):
@@ -515,6 +516,445 @@ class ProductListApiTests(TestCase):
             {
                 "company": self.company_a.pk,
             },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+class ProductCreateApiTests(TestCase):
+    def setUp(self):
+        self.url = "/api/catalog/products/"
+
+        self.user = User.objects.create_user(
+            username="catalog-create-user",
+            email="catalog-create-user@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(
+            name="Empresa Create A",
+        )
+        self.company_b = Company.objects.create(
+            name="Empresa Create B",
+        )
+
+        self.membership_a = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.category_a = Category.objects.create(
+            company=self.company_a,
+            name="Categoria Create A",
+        )
+        self.category_b = Category.objects.create(
+            company=self.company_b,
+            name="Categoria Create B",
+        )
+
+        self.brand_a = Brand.objects.create(
+            company=self.company_a,
+            name="Marca Create A",
+        )
+        self.brand_b = Brand.objects.create(
+            company=self.company_b,
+            name="Marca Create B",
+        )
+
+    def product_payload(
+        self,
+        *,
+        company=None,
+        category=None,
+        brand=None,
+        name="Producto Creado",
+        sku="SKU-CREATE-001",
+        gtin="780000000010",
+        base_price="19990.00",
+    ):
+        if company is None:
+            company = self.company_a
+
+        if category is None:
+            category = self.category_a
+
+        if brand is None:
+            brand = self.brand_a
+
+        return {
+            "company": company.pk,
+            "name": name,
+            "category": category.pk,
+            "brand": brand.pk,
+            "variant": {
+                "sku": sku,
+                "gtin": gtin,
+                "base_price": base_price,
+            },
+        }
+
+    def grant_products_manage(
+        self,
+        *,
+        company=None,
+        membership=None,
+    ):
+        company = company or self.company_a
+        membership = membership or self.membership_a
+
+        permission = Permission.objects.get(
+            code=PRODUCTS_MANAGE_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=company,
+            name=f"Catalog Manager {company.pk}",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=membership,
+            role=role,
+            branch=None,
+        )
+
+    def test_product_create_requires_authentication(self):
+        response = self.client.post(
+            self.url,
+            self.product_payload(),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_create_requires_company(self):
+        self.client.force_login(self.user)
+
+        payload = self.product_payload()
+        payload.pop("company")
+
+        response = self.client.post(
+            self.url,
+            payload,
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_product_create_rejects_invalid_company(self):
+        self.client.force_login(self.user)
+
+        payload = self.product_payload()
+        payload["company"] = "invalid"
+
+        response = self.client.post(
+            self.url,
+            payload,
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_product_create_denies_company_without_active_membership(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(
+                company=self.company_b,
+                category=self.category_b,
+                brand=self.brand_b,
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_create_denies_active_membership_without_manage_permission(
+        self,
+    ):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_products_view_permission_does_not_allow_product_create(self):
+        permission = Permission.objects.get(
+            code=PRODUCTS_VIEW_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog View Only",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_create_rejects_category_from_other_company(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(
+                category=self.category_b,
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        self.assertFalse(
+            Product.objects.filter(
+                name="Producto Creado",
+            ).exists()
+        )
+
+    def test_product_create_rejects_brand_from_other_company(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(
+                brand=self.brand_b,
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        self.assertFalse(
+            Product.objects.filter(
+                name="Producto Creado",
+            ).exists()
+        )
+
+    def test_product_create_creates_product_and_first_variant(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        product = Product.objects.get(
+            company=self.company_a,
+            name="Producto Creado",
+        )
+
+        self.assertEqual(
+            product.category,
+            self.category_a,
+        )
+        self.assertEqual(
+            product.brand,
+            self.brand_a,
+        )
+        self.assertEqual(
+            product.status,
+            Product.Status.DRAFT,
+        )
+
+        variant = product.variants.get()
+
+        self.assertEqual(
+            variant.sku,
+            "SKU-CREATE-001",
+        )
+        self.assertEqual(
+            variant.gtin,
+            "780000000010",
+        )
+        self.assertEqual(
+            variant.base_price,
+            Decimal("19990.00"),
+        )
+        self.assertEqual(
+            variant.status,
+            ProductVariant.Status.DRAFT,
+        )
+
+        response_product = response.json()["product"]
+
+        self.assertEqual(
+            response_product["id"],
+            product.pk,
+        )
+        self.assertEqual(
+            response_product["status"],
+            Product.Status.DRAFT,
+        )
+        self.assertEqual(
+            len(response_product["variants"]),
+            1,
+        )
+
+    def test_product_create_allows_missing_brand(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        payload = self.product_payload()
+        payload.pop("brand")
+
+        response = self.client.post(
+            self.url,
+            payload,
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        product = Product.objects.get(
+            company=self.company_a,
+            name="Producto Creado",
+        )
+
+        self.assertIsNone(product.brand)
+
+    def test_duplicate_sku_returns_400_and_rolls_back_product(self):
+        existing_product = Product.objects.create(
+            company=self.company_a,
+            category=self.category_a,
+            brand=self.brand_a,
+            name="Producto Existente",
+        )
+
+        ProductVariant.objects.create(
+            product=existing_product,
+            sku="SKU-DUPLICADO",
+            base_price=Decimal("1000.00"),
+        )
+
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        product_count_before = Product.objects.filter(
+            company=self.company_a,
+        ).count()
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(
+                name="Producto No Debe Quedar",
+                sku="SKU-DUPLICADO",
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        self.assertEqual(
+            Product.objects.filter(
+                company=self.company_a,
+            ).count(),
+            product_count_before,
+        )
+
+        self.assertFalse(
+            Product.objects.filter(
+                company=self.company_a,
+                name="Producto No Debe Quedar",
+            ).exists()
+        )
+
+    def test_same_sku_can_be_created_in_different_companies(self):
+        product_a = Product.objects.create(
+            company=self.company_a,
+            category=self.category_a,
+            brand=self.brand_a,
+            name="Producto Empresa A Existente",
+        )
+
+        ProductVariant.objects.create(
+            product=product_a,
+            sku="SKU-CROSS-COMPANY",
+            base_price=Decimal("1000.00"),
+        )
+
+        membership_b = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_b,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.grant_products_manage(
+            company=self.company_b,
+            membership=membership_b,
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(
+                company=self.company_b,
+                category=self.category_b,
+                brand=self.brand_b,
+                name="Producto Empresa B Nuevo",
+                sku="SKU-CROSS-COMPANY",
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        self.assertTrue(
+            ProductVariant.objects.filter(
+                product__company=self.company_b,
+                sku="SKU-CROSS-COMPANY",
+            ).exists()
+        )
+
+    def test_suspended_membership_does_not_authorize_product_create(self):
+        self.grant_products_manage()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(),
+            content_type="application/json",
         )
 
         self.assertEqual(response.status_code, 403)
