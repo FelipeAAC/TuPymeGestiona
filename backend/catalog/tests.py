@@ -1207,6 +1207,18 @@ class CategoryPermissionSeedTests(TestCase):
         )
 
 
+class BrandPermissionSeedTests(TestCase):
+    def test_brands_manage_permission_is_seeded(self):
+        permission = Permission.objects.get(
+            code="catalog.brands.manage",
+        )
+
+        self.assertEqual(
+            permission.scope_behavior,
+            Permission.ScopeBehavior.COMPANY_ONLY,
+        )
+
+
 class CategoryCreateApiTests(TestCase):
     def setUp(self):
         self.url = "/api/catalog/categories/"
