@@ -3,6 +3,10 @@ import { HttpClient } from '@angular/common/http';
 import { map, Observable } from 'rxjs';
 
 import {
+  CatalogBrand,
+  CatalogBrandCreateInput,
+  CatalogBrandCreateResponse,
+  CatalogBrandListResponse,
   CatalogCategoryCreateInput,
   CatalogCategoryCreateResponse,
   CatalogCategoryDetail,
@@ -67,5 +71,24 @@ export class CatalogService {
         ...input,
       })
       .pipe(map((response) => response.category));
+  }
+
+  listBrands(companyId: number): Observable<CatalogBrand[]> {
+    return this.http
+      .get<CatalogBrandListResponse>('/api/catalog/brands/', {
+        params: {
+          company: companyId.toString(),
+        },
+      })
+      .pipe(map((response) => response.brands));
+  }
+
+  createBrand(companyId: number, input: CatalogBrandCreateInput): Observable<CatalogBrand> {
+    return this.http
+      .post<CatalogBrandCreateResponse>('/api/catalog/brands/', {
+        company: companyId,
+        ...input,
+      })
+      .pipe(map((response) => response.brand));
   }
 }

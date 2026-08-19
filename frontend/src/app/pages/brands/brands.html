@@ -1,0 +1,126 @@
+<section class="brands-page">
+  <header class="brands-header">
+    <div>
+      <span class="section-label">Catálogo</span>
+      <h1>Marcas</h1>
+
+      @if (selectedMembership(); as membership) {
+        <p>
+          Administra las marcas disponibles en el catálogo de
+          <strong>{{ membership.company.name }}</strong
+          >.
+        </p>
+      } @else {
+        <p>Selecciona una empresa para administrar sus marcas.</p>
+      }
+    </div>
+  </header>
+
+  @if (!selectedMembership()) {
+    <div class="state-card">
+      <strong>Sin empresa seleccionada</strong>
+      <p>Necesitas una empresa activa para administrar marcas.</p>
+    </div>
+  } @else {
+    @if (isLoading()) {
+      <div class="state-card">
+        <strong>Cargando marcas...</strong>
+        <p>Estamos consultando las marcas de la empresa seleccionada.</p>
+      </div>
+    } @else if (errorMessage()) {
+      <div class="state-card state-card-error" role="alert">
+        <strong>No pudimos mostrar las marcas</strong>
+        <p>{{ errorMessage() }}</p>
+      </div>
+    } @else {
+      @if (canManageBrands()) {
+        <section class="create-panel">
+          <header class="create-panel-header">
+            <div>
+              <span class="panel-label">Administración</span>
+              <h2>Nueva marca</h2>
+              <p>Agrega una nueva marca al catálogo de la empresa seleccionada.</p>
+            </div>
+          </header>
+
+          <form class="brand-form" [formGroup]="createForm" (ngSubmit)="onSubmit()" novalidate>
+            <div class="form-field">
+              <label for="brand-name">
+                Nombre
+                <span>*</span>
+              </label>
+
+              <input
+                id="brand-name"
+                type="text"
+                formControlName="name"
+                maxlength="150"
+                placeholder="Ej. Adidas"
+              />
+
+              @if (createForm.controls.name.invalid && createForm.controls.name.touched) {
+                <small class="field-error"> Ingresa un nombre válido para la marca. </small>
+              }
+            </div>
+
+            @if (createErrorMessage()) {
+              <div class="form-alert form-alert-error" role="alert">
+                {{ createErrorMessage() }}
+              </div>
+            }
+
+            @if (createSuccessMessage()) {
+              <div class="form-alert form-alert-success" role="status">
+                {{ createSuccessMessage() }}
+              </div>
+            }
+
+            <div class="form-actions">
+              <button class="primary-button" type="submit" [disabled]="isCreating()">
+                {{ isCreating() ? 'Creando marca...' : 'Crear marca' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      }
+
+      <section class="brands-section">
+        <header class="brands-section-header">
+          <div>
+            <span class="panel-label">Catálogo actual</span>
+            <h2>Marcas registradas</h2>
+          </div>
+
+          <span class="brand-count">
+            {{ brands().length }}
+            {{ brands().length === 1 ? 'marca' : 'marcas' }}
+          </span>
+        </header>
+
+        @if (brands().length === 0) {
+          <div class="state-card">
+            <strong>No hay marcas todavía</strong>
+            <p>Esta empresa aún no tiene marcas registradas.</p>
+          </div>
+        } @else {
+          <div class="brand-list">
+            @for (brand of brands(); track brand.id) {
+              <article class="brand-card">
+                <div class="brand-main">
+                  <span class="brand-type">Marca</span>
+                  <h3>{{ brand.name }}</h3>
+                  <p>Disponible para los productos de esta empresa.</p>
+                </div>
+
+                <div class="brand-id">
+                  <span>ID</span>
+                  <strong>{{ brand.id }}</strong>
+                </div>
+              </article>
+            }
+          </div>
+        }
+      </section>
+    }
+  }
+</section>

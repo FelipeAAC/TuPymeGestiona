@@ -71,3 +71,15 @@ export interface CatalogCategoryCreateInput {
 export interface CatalogCategoryCreateResponse {
   category: CatalogCategoryDetail;
 }
+
+export interface CatalogBrandListResponse {
+  brands: CatalogBrand[];
+}
+
+export interface CatalogBrandCreateInput {
+  name: string;
+}
+
+export interface CatalogBrandCreateResponse {
+  brand: CatalogBrand;
+}

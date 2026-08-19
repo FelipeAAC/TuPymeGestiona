@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 
+import { Brands } from './pages/brands/brands';
 import { authGuard } from './core/auth/auth.guard';
 import { AppShell } from './layouts/app-shell/app-shell';
 import { Categories } from './pages/categories/categories';
@@ -38,6 +39,10 @@ export const routes: Routes = [
       {
         path: 'categories',
         component: Categories,
+      },
+      {
+        path: 'brands',
+        component: Brands,
       },
     ],
   },
