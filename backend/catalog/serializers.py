@@ -80,6 +80,25 @@ class BrandSummarySerializer(serializers.ModelSerializer):
         )
 
 
+class BrandCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(
+        max_length=150,
+    )
+
+    def create(self, validated_data):
+        company = self.context["company"]
+
+        try:
+            return Brand.objects.create(
+                company=company,
+                **validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                _validation_error_detail(exc),
+            ) from exc
+
+
 class ProductVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductVariant

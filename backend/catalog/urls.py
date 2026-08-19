@@ -19,4 +19,9 @@ urlpatterns = [
         views.category_list_create_view,
         name="catalog-category-list-create",
     ),
+    path(
+        "brands/",
+        views.brand_list_create_view,
+        name="catalog-brand-list-create",
+    ),
 ]

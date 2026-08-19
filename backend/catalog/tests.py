@@ -15,6 +15,7 @@ from organizations.models import (
 
 from .models import Brand, Category, Product, ProductVariant
 from .views import (
+    BRANDS_MANAGE_PERMISSION_CODE,
     CATEGORIES_MANAGE_PERMISSION_CODE,
     PRODUCTS_MANAGE_PERMISSION_CODE,
     PRODUCTS_VIEW_PERMISSION_CODE,
@@ -1592,6 +1593,331 @@ class CategoryCreateApiTests(TestCase):
 
     def test_suspended_membership_does_not_authorize_category_list(self):
         self.grant_categories_manage()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+class BrandListCreateApiTests(TestCase):
+    def setUp(self):
+        self.url = "/api/catalog/brands/"
+
+        self.user = User.objects.create_user(
+            username="catalog-brand-user",
+            email="catalog-brand-user@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(
+            name="Empresa Brand A",
+        )
+        self.company_b = Company.objects.create(
+            name="Empresa Brand B",
+        )
+
+        self.membership_a = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.brand_a = Brand.objects.create(
+            company=self.company_a,
+            name="Marca Existente A",
+        )
+
+        self.brand_b = Brand.objects.create(
+            company=self.company_b,
+            name="Marca Existente B",
+        )
+
+    def grant_brands_manage(self):
+        permission = Permission.objects.get(
+            code=BRANDS_MANAGE_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Brand Manager",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+    def test_brand_create_requires_authentication(self):
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Marca Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_brand_create_requires_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "name": "Marca Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_brand_create_rejects_invalid_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": "invalid",
+                "name": "Marca Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_brand_create_denies_company_without_active_membership(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_b.pk,
+                "name": "Marca Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_brand_create_denies_without_manage_permission(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Marca Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_categories_manage_permission_does_not_allow_brand_create(self):
+        permission = Permission.objects.get(
+            code=CATEGORIES_MANAGE_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Categories Only",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Marca Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_brand_create_creates_brand_for_company(self):
+        self.grant_brands_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Marca Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        brand = Brand.objects.get(
+            company=self.company_a,
+            name="Marca Nueva",
+        )
+
+        self.assertEqual(
+            response.json()["brand"],
+            {
+                "id": brand.pk,
+                "name": "Marca Nueva",
+            },
+        )
+
+    def test_suspended_membership_does_not_authorize_brand_create(self):
+        self.grant_brands_manage()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Marca Nueva",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_brand_list_requires_authentication(self):
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_brand_list_requires_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_brand_list_rejects_invalid_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": "invalid",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_brand_list_denies_company_without_active_membership(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_b.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_brand_list_denies_without_manage_permission(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_brand_list_returns_only_company_brands(self):
+        second_brand_a = Brand.objects.create(
+            company=self.company_a,
+            name="Marca Segunda A",
+        )
+
+        self.grant_brands_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        brands = response.json()["brands"]
+
+        self.assertEqual(
+            brands,
+            [
+                {
+                    "id": self.brand_a.pk,
+                    "name": "Marca Existente A",
+                },
+                {
+                    "id": second_brand_a.pk,
+                    "name": "Marca Segunda A",
+                },
+            ],
+        )
+
+        brand_ids = {
+            brand["id"]
+            for brand in brands
+        }
+
+        self.assertNotIn(
+            self.brand_b.pk,
+            brand_ids,
+        )
+
+    def test_suspended_membership_does_not_authorize_brand_list(self):
+        self.grant_brands_manage()
 
         self.membership_a.status = CompanyMembership.Status.SUSPENDED
         self.membership_a.save(
