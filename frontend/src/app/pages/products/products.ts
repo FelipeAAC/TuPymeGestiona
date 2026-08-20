@@ -63,6 +63,7 @@ export class Products {
       this.createSuccessMessage.set('');
 
       this.canManageProducts.set(false);
+      this.isCreating.set(false);
 
       this.resetCreateForm();
 
@@ -127,7 +128,11 @@ export class Products {
       .createProduct(companyId, input)
       .pipe(
         finalize(() => {
-          this.isCreating.set(false);
+          const currentCompanyId = this.selectedMembership()?.company.id;
+
+          if (currentCompanyId === companyId) {
+            this.isCreating.set(false);
+          }
         }),
       )
       .subscribe({
@@ -232,17 +237,33 @@ export class Products {
       .getProductOptions(companyId)
       .pipe(
         finalize(() => {
-          this.isOptionsLoading.set(false);
+          const currentCompanyId = this.selectedMembership()?.company.id;
+
+          if (currentCompanyId === companyId) {
+            this.isOptionsLoading.set(false);
+          }
         }),
       )
       .subscribe({
         next: (options) => {
+          const currentCompanyId = this.selectedMembership()?.company.id;
+
+          if (currentCompanyId !== companyId) {
+            return;
+          }
+
           this.categories.set(options.categories);
           this.brands.set(options.brands);
           this.canManageProducts.set(true);
         },
 
         error: (error: HttpErrorResponse) => {
+          const currentCompanyId = this.selectedMembership()?.company.id;
+
+          if (currentCompanyId !== companyId) {
+            return;
+          }
+
           this.categories.set([]);
           this.brands.set([]);
           this.canManageProducts.set(false);
