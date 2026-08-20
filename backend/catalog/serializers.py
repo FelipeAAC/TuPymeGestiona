@@ -146,6 +146,19 @@ class ProductVariantCreateSerializer(serializers.Serializer):
         decimal_places=2,
     )
 
+    def create(self, validated_data):
+        product = self.context["product"]
+
+        try:
+            return ProductVariant.objects.create(
+                product=product,
+                **validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                _validation_error_detail(exc),
+            ) from exc
+
 
 class ProductCreateSerializer(serializers.Serializer):
     name = serializers.CharField(

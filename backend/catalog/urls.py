@@ -15,6 +15,11 @@ urlpatterns = [
         name="catalog-product-detail",
     ),
     path(
+        "products/<int:product_id>/variants/",
+        views.product_variant_create_view,
+        name="catalog-product-variant-create",
+    ),
+    path(
         "products/options/",
         views.product_options_view,
         name="catalog-product-options",

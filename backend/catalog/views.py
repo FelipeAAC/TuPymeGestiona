@@ -16,6 +16,8 @@ from catalog.serializers import (
     ProductCreateSerializer,
     ProductSerializer,
     ProductUpdateSerializer,
+    ProductVariantCreateSerializer,
+    ProductVariantSerializer,
 )
 
 
@@ -253,6 +255,95 @@ def _update_product(request, *, product_id):
         {
             "product": ProductSerializer(product).data,
         }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def product_variant_create_view(request, product_id):
+    raw_company_id = request.data.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El campo company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El campo company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=PRODUCTS_MANAGE_PERMISSION_CODE,
+    ):
+        return Response(
+            {
+                "detail": "No tienes permiso para administrar los productos.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    product = (
+        Product.objects.filter(
+            pk=product_id,
+            company=company,
+        )
+        .first()
+    )
+
+    if product is None:
+        return Response(
+            {
+                "detail": "El producto no existe en esta empresa.",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    payload = request.data.copy()
+    payload.pop("company", None)
+
+    serializer = ProductVariantCreateSerializer(
+        data=payload,
+        context={
+            "product": product,
+        },
+    )
+    serializer.is_valid(
+        raise_exception=True,
+    )
+
+    variant = serializer.save()
+
+    return Response(
+        {
+            "variant": ProductVariantSerializer(variant).data,
+        },
+        status=status.HTTP_201_CREATED,
     )
 
 
