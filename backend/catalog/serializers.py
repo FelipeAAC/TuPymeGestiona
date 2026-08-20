@@ -202,3 +202,49 @@ class ProductCreateSerializer(serializers.Serializer):
                 ) from exc
 
         return product
+
+
+class ProductUpdateSerializer(serializers.Serializer):
+    name = serializers.CharField(
+        max_length=200,
+        required=False,
+    )
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.none(),
+        required=False,
+    )
+    brand = serializers.PrimaryKeyRelatedField(
+        queryset=Brand.objects.none(),
+        required=False,
+        allow_null=True,
+    )
+    status = serializers.ChoiceField(
+        choices=Product.Status.choices,
+        required=False,
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        company = self.context.get("company")
+
+        if company is not None:
+            self.fields["category"].queryset = Category.objects.filter(
+                company=company,
+            )
+            self.fields["brand"].queryset = Brand.objects.filter(
+                company=company,
+            )
+
+    def update(self, instance, validated_data):
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        try:
+            instance.save()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                _validation_error_detail(exc),
+            ) from exc
+
+        return instance

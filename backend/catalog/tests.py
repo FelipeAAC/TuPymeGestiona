@@ -1934,3 +1934,558 @@ class BrandListCreateApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+
+class ProductDetailApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="catalog-detail-user",
+            email="catalog-detail-user@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(
+            name="Empresa Detail A",
+        )
+        self.company_b = Company.objects.create(
+            name="Empresa Detail B",
+        )
+
+        self.membership_a = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.category_a = Category.objects.create(
+            company=self.company_a,
+            name="Categoria Detail A",
+        )
+        self.category_b = Category.objects.create(
+            company=self.company_b,
+            name="Categoria Detail B",
+        )
+
+        self.brand_a = Brand.objects.create(
+            company=self.company_a,
+            name="Marca Detail A",
+        )
+
+        self.product_a = Product.objects.create(
+            company=self.company_a,
+            category=self.category_a,
+            brand=self.brand_a,
+            name="Producto Detail A",
+            status=Product.Status.ACTIVE,
+        )
+
+        self.product_b = Product.objects.create(
+            company=self.company_b,
+            category=self.category_b,
+            name="Producto Detail B",
+        )
+
+        ProductVariant.objects.create(
+            product=self.product_a,
+            sku="SKU-DETAIL-A",
+            gtin="780000000099",
+            base_price=Decimal("15990.00"),
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+        self.url = f"/api/catalog/products/{self.product_a.pk}/"
+
+    def grant_products_view(self):
+        permission = Permission.objects.get(
+            code=PRODUCTS_VIEW_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Detail Viewer",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+    def test_product_detail_requires_authentication(self):
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_detail_requires_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_product_detail_rejects_invalid_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": "invalid",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_product_detail_denies_without_active_membership(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            f"/api/catalog/products/{self.product_b.pk}/",
+            {
+                "company": self.company_b.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_detail_denies_without_view_permission(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_detail_does_not_expose_product_from_other_company(self):
+        self.grant_products_view()
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            f"/api/catalog/products/{self.product_b.pk}/",
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_product_detail_returns_product(self):
+        self.grant_products_view()
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        product = response.json()["product"]
+
+        self.assertEqual(
+            product["id"],
+            self.product_a.pk,
+        )
+        self.assertEqual(
+            product["name"],
+            "Producto Detail A",
+        )
+        self.assertEqual(
+            product["status"],
+            Product.Status.ACTIVE,
+        )
+        self.assertEqual(
+            product["category"],
+            {
+                "id": self.category_a.pk,
+                "name": "Categoria Detail A",
+            },
+        )
+        self.assertEqual(
+            product["brand"],
+            {
+                "id": self.brand_a.pk,
+                "name": "Marca Detail A",
+            },
+        )
+        self.assertEqual(
+            len(product["variants"]),
+            1,
+        )
+        self.assertEqual(
+            product["variants"][0]["sku"],
+            "SKU-DETAIL-A",
+        )
+
+    def test_suspended_membership_does_not_authorize_product_detail(self):
+        self.grant_products_view()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+class ProductUpdateApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="catalog-update-user",
+            email="catalog-update-user@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(
+            name="Empresa Update A",
+        )
+        self.company_b = Company.objects.create(
+            name="Empresa Update B",
+        )
+
+        self.membership_a = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.category_a = Category.objects.create(
+            company=self.company_a,
+            name="Categoria Update A",
+        )
+        self.category_a_2 = Category.objects.create(
+            company=self.company_a,
+            name="Categoria Update A 2",
+        )
+        self.category_b = Category.objects.create(
+            company=self.company_b,
+            name="Categoria Update B",
+        )
+
+        self.brand_a = Brand.objects.create(
+            company=self.company_a,
+            name="Marca Update A",
+        )
+        self.brand_a_2 = Brand.objects.create(
+            company=self.company_a,
+            name="Marca Update A 2",
+        )
+        self.brand_b = Brand.objects.create(
+            company=self.company_b,
+            name="Marca Update B",
+        )
+
+        self.product_a = Product.objects.create(
+            company=self.company_a,
+            category=self.category_a,
+            brand=self.brand_a,
+            name="Producto Update A",
+        )
+
+        self.product_b = Product.objects.create(
+            company=self.company_b,
+            category=self.category_b,
+            brand=self.brand_b,
+            name="Producto Update B",
+        )
+
+        self.url = f"/api/catalog/products/{self.product_a.pk}/"
+
+    def grant_products_manage(self):
+        permission = Permission.objects.get(
+            code=PRODUCTS_MANAGE_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Update Manager",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+    def test_product_update_requires_authentication(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Producto Modificado",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_update_requires_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "name": "Producto Modificado",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_product_update_rejects_invalid_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": "invalid",
+                "name": "Producto Modificado",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_product_update_denies_without_manage_permission(self):
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Producto Modificado",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_product_update_changes_name(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Producto Modificado",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.product_a.refresh_from_db()
+
+        self.assertEqual(
+            self.product_a.name,
+            "Producto Modificado",
+        )
+
+        self.assertEqual(
+            response.json()["product"]["name"],
+            "Producto Modificado",
+        )
+
+    def test_product_update_changes_category(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "category": self.category_a_2.pk,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.product_a.refresh_from_db()
+
+        self.assertEqual(
+            self.product_a.category,
+            self.category_a_2,
+        )
+
+    def test_product_update_changes_brand(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "brand": self.brand_a_2.pk,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.product_a.refresh_from_db()
+
+        self.assertEqual(
+            self.product_a.brand,
+            self.brand_a_2,
+        )
+
+    def test_product_update_allows_brand_null(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "brand": None,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.product_a.refresh_from_db()
+
+        self.assertIsNone(self.product_a.brand)
+
+    def test_product_update_changes_status(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "status": Product.Status.ACTIVE,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.product_a.refresh_from_db()
+
+        self.assertEqual(
+            self.product_a.status,
+            Product.Status.ACTIVE,
+        )
+
+    def test_product_update_rejects_category_from_other_company(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "category": self.category_b.pk,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        self.product_a.refresh_from_db()
+
+        self.assertEqual(
+            self.product_a.category,
+            self.category_a,
+        )
+
+    def test_product_update_rejects_brand_from_other_company(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "brand": self.brand_b.pk,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        self.product_a.refresh_from_db()
+
+        self.assertEqual(
+            self.product_a.brand,
+            self.brand_a,
+        )
+
+    def test_product_update_does_not_modify_product_from_other_company(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            f"/api/catalog/products/{self.product_b.pk}/",
+            {
+                "company": self.company_a.pk,
+                "name": "No Debe Cambiar",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+        self.product_b.refresh_from_db()
+
+        self.assertEqual(
+            self.product_b.name,
+            "Producto Update B",
+        )
+
+    def test_suspended_membership_does_not_authorize_product_update(self):
+        self.grant_products_manage()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "No Debe Cambiar",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)

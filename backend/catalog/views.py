@@ -15,6 +15,7 @@ from catalog.serializers import (
     CategorySummarySerializer,
     ProductCreateSerializer,
     ProductSerializer,
+    ProductUpdateSerializer,
 )
 
 
@@ -65,6 +66,194 @@ def product_list_view(request):
         return _create_product(request)
 
     return _list_products(request)
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def product_detail_view(request, product_id):
+    if request.method == "PATCH":
+        return _update_product(
+            request,
+            product_id=product_id,
+        )
+
+    return _retrieve_product(
+        request,
+        product_id=product_id,
+    )
+
+
+def _retrieve_product(request, *, product_id):
+    raw_company_id = request.query_params.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El parametro company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El parametro company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=PRODUCTS_VIEW_PERMISSION_CODE,
+    ):
+        return Response(
+            {
+                "detail": "No tienes permiso para ver los productos.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    product = (
+        Product.objects.filter(
+            pk=product_id,
+            company=company,
+        )
+        .select_related(
+            "category",
+            "brand",
+        )
+        .prefetch_related(
+            "variants",
+        )
+        .first()
+    )
+
+    if product is None:
+        return Response(
+            {
+                "detail": "El producto no existe en esta empresa.",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    return Response(
+        {
+            "product": ProductSerializer(product).data,
+        }
+    )
+
+
+def _update_product(request, *, product_id):
+    raw_company_id = request.data.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El campo company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El campo company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=PRODUCTS_MANAGE_PERMISSION_CODE,
+    ):
+        return Response(
+            {
+                "detail": "No tienes permiso para administrar los productos.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    product = (
+        Product.objects.filter(
+            pk=product_id,
+            company=company,
+        )
+        .select_related(
+            "category",
+            "brand",
+        )
+        .prefetch_related(
+            "variants",
+        )
+        .first()
+    )
+
+    if product is None:
+        return Response(
+            {
+                "detail": "El producto no existe en esta empresa.",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    payload = request.data.copy()
+    payload.pop("company", None)
+
+    serializer = ProductUpdateSerializer(
+        product,
+        data=payload,
+        partial=True,
+        context={
+            "company": company,
+        },
+    )
+    serializer.is_valid(
+        raise_exception=True,
+    )
+
+    product = serializer.save()
+
+    return Response(
+        {
+            "product": ProductSerializer(product).data,
+        }
+    )
 
 
 @api_view(["GET"])
