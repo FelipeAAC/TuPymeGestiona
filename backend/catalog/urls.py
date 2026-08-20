@@ -20,6 +20,11 @@ urlpatterns = [
         name="catalog-product-variant-create",
     ),
     path(
+        "products/<int:product_id>/variants/<int:variant_id>/",
+        views.product_variant_detail_view,
+        name="catalog-product-variant-detail",
+    ),
+    path(
         "products/options/",
         views.product_options_view,
         name="catalog-product-options",

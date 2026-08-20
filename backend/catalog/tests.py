@@ -2490,6 +2490,7 @@ class ProductUpdateApiTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+
 class ProductVariantCreateApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -2835,3 +2836,637 @@ class ProductVariantCreateApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+
+class ProductVariantDetailApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="catalog-variant-detail-user",
+            email="catalog-variant-detail-user@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(
+            name="Empresa Variant Detail A",
+        )
+        self.company_b = Company.objects.create(
+            name="Empresa Variant Detail B",
+        )
+
+        self.membership_a = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.category_a = Category.objects.create(
+            company=self.company_a,
+            name="Categoria Variant Detail A",
+        )
+        self.category_b = Category.objects.create(
+            company=self.company_b,
+            name="Categoria Variant Detail B",
+        )
+
+        self.product_a = Product.objects.create(
+            company=self.company_a,
+            category=self.category_a,
+            name="Producto Variant Detail A",
+        )
+
+        self.product_a_2 = Product.objects.create(
+            company=self.company_a,
+            category=self.category_a,
+            name="Producto Variant Detail A 2",
+        )
+
+        self.product_b = Product.objects.create(
+            company=self.company_b,
+            category=self.category_b,
+            name="Producto Variant Detail B",
+        )
+
+        self.variant_a = ProductVariant.objects.create(
+            product=self.product_a,
+            sku="SKU-DETAIL-VARIANT-A",
+            gtin="780000001000",
+            base_price=Decimal("18990.00"),
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+        self.variant_a_2 = ProductVariant.objects.create(
+            product=self.product_a_2,
+            sku="SKU-DETAIL-VARIANT-A2",
+            base_price=Decimal("9990.00"),
+        )
+
+        self.variant_b = ProductVariant.objects.create(
+            product=self.product_b,
+            sku="SKU-DETAIL-VARIANT-B",
+            base_price=Decimal("29990.00"),
+        )
+
+        self.url = (
+            f"/api/catalog/products/{self.product_a.pk}/"
+            f"variants/{self.variant_a.pk}/"
+        )
+
+    def grant_products_view(self):
+        permission = Permission.objects.get(
+            code=PRODUCTS_VIEW_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Variant Detail Viewer",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+    def test_variant_detail_requires_authentication(self):
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_variant_detail_requires_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_variant_detail_rejects_invalid_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": "invalid",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_variant_detail_denies_without_view_permission(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_variant_detail_returns_variant(self):
+        self.grant_products_view()
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        variant = response.json()["variant"]
+
+        self.assertEqual(
+            variant["id"],
+            self.variant_a.pk,
+        )
+        self.assertEqual(
+            variant["sku"],
+            "SKU-DETAIL-VARIANT-A",
+        )
+        self.assertEqual(
+            variant["gtin"],
+            "780000001000",
+        )
+        self.assertEqual(
+            variant["base_price"],
+            "18990.00",
+        )
+        self.assertEqual(
+            variant["status"],
+            ProductVariant.Status.ACTIVE,
+        )
+
+    def test_variant_detail_rejects_variant_from_different_product(self):
+        self.grant_products_view()
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            (
+                f"/api/catalog/products/{self.product_a.pk}/"
+                f"variants/{self.variant_a_2.pk}/"
+            ),
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_variant_detail_does_not_expose_other_company(self):
+        self.grant_products_view()
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            (
+                f"/api/catalog/products/{self.product_b.pk}/"
+                f"variants/{self.variant_b.pk}/"
+            ),
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_suspended_membership_does_not_authorize_variant_detail(self):
+        self.grant_products_view()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+class ProductVariantUpdateApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="catalog-variant-update-user",
+            email="catalog-variant-update-user@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(
+            name="Empresa Variant Update A",
+        )
+        self.company_b = Company.objects.create(
+            name="Empresa Variant Update B",
+        )
+
+        self.membership_a = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.category_a = Category.objects.create(
+            company=self.company_a,
+            name="Categoria Variant Update A",
+        )
+        self.category_b = Category.objects.create(
+            company=self.company_b,
+            name="Categoria Variant Update B",
+        )
+
+        self.product_a = Product.objects.create(
+            company=self.company_a,
+            category=self.category_a,
+            name="Producto Variant Update A",
+        )
+
+        self.product_a_2 = Product.objects.create(
+            company=self.company_a,
+            category=self.category_a,
+            name="Producto Variant Update A 2",
+        )
+
+        self.product_b = Product.objects.create(
+            company=self.company_b,
+            category=self.category_b,
+            name="Producto Variant Update B",
+        )
+
+        self.variant_a = ProductVariant.objects.create(
+            product=self.product_a,
+            sku="SKU-UPDATE-VARIANT-A",
+            gtin="780000002000",
+            base_price=Decimal("12990.00"),
+        )
+
+        self.variant_a_2 = ProductVariant.objects.create(
+            product=self.product_a_2,
+            sku="SKU-UPDATE-VARIANT-A2",
+            base_price=Decimal("9990.00"),
+        )
+
+        self.variant_b = ProductVariant.objects.create(
+            product=self.product_b,
+            sku="SKU-UPDATE-VARIANT-B",
+            base_price=Decimal("29990.00"),
+        )
+
+        self.url = (
+            f"/api/catalog/products/{self.product_a.pk}/"
+            f"variants/{self.variant_a.pk}/"
+        )
+
+    def grant_products_manage(self):
+        permission = Permission.objects.get(
+            code=PRODUCTS_MANAGE_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Variant Update Manager",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+    def test_variant_update_requires_authentication(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "sku": "SKU-NUEVO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_variant_update_requires_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "sku": "SKU-NUEVO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_variant_update_rejects_invalid_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": "invalid",
+                "sku": "SKU-NUEVO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_variant_update_denies_without_manage_permission(self):
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "sku": "SKU-NUEVO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_view_permission_does_not_allow_variant_update(self):
+        permission = Permission.objects.get(
+            code=PRODUCTS_VIEW_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Variant Update View Only",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "sku": "SKU-NUEVO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_variant_update_changes_sku(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "sku": "SKU-MODIFICADO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.variant_a.refresh_from_db()
+
+        self.assertEqual(
+            self.variant_a.sku,
+            "SKU-MODIFICADO",
+        )
+
+        self.assertEqual(
+            response.json()["variant"]["sku"],
+            "SKU-MODIFICADO",
+        )
+
+    def test_variant_update_changes_gtin(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "gtin": "780000002999",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.variant_a.refresh_from_db()
+
+        self.assertEqual(
+            self.variant_a.gtin,
+            "780000002999",
+        )
+
+    def test_variant_update_allows_blank_gtin(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "gtin": "",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.variant_a.refresh_from_db()
+
+        self.assertEqual(
+            self.variant_a.gtin,
+            "",
+        )
+
+    def test_variant_update_changes_base_price(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "base_price": "25990.00",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.variant_a.refresh_from_db()
+
+        self.assertEqual(
+            self.variant_a.base_price,
+            Decimal("25990.00"),
+        )
+
+    def test_variant_update_changes_status(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "status": ProductVariant.Status.ACTIVE,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.variant_a.refresh_from_db()
+
+        self.assertEqual(
+            self.variant_a.status,
+            ProductVariant.Status.ACTIVE,
+        )
+
+    def test_variant_update_rejects_duplicate_sku_inside_company(self):
+        existing_product = Product.objects.create(
+            company=self.company_a,
+            category=self.category_a,
+            name="Producto SKU Existente",
+        )
+
+        ProductVariant.objects.create(
+            product=existing_product,
+            sku="SKU-DUPLICADO-UPDATE",
+            base_price=Decimal("5000.00"),
+        )
+
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "sku": "SKU-DUPLICADO-UPDATE",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        self.variant_a.refresh_from_db()
+
+        self.assertEqual(
+            self.variant_a.sku,
+            "SKU-UPDATE-VARIANT-A",
+        )
+
+    def test_variant_update_rejects_variant_from_different_product(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            (
+                f"/api/catalog/products/{self.product_a.pk}/"
+                f"variants/{self.variant_a_2.pk}/"
+            ),
+            {
+                "company": self.company_a.pk,
+                "sku": "NO-DEBE-CAMBIAR",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+        self.variant_a_2.refresh_from_db()
+
+        self.assertEqual(
+            self.variant_a_2.sku,
+            "SKU-UPDATE-VARIANT-A2",
+        )
+
+    def test_variant_update_does_not_expose_other_company(self):
+        self.grant_products_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            (
+                f"/api/catalog/products/{self.product_b.pk}/"
+                f"variants/{self.variant_b.pk}/"
+            ),
+            {
+                "company": self.company_a.pk,
+                "sku": "NO-DEBE-CAMBIAR",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+        self.variant_b.refresh_from_db()
+
+        self.assertEqual(
+            self.variant_b.sku,
+            "SKU-UPDATE-VARIANT-B",
+        )
+
+    def test_suspended_membership_does_not_authorize_variant_update(self):
+        self.grant_products_manage()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "sku": "NO-DEBE-CAMBIAR",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+        self.variant_a.refresh_from_db()
+
+        self.assertEqual(
+            self.variant_a.sku,
+            "SKU-UPDATE-VARIANT-A",
+        )

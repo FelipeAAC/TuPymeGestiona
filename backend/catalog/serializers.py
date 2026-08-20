@@ -160,6 +160,40 @@ class ProductVariantCreateSerializer(serializers.Serializer):
             ) from exc
 
 
+class ProductVariantUpdateSerializer(serializers.Serializer):
+    sku = serializers.CharField(
+        max_length=100,
+        required=False,
+    )
+    gtin = serializers.CharField(
+        max_length=32,
+        required=False,
+        allow_blank=True,
+    )
+    base_price = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        required=False,
+    )
+    status = serializers.ChoiceField(
+        choices=ProductVariant.Status.choices,
+        required=False,
+    )
+
+    def update(self, instance, validated_data):
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        try:
+            instance.save()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                _validation_error_detail(exc),
+            ) from exc
+
+        return instance
+
+
 class ProductCreateSerializer(serializers.Serializer):
     name = serializers.CharField(
         max_length=200,

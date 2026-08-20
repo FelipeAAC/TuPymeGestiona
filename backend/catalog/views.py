@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from organizations.authorization import has_permission
 from organizations.models import CompanyMembership
 
-from catalog.models import Brand, Category, Product
+from catalog.models import Brand, Category, Product, ProductVariant
 from catalog.serializers import (
     BrandCreateSerializer,
     BrandSummarySerializer,
@@ -18,6 +18,7 @@ from catalog.serializers import (
     ProductUpdateSerializer,
     ProductVariantCreateSerializer,
     ProductVariantSerializer,
+    ProductVariantUpdateSerializer,
 )
 
 
@@ -344,6 +345,201 @@ def product_variant_create_view(request, product_id):
             "variant": ProductVariantSerializer(variant).data,
         },
         status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def product_variant_detail_view(
+    request,
+    product_id,
+    variant_id,
+):
+    if request.method == "PATCH":
+        return _update_product_variant(
+            request,
+            product_id=product_id,
+            variant_id=variant_id,
+        )
+
+    return _retrieve_product_variant(
+        request,
+        product_id=product_id,
+        variant_id=variant_id,
+    )
+
+
+def _retrieve_product_variant(
+    request,
+    *,
+    product_id,
+    variant_id,
+):
+    raw_company_id = request.query_params.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El parametro company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El parametro company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=PRODUCTS_VIEW_PERMISSION_CODE,
+    ):
+        return Response(
+            {
+                "detail": "No tienes permiso para ver los productos.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    variant = (
+        ProductVariant.objects.filter(
+            pk=variant_id,
+            product_id=product_id,
+            product__company=company,
+        )
+        .select_related(
+            "product",
+        )
+        .first()
+    )
+
+    if variant is None:
+        return Response(
+            {
+                "detail": "La variante no existe para este producto.",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    return Response(
+        {
+            "variant": ProductVariantSerializer(variant).data,
+        }
+    )
+
+
+def _update_product_variant(
+    request,
+    *,
+    product_id,
+    variant_id,
+):
+    raw_company_id = request.data.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El campo company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El campo company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=PRODUCTS_MANAGE_PERMISSION_CODE,
+    ):
+        return Response(
+            {
+                "detail": "No tienes permiso para administrar los productos.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    variant = (
+        ProductVariant.objects.filter(
+            pk=variant_id,
+            product_id=product_id,
+            product__company=company,
+        )
+        .select_related(
+            "product",
+        )
+        .first()
+    )
+
+    if variant is None:
+        return Response(
+            {
+                "detail": "La variante no existe para este producto.",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    payload = request.data.copy()
+    payload.pop("company", None)
+
+    serializer = ProductVariantUpdateSerializer(
+        variant,
+        data=payload,
+        partial=True,
+    )
+    serializer.is_valid(
+        raise_exception=True,
+    )
+
+    variant = serializer.save()
+
+    return Response(
+        {
+            "variant": ProductVariantSerializer(variant).data,
+        }
     )
 
 
