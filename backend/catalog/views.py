@@ -21,6 +21,7 @@ from catalog.serializers import (
     ProductVariantUpdateSerializer,
     SupplierCreateSerializer,
     SupplierSerializer,
+    SupplierUpdateSerializer,
 )
 
 
@@ -1039,6 +1040,175 @@ def _create_supplier(request):
             "supplier": SupplierSerializer(supplier).data,
         },
         status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def supplier_detail_view(request, supplier_id):
+    if request.method == "PATCH":
+        return _update_supplier(
+            request,
+            supplier_id=supplier_id,
+        )
+
+    return _retrieve_supplier(
+        request,
+        supplier_id=supplier_id,
+    )
+
+
+def _retrieve_supplier(request, *, supplier_id):
+    raw_company_id = request.query_params.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El parametro company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El parametro company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=SUPPLIERS_MANAGE_PERMISSION_CODE,
+    ):
+        return Response(
+            {
+                "detail": (
+                    "No tienes permiso para administrar los proveedores."
+                ),
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    supplier = Supplier.objects.filter(
+        pk=supplier_id,
+        company=company,
+    ).first()
+
+    if supplier is None:
+        return Response(
+            {
+                "detail": "El proveedor no existe en esta empresa.",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    return Response(
+        {
+            "supplier": SupplierSerializer(supplier).data,
+        }
+    )
+
+
+def _update_supplier(request, *, supplier_id):
+    raw_company_id = request.data.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El campo company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El campo company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=SUPPLIERS_MANAGE_PERMISSION_CODE,
+    ):
+        return Response(
+            {
+                "detail": (
+                    "No tienes permiso para administrar los proveedores."
+                ),
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    supplier = Supplier.objects.filter(
+        pk=supplier_id,
+        company=company,
+    ).first()
+
+    if supplier is None:
+        return Response(
+            {
+                "detail": "El proveedor no existe en esta empresa.",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    payload = request.data.copy()
+    payload.pop("company", None)
+
+    serializer = SupplierUpdateSerializer(
+        supplier,
+        data=payload,
+        partial=True,
+    )
+    serializer.is_valid(
+        raise_exception=True,
+    )
+
+    supplier = serializer.save()
+
+    return Response(
+        {
+            "supplier": SupplierSerializer(supplier).data,
+        }
     )
 
 

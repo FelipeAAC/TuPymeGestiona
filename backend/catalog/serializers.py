@@ -153,6 +153,44 @@ class SupplierCreateSerializer(serializers.Serializer):
             ) from exc
 
 
+class SupplierUpdateSerializer(serializers.Serializer):
+    name = serializers.CharField(
+        max_length=200,
+        required=False,
+    )
+    contact_name = serializers.CharField(
+        max_length=150,
+        required=False,
+        allow_blank=True,
+    )
+    email = serializers.EmailField(
+        required=False,
+        allow_blank=True,
+    )
+    phone = serializers.CharField(
+        max_length=50,
+        required=False,
+        allow_blank=True,
+    )
+    status = serializers.ChoiceField(
+        choices=Supplier.Status.choices,
+        required=False,
+    )
+
+    def update(self, instance, validated_data):
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        try:
+            instance.save()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                _validation_error_detail(exc),
+            ) from exc
+
+        return instance
+
+
 class ProductVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductVariant

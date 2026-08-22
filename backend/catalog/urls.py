@@ -44,4 +44,9 @@ urlpatterns = [
         views.supplier_list_create_view,
         name="catalog-supplier-list-create",
     ),
+    path(
+        "suppliers/<int:supplier_id>/",
+        views.supplier_detail_view,
+        name="catalog-supplier-detail",
+    ),
 ]
