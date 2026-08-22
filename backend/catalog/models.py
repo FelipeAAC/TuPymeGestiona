@@ -219,3 +219,41 @@ class ProductVariant(models.Model):
 
     def __str__(self):
         return f"{self.product} - {self.sku}"
+
+
+class Supplier(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Activo"
+        INACTIVE = "INACTIVE", "Inactivo"
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        related_name="suppliers",
+    )
+    name = models.CharField(max_length=200)
+    contact_name = models.CharField(
+        max_length=150,
+        blank=True,
+    )
+    email = models.EmailField(
+        blank=True,
+    )
+    phone = models.CharField(
+        max_length=50,
+        blank=True,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["company_id", "name"]
+
+    def __str__(self):
+        return f"{self.company} - {self.name}"

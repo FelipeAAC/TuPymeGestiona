@@ -13,7 +13,7 @@ from organizations.models import (
     RoleAssignment,
 )
 
-from .models import Brand, Category, Product, ProductVariant
+from .models import Brand, Category, Product, ProductVariant, Supplier
 from .views import (
     BRANDS_MANAGE_PERMISSION_CODE,
     CATEGORIES_MANAGE_PERMISSION_CODE,
@@ -212,6 +212,103 @@ class CatalogModelsTests(TestCase):
         self.assertEqual(
             variant_a.sku,
             variant_b.sku,
+        )
+
+    def test_supplier_can_be_created_for_company(self):
+        supplier = Supplier.objects.create(
+            company=self.company_a,
+            name="Proveedor A",
+            contact_name="Contacto A",
+            email="contacto@proveedora.cl",
+            phone="+56 9 1234 5678",
+        )
+
+        self.assertEqual(
+            supplier.company,
+            self.company_a,
+        )
+        self.assertEqual(
+            supplier.name,
+            "Proveedor A",
+        )
+        self.assertEqual(
+            supplier.contact_name,
+            "Contacto A",
+        )
+        self.assertEqual(
+            supplier.email,
+            "contacto@proveedora.cl",
+        )
+        self.assertEqual(
+            supplier.phone,
+            "+56 9 1234 5678",
+        )
+
+    def test_supplier_contact_fields_can_be_blank(self):
+        supplier = Supplier.objects.create(
+            company=self.company_a,
+            name="Proveedor Sin Contacto",
+        )
+
+        self.assertEqual(supplier.contact_name, "")
+        self.assertEqual(supplier.email, "")
+        self.assertEqual(supplier.phone, "")
+
+    def test_supplier_defaults_to_active(self):
+        supplier = Supplier.objects.create(
+            company=self.company_a,
+            name="Proveedor Activo",
+        )
+
+        self.assertEqual(
+            supplier.status,
+            Supplier.Status.ACTIVE,
+        )
+
+    def test_supplier_can_be_inactive(self):
+        supplier = Supplier.objects.create(
+            company=self.company_a,
+            name="Proveedor Inactivo",
+            status=Supplier.Status.INACTIVE,
+        )
+
+        self.assertEqual(
+            supplier.status,
+            Supplier.Status.INACTIVE,
+        )
+
+    def test_suppliers_are_scoped_by_company(self):
+        supplier_a = Supplier.objects.create(
+            company=self.company_a,
+            name="Proveedor Empresa A",
+        )
+        supplier_b = Supplier.objects.create(
+            company=self.company_b,
+            name="Proveedor Empresa B",
+        )
+
+        self.assertIn(
+            supplier_a,
+            self.company_a.suppliers.all(),
+        )
+        self.assertNotIn(
+            supplier_b,
+            self.company_a.suppliers.all(),
+        )
+        self.assertIn(
+            supplier_b,
+            self.company_b.suppliers.all(),
+        )
+
+    def test_supplier_string_representation(self):
+        supplier = Supplier.objects.create(
+            company=self.company_a,
+            name="Proveedor Principal",
+        )
+
+        self.assertEqual(
+            str(supplier),
+            f"{self.company_a} - Proveedor Principal",
         )
 
 
@@ -1212,6 +1309,18 @@ class BrandPermissionSeedTests(TestCase):
     def test_brands_manage_permission_is_seeded(self):
         permission = Permission.objects.get(
             code="catalog.brands.manage",
+        )
+
+        self.assertEqual(
+            permission.scope_behavior,
+            Permission.ScopeBehavior.COMPANY_ONLY,
+        )
+
+
+class SupplierPermissionSeedTests(TestCase):
+    def test_suppliers_manage_permission_is_seeded(self):
+        permission = Permission.objects.get(
+            code="catalog.suppliers.manage",
         )
 
         self.assertEqual(
