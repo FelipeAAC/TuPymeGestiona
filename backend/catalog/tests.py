@@ -19,6 +19,7 @@ from .views import (
     CATEGORIES_MANAGE_PERMISSION_CODE,
     PRODUCTS_MANAGE_PERMISSION_CODE,
     PRODUCTS_VIEW_PERMISSION_CODE,
+    SUPPLIERS_MANAGE_PERMISSION_CODE,
 )
 
 
@@ -2027,6 +2028,462 @@ class BrandListCreateApiTests(TestCase):
 
     def test_suspended_membership_does_not_authorize_brand_list(self):
         self.grant_brands_manage()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+class SupplierListCreateApiTests(TestCase):
+    def setUp(self):
+        self.url = "/api/catalog/suppliers/"
+
+        self.user = User.objects.create_user(
+            username="catalog-supplier-user",
+            email="catalog-supplier-user@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(
+            name="Empresa Supplier A",
+        )
+        self.company_b = Company.objects.create(
+            name="Empresa Supplier B",
+        )
+
+        self.membership_a = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.supplier_a = Supplier.objects.create(
+            company=self.company_a,
+            name="Proveedor Existente A",
+            contact_name="Contacto A",
+            email="proveedor-a@example.com",
+            phone="+56 9 1111 1111",
+        )
+
+        self.supplier_b = Supplier.objects.create(
+            company=self.company_b,
+            name="Proveedor Existente B",
+            contact_name="Contacto B",
+            email="proveedor-b@example.com",
+            phone="+56 9 2222 2222",
+        )
+
+    def grant_suppliers_manage(self):
+        permission = Permission.objects.get(
+            code=SUPPLIERS_MANAGE_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Supplier Manager",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+    def test_supplier_create_requires_authentication(self):
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Proveedor Nuevo",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_supplier_create_requires_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "name": "Proveedor Nuevo",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_supplier_create_rejects_invalid_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": "invalid",
+                "name": "Proveedor Nuevo",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_supplier_create_denies_company_without_active_membership(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_b.pk,
+                "name": "Proveedor Nuevo",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_supplier_create_denies_without_manage_permission(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Proveedor Nuevo",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_brands_manage_permission_does_not_allow_supplier_create(self):
+        permission = Permission.objects.get(
+            code=BRANDS_MANAGE_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Brands Supplier Test",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Proveedor Nuevo",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_supplier_create_creates_supplier_for_company(self):
+        self.grant_suppliers_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Proveedor Nuevo",
+                "contact_name": "Juan Perez",
+                "email": "juan@example.com",
+                "phone": "+56 9 3333 3333",
+                "status": Supplier.Status.ACTIVE,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        supplier = Supplier.objects.get(
+            company=self.company_a,
+            name="Proveedor Nuevo",
+        )
+
+        self.assertEqual(
+            response.json()["supplier"],
+            {
+                "id": supplier.pk,
+                "name": "Proveedor Nuevo",
+                "contact_name": "Juan Perez",
+                "email": "juan@example.com",
+                "phone": "+56 9 3333 3333",
+                "status": Supplier.Status.ACTIVE,
+            },
+        )
+
+    def test_supplier_create_allows_optional_contact_fields(self):
+        self.grant_suppliers_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Proveedor Basico",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        supplier = Supplier.objects.get(
+            company=self.company_a,
+            name="Proveedor Basico",
+        )
+
+        self.assertEqual(supplier.contact_name, "")
+        self.assertEqual(supplier.email, "")
+        self.assertEqual(supplier.phone, "")
+        self.assertEqual(
+            supplier.status,
+            Supplier.Status.ACTIVE,
+        )
+
+    def test_supplier_create_rejects_invalid_email(self):
+        self.grant_suppliers_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Proveedor Email Invalido",
+                "email": "correo-invalido",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            Supplier.objects.filter(
+                company=self.company_a,
+                name="Proveedor Email Invalido",
+            ).exists()
+        )
+
+    def test_supplier_create_rejects_invalid_status(self):
+        self.grant_suppliers_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Proveedor Estado Invalido",
+                "status": "INVALID",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            Supplier.objects.filter(
+                company=self.company_a,
+                name="Proveedor Estado Invalido",
+            ).exists()
+        )
+
+    def test_suspended_membership_does_not_authorize_supplier_create(self):
+        self.grant_suppliers_manage()
+
+        self.membership_a.status = CompanyMembership.Status.SUSPENDED
+        self.membership_a.save(
+            update_fields=["status"],
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.url,
+            {
+                "company": self.company_a.pk,
+                "name": "Proveedor Nuevo",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_supplier_list_requires_authentication(self):
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_supplier_list_requires_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_supplier_list_rejects_invalid_company(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": "invalid",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_supplier_list_denies_company_without_active_membership(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_b.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_supplier_list_denies_without_manage_permission(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_brands_manage_permission_does_not_allow_supplier_list(self):
+        permission = Permission.objects.get(
+            code=BRANDS_MANAGE_PERMISSION_CODE,
+        )
+
+        role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Catalog Brands Supplier List Test",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=role,
+            permission=permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership_a,
+            role=role,
+            branch=None,
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_supplier_list_returns_only_company_suppliers(self):
+        second_supplier_a = Supplier.objects.create(
+            company=self.company_a,
+            name="Proveedor Segundo A",
+            contact_name="Contacto Segundo",
+            email="segundo@example.com",
+            phone="+56 9 4444 4444",
+            status=Supplier.Status.INACTIVE,
+        )
+
+        self.grant_suppliers_manage()
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                "company": self.company_a.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        suppliers = response.json()["suppliers"]
+
+        self.assertEqual(
+            suppliers,
+            [
+                {
+                    "id": self.supplier_a.pk,
+                    "name": "Proveedor Existente A",
+                    "contact_name": "Contacto A",
+                    "email": "proveedor-a@example.com",
+                    "phone": "+56 9 1111 1111",
+                    "status": Supplier.Status.ACTIVE,
+                },
+                {
+                    "id": second_supplier_a.pk,
+                    "name": "Proveedor Segundo A",
+                    "contact_name": "Contacto Segundo",
+                    "email": "segundo@example.com",
+                    "phone": "+56 9 4444 4444",
+                    "status": Supplier.Status.INACTIVE,
+                },
+            ],
+        )
+
+        supplier_ids = {
+            supplier["id"]
+            for supplier in suppliers
+        }
+
+        self.assertNotIn(
+            self.supplier_b.pk,
+            supplier_ids,
+        )
+
+    def test_suspended_membership_does_not_authorize_supplier_list(self):
+        self.grant_suppliers_manage()
 
         self.membership_a.status = CompanyMembership.Status.SUSPENDED
         self.membership_a.save(

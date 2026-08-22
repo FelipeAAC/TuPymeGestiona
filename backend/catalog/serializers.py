@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers
 
-from catalog.models import Brand, Category, Product, ProductVariant
+from catalog.models import Brand, Category, Product, ProductVariant, Supplier
 
 
 def _validation_error_detail(exc):
@@ -90,6 +90,60 @@ class BrandCreateSerializer(serializers.Serializer):
 
         try:
             return Brand.objects.create(
+                company=company,
+                **validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                _validation_error_detail(exc),
+            ) from exc
+
+
+class SupplierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Supplier
+        fields = (
+            "id",
+            "name",
+            "contact_name",
+            "email",
+            "phone",
+            "status",
+        )
+
+
+class SupplierCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(
+        max_length=200,
+    )
+    contact_name = serializers.CharField(
+        max_length=150,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    email = serializers.EmailField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    phone = serializers.CharField(
+        max_length=50,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    status = serializers.ChoiceField(
+        choices=Supplier.Status.choices,
+        required=False,
+        default=Supplier.Status.ACTIVE,
+    )
+
+    def create(self, validated_data):
+        company = self.context["company"]
+
+        try:
+            return Supplier.objects.create(
                 company=company,
                 **validated_data,
             )

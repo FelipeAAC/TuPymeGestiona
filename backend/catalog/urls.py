@@ -39,4 +39,9 @@ urlpatterns = [
         views.brand_list_create_view,
         name="catalog-brand-list-create",
     ),
+    path(
+        "suppliers/",
+        views.supplier_list_create_view,
+        name="catalog-supplier-list-create",
+    ),
 ]
