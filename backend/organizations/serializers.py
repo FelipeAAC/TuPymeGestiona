@@ -1,6 +1,11 @@
 from rest_framework import serializers
 
-from organizations.models import Branch, Company, CompanyMembership
+from organizations.models import (
+    Branch,
+    Company,
+    CompanyMembership,
+    Warehouse,
+)
 
 
 class CompanySerializer(serializers.ModelSerializer):
@@ -42,3 +47,46 @@ class OrganizationContextMembershipSerializer(serializers.ModelSerializer):
         ]
 
         return BranchSerializer(branches, many=True).data
+
+
+class WarehouseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Warehouse
+        fields = (
+            "id",
+            "company",
+            "branch",
+            "code",
+            "name",
+        )
+
+
+class WarehouseCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Warehouse
+        fields = (
+            "company",
+            "branch",
+            "code",
+            "name",
+        )
+
+    def validate(self, attrs):
+        company = self.context["company"]
+        branch = attrs.get("branch")
+
+        if branch is not None and branch.company_id != company.id:
+            raise serializers.ValidationError(
+                {
+                    "branch": (
+                        "La sucursal debe pertenecer a la misma empresa que la bodega."
+                    )
+                }
+            )
+
+        return attrs
+
+    def create(self, validated_data):
+        return Warehouse.objects.create(
+            **validated_data,
+        )
