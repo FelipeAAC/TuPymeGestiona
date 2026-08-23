@@ -127,6 +127,18 @@ class OrganizationModelsTests(TestCase):
         self.assertNotEqual(warehouse_a.company, warehouse_b.company)
 
 
+class WarehousePermissionSeedTests(TestCase):
+    def test_warehouses_manage_permission_is_seeded(self):
+        permission = Permission.objects.get(
+            code="organizations.warehouses.manage",
+        )
+
+        self.assertEqual(
+            permission.scope_behavior,
+            Permission.ScopeBehavior.BRANCH_SCOPED,
+        )
+
+
 class CompanyMembershipModelsTests(TestCase):
     def setUp(self):
         self.company_a = Company.objects.create(name="Empresa A")
