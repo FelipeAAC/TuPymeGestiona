@@ -90,3 +90,28 @@ class WarehouseCreateSerializer(serializers.ModelSerializer):
         return Warehouse.objects.create(
             **validated_data,
         )
+
+
+class WarehouseUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Warehouse
+        fields = (
+            "branch",
+            "code",
+            "name",
+        )
+
+    def validate(self, attrs):
+        company = self.context["company"]
+        branch = attrs.get("branch")
+
+        if branch is not None and branch.company_id != company.id:
+            raise serializers.ValidationError(
+                {
+                    "branch": (
+                        "La sucursal debe pertenecer a la misma empresa que la bodega."
+                    )
+                }
+            )
+
+        return attrs

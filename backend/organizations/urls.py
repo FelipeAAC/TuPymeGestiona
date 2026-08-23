@@ -14,4 +14,9 @@ urlpatterns = [
         views.warehouse_list_create_view,
         name="warehouse-list-create",
     ),
+    path(
+        "warehouses/<int:warehouse_id>/",
+        views.warehouse_detail_view,
+        name="warehouse-detail",
+    ),
 ]

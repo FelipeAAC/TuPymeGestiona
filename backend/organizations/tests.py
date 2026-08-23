@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
+from django.urls import reverse
 
 from .authorization import has_permission
 from .models import (
@@ -1304,4 +1305,115 @@ class OrganizationContextApiTests(TestCase):
                 self.branch_a.id,
                 self.branch_a_2.id,
             },
+        )
+
+
+class WarehouseDetailUpdateApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="warehouse-api-user",
+            email="warehouse-api@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(
+            name="Empresa Warehouse A",
+        )
+
+        self.company_b = Company.objects.create(
+            name="Empresa Warehouse B",
+        )
+
+        self.branch_a = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-WH-A",
+            name="Sucursal Warehouse A",
+        )
+
+        self.branch_b = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-WH-B",
+            name="Sucursal Warehouse B",
+        )
+
+        self.other_company_branch = Branch.objects.create(
+            company=self.company_b,
+            code="SUC-WH-C",
+            name="Sucursal Warehouse C",
+        )
+
+        self.membership = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company_a,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        MembershipBranch.objects.create(
+            membership=self.membership,
+            branch=self.branch_a,
+        )
+
+        self.permission = Permission.objects.get(
+            code="organizations.warehouses.manage",
+        )
+
+        self.role = CompanyRole.objects.create(
+            company=self.company_a,
+            name="Administrador Bodegas",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=self.role,
+            permission=self.permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership,
+            role=self.role,
+            branch=self.branch_a,
+        )
+
+        self.warehouse = Warehouse.objects.create(
+            company=self.company_a,
+            branch=self.branch_a,
+            code="BOD-001",
+            name="Bodega Principal",
+        )
+
+
+    def test_detail_returns_authorized_warehouse(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            f"/api/organizations/warehouses/{self.warehouse.id}/?company={self.company_a.id}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(
+            response.json()["warehouse"]["id"],
+            self.warehouse.id,
+        )
+
+
+    def test_update_changes_warehouse_name(self):
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            f"/api/organizations/warehouses/{self.warehouse.id}/",
+            {
+                "company": self.company_a.id,
+                "name": "Bodega Actualizada",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.warehouse.refresh_from_db()
+
+        self.assertEqual(
+            self.warehouse.name,
+            "Bodega Actualizada",
         )

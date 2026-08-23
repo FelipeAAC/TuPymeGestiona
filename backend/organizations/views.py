@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from organizations.authorization import has_permission
 from organizations.models import (
     CompanyMembership,
+    CompanyRole,
     RoleAssignment,
     Warehouse,
 )
@@ -13,6 +14,7 @@ from organizations.serializers import (
     OrganizationContextMembershipSerializer,
     WarehouseCreateSerializer,
     WarehouseSerializer,
+    WarehouseUpdateSerializer,
 )
 
 
@@ -84,13 +86,6 @@ def _get_authorized_warehouses(
     user,
     company,
 ):
-    if not has_permission(
-        user=user,
-        company=company,
-        permission_code=WAREHOUSES_MANAGE_PERMISSION_CODE,
-    ):
-        return Warehouse.objects.none()
-
     assignments = RoleAssignment.objects.filter(
         membership__user=user,
         membership__company=company,
@@ -98,7 +93,11 @@ def _get_authorized_warehouses(
         role__permission_links__permission__code=(
             WAREHOUSES_MANAGE_PERMISSION_CODE
         ),
+        role__status=CompanyRole.Status.ACTIVE,
     )
+
+    if not assignments.exists():
+        return Warehouse.objects.none()
 
     if assignments.filter(
         branch__isnull=True,
@@ -278,4 +277,176 @@ def _create_warehouse(request):
             ).data,
         },
         status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def warehouse_detail_view(request, warehouse_id):
+    if request.method == "PATCH":
+        return _update_warehouse(
+            request,
+            warehouse_id=warehouse_id,
+        )
+
+    return _retrieve_warehouse(
+        request,
+        warehouse_id=warehouse_id,
+    )
+
+
+def _retrieve_warehouse(request, *, warehouse_id):
+    raw_company_id = request.query_params.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El parametro company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El parametro company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    warehouses = _get_authorized_warehouses(
+        user=request.user,
+        company=membership.company,
+    )
+
+    warehouse = warehouses.filter(
+        id=warehouse_id,
+    ).first()
+
+    if warehouse is None:
+        return Response(
+            {
+                "detail": "Bodega no encontrada.",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    return Response(
+        {
+            "warehouse": WarehouseSerializer(
+                warehouse,
+            ).data,
+        }
+    )
+
+
+def _update_warehouse(request, *, warehouse_id):
+    raw_company_id = request.data.get("company")
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": "El campo company es obligatorio.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(raw_company_id)
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": "El campo company debe ser un entero valido.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": "No tienes acceso a esta empresa.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    warehouses = _get_authorized_warehouses(
+        user=request.user,
+        company=company,
+    )
+
+    warehouse = warehouses.filter(
+        id=warehouse_id,
+    ).first()
+
+    if warehouse is None:
+        return Response(
+            {
+                "detail": "Bodega no encontrada.",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    serializer = WarehouseUpdateSerializer(
+        warehouse,
+        data=request.data,
+        partial=True,
+        context={
+            "company": company,
+        },
+    )
+
+    serializer.is_valid(
+        raise_exception=True,
+    )
+
+    branch = serializer.validated_data.get(
+        "branch",
+        warehouse.branch,
+    )
+
+    if not _can_manage_warehouse_branch(
+        user=request.user,
+        company=company,
+        branch=branch,
+    ):
+        return Response(
+            {
+                "detail": (
+                    "No tienes permiso para administrar "
+                    "esta sucursal de la bodega."
+                ),
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    warehouse = serializer.save()
+
+    return Response(
+        {
+            "warehouse": WarehouseSerializer(
+                warehouse,
+            ).data,
+        }
     )
