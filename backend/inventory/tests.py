@@ -21,7 +21,10 @@ from organizations.models import (
     Warehouse,
 )
 
-from .models import InventoryStock
+from .models import (
+    InventoryMovement,
+    InventoryStock,
+)
 
 
 User = get_user_model()
@@ -366,4 +369,226 @@ class InventoryStockApiTests(TestCase):
         self.assertEqual(
             response.status_code,
             403,
+        )
+
+
+class InventoryMovementModelsTests(TestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="inventory-movement-user",
+            email="inventory-movement@example.com",
+            password="test-password",
+        )
+
+        self.company_a = Company.objects.create(
+            name="Empresa Movimiento A",
+        )
+        self.company_b = Company.objects.create(
+            name="Empresa Movimiento B",
+        )
+
+        self.branch_a = Branch.objects.create(
+            company=self.company_a,
+            code="SUC-MOV-A",
+            name="Sucursal Movimiento A",
+        )
+
+        self.warehouse_a = Warehouse.objects.create(
+            company=self.company_a,
+            branch=self.branch_a,
+            code="BOD-MOV-A",
+            name="Bodega Movimiento A",
+        )
+
+        self.warehouse_b = Warehouse.objects.create(
+            company=self.company_b,
+            code="BOD-MOV-B",
+            name="Bodega Movimiento B",
+        )
+
+        self.category_a = Category.objects.create(
+            company=self.company_a,
+            name="Categoria Movimiento A",
+        )
+        self.category_b = Category.objects.create(
+            company=self.company_b,
+            name="Categoria Movimiento B",
+        )
+
+        self.product_a = Product.objects.create(
+            company=self.company_a,
+            category=self.category_a,
+            name="Producto Movimiento A",
+            status=Product.Status.ACTIVE,
+        )
+        self.product_b = Product.objects.create(
+            company=self.company_b,
+            category=self.category_b,
+            name="Producto Movimiento B",
+            status=Product.Status.ACTIVE,
+        )
+
+        self.variant_a = ProductVariant.objects.create(
+            product=self.product_a,
+            sku="SKU-MOV-A",
+            base_price=100,
+            status=ProductVariant.Status.ACTIVE,
+        )
+        self.variant_b = ProductVariant.objects.create(
+            product=self.product_b,
+            sku="SKU-MOV-B",
+            base_price=200,
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+    def test_entry_movement_can_be_created(self):
+        movement = InventoryMovement.objects.create(
+            warehouse=self.warehouse_a,
+            variant=self.variant_a,
+            movement_type=InventoryMovement.MovementType.ENTRY,
+            quantity_delta=10,
+            created_by=self.user,
+        )
+
+        self.assertIsNotNone(
+            movement.pk,
+        )
+        self.assertEqual(
+            movement.movement_type,
+            InventoryMovement.MovementType.ENTRY,
+        )
+        self.assertEqual(
+            movement.quantity_delta,
+            10,
+        )
+        self.assertEqual(
+            movement.created_by,
+            self.user,
+        )
+
+    def test_exit_movement_can_be_created(self):
+        movement = InventoryMovement.objects.create(
+            warehouse=self.warehouse_a,
+            variant=self.variant_a,
+            movement_type=InventoryMovement.MovementType.EXIT,
+            quantity_delta=-5,
+            created_by=self.user,
+        )
+
+        self.assertIsNotNone(
+            movement.pk,
+        )
+        self.assertEqual(
+            movement.quantity_delta,
+            -5,
+        )
+
+    def test_adjustment_can_be_positive(self):
+        movement = InventoryMovement.objects.create(
+            warehouse=self.warehouse_a,
+            variant=self.variant_a,
+            movement_type=InventoryMovement.MovementType.ADJUSTMENT,
+            quantity_delta=3,
+            created_by=self.user,
+        )
+
+        self.assertEqual(
+            movement.quantity_delta,
+            3,
+        )
+
+    def test_adjustment_can_be_negative(self):
+        movement = InventoryMovement.objects.create(
+            warehouse=self.warehouse_a,
+            variant=self.variant_a,
+            movement_type=InventoryMovement.MovementType.ADJUSTMENT,
+            quantity_delta=-2,
+            created_by=self.user,
+        )
+
+        self.assertEqual(
+            movement.quantity_delta,
+            -2,
+        )
+
+    def test_movement_cannot_have_zero_quantity(self):
+        movement = InventoryMovement(
+            warehouse=self.warehouse_a,
+            variant=self.variant_a,
+            movement_type=InventoryMovement.MovementType.ADJUSTMENT,
+            quantity_delta=0,
+            created_by=self.user,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            movement.full_clean()
+
+        self.assertIn(
+            "quantity_delta",
+            context.exception.message_dict,
+        )
+
+    def test_entry_cannot_have_negative_quantity(self):
+        movement = InventoryMovement(
+            warehouse=self.warehouse_a,
+            variant=self.variant_a,
+            movement_type=InventoryMovement.MovementType.ENTRY,
+            quantity_delta=-10,
+            created_by=self.user,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            movement.full_clean()
+
+        self.assertIn(
+            "quantity_delta",
+            context.exception.message_dict,
+        )
+
+    def test_exit_cannot_have_positive_quantity(self):
+        movement = InventoryMovement(
+            warehouse=self.warehouse_a,
+            variant=self.variant_a,
+            movement_type=InventoryMovement.MovementType.EXIT,
+            quantity_delta=10,
+            created_by=self.user,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            movement.full_clean()
+
+        self.assertIn(
+            "quantity_delta",
+            context.exception.message_dict,
+        )
+
+    def test_movement_cannot_use_variant_from_another_company(self):
+        movement = InventoryMovement(
+            warehouse=self.warehouse_a,
+            variant=self.variant_b,
+            movement_type=InventoryMovement.MovementType.ENTRY,
+            quantity_delta=10,
+            created_by=self.user,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            movement.full_clean()
+
+        self.assertIn(
+            "variant",
+            context.exception.message_dict,
+        )
+
+
+class InventoryMovementPermissionSeedTests(TestCase):
+
+    def test_inventory_movements_permission_is_branch_scoped(self):
+        permission = Permission.objects.get(
+            code="inventory.movements.manage",
+        )
+
+        self.assertEqual(
+            permission.scope_behavior,
+            "BRANCH_SCOPED",
         )
