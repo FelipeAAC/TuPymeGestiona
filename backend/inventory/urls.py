@@ -9,4 +9,9 @@ urlpatterns = [
         views.stock_list_create_view,
         name="inventory-stock-list-create",
     ),
+    path(
+        "movements/",
+        views.movement_list_create_view,
+        name="inventory-movement-list-create",
+    ),
 ]

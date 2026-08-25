@@ -857,3 +857,295 @@ class InventoryMovementServiceTests(TestCase):
             InventoryMovement.objects.count(),
             0,
         )
+
+
+class InventoryMovementApiTests(TestCase):
+
+    def setUp(self):
+
+        self.user = User.objects.create_user(
+            username="inventory-movement-api-user",
+            email="inventory-movement-api@example.com",
+            password="test-password",
+        )
+
+        self.company = Company.objects.create(
+            name="Empresa Movement API",
+        )
+
+        self.branch = Branch.objects.create(
+            company=self.company,
+            code="SUC-MOV-API",
+            name="Sucursal Movement API",
+        )
+
+        self.membership = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        MembershipBranch.objects.create(
+            membership=self.membership,
+            branch=self.branch,
+        )
+
+        self.permission = Permission.objects.get(
+            code="inventory.movements.manage",
+        )
+
+        self.role = CompanyRole.objects.create(
+            company=self.company,
+            name="Administrador Movimientos",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+        CompanyRolePermission.objects.create(
+            role=self.role,
+            permission=self.permission,
+        )
+
+        RoleAssignment.objects.create(
+            membership=self.membership,
+            role=self.role,
+            branch=self.branch,
+        )
+
+        category = Category.objects.create(
+            company=self.company,
+            name="Categoria Movement API",
+        )
+
+        product = Product.objects.create(
+            company=self.company,
+            category=category,
+            name="Producto Movement API",
+            status=Product.Status.ACTIVE,
+        )
+
+        self.variant = ProductVariant.objects.create(
+            product=product,
+            sku="SKU-MOV-API",
+            base_price=100,
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+        self.warehouse = Warehouse.objects.create(
+            company=self.company,
+            branch=self.branch,
+            code="BOD-MOV-API",
+            name="Bodega Movement API",
+        )
+
+
+    def test_create_entry_movement_updates_stock(self):
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/api/inventory/movements/",
+            {
+                "company": self.company.id,
+                "warehouse": self.warehouse.id,
+                "variant": self.variant.id,
+                "movement_type": (
+                    InventoryMovement.MovementType.ENTRY
+                ),
+                "quantity_delta": "25.000",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            201,
+        )
+
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            1,
+        )
+
+        stock = InventoryStock.objects.get(
+            warehouse=self.warehouse,
+            variant=self.variant,
+        )
+
+        self.assertEqual(
+            stock.quantity,
+            Decimal("25.000"),
+        )
+
+
+    def test_list_returns_authorized_movements(self):
+
+        apply_inventory_movement(
+            warehouse=self.warehouse,
+            variant=self.variant,
+            movement_type=(
+                InventoryMovement.MovementType.ENTRY
+            ),
+            quantity_delta=Decimal("10.000"),
+            created_by=self.user,
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            f"/api/inventory/movements/?company={self.company.id}",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        movements = response.json()["movements"]
+
+        self.assertEqual(
+            len(movements),
+            1,
+        )
+
+    def test_create_movement_denies_other_branch(self):
+
+        other_branch = Branch.objects.create(
+            company=self.company,
+            code="SUC-MOV-OTHER",
+            name="Sucursal Otra",
+        )
+
+        other_warehouse = Warehouse.objects.create(
+            company=self.company,
+            branch=other_branch,
+            code="BOD-MOV-OTHER",
+            name="Bodega Otra",
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/api/inventory/movements/",
+            {
+                "company": self.company.id,
+                "warehouse": other_warehouse.id,
+                "variant": self.variant.id,
+                "movement_type": (
+                    InventoryMovement.MovementType.ENTRY
+                ),
+                "quantity_delta": "10.000",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            403,
+        )
+
+    def test_create_movement_denies_variant_from_other_company(self):
+
+        company_b = Company.objects.create(
+            name="Empresa B Movement API",
+        )
+
+        category_b = Category.objects.create(
+            company=company_b,
+            name="Categoria B",
+        )
+
+        product_b = Product.objects.create(
+            company=company_b,
+            category=category_b,
+            name="Producto B",
+            status=Product.Status.ACTIVE,
+        )
+
+        variant_b = ProductVariant.objects.create(
+            product=product_b,
+            sku="SKU-MOV-B",
+            base_price=100,
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/api/inventory/movements/",
+            {
+                "company": self.company.id,
+                "warehouse": self.warehouse.id,
+                "variant": variant_b.id,
+                "movement_type": (
+                    InventoryMovement.MovementType.ENTRY
+                ),
+                "quantity_delta": "10.000",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+    def test_create_movement_without_permission_is_denied(self):
+
+        RoleAssignment.objects.all().delete()
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/api/inventory/movements/",
+            {
+                "company": self.company.id,
+                "warehouse": self.warehouse.id,
+                "variant": self.variant.id,
+                "movement_type": (
+                    InventoryMovement.MovementType.ENTRY
+                ),
+                "quantity_delta": "10.000",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            403,
+        )
+
+
+    def test_exit_without_stock_is_rejected(self):
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/api/inventory/movements/",
+            {
+                "company": self.company.id,
+                "warehouse": self.warehouse.id,
+                "variant": self.variant.id,
+                "movement_type": (
+                    InventoryMovement.MovementType.EXIT
+                ),
+                "quantity_delta": "-5.000",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            0,
+        )
+
+        self.assertFalse(
+            InventoryStock.objects.filter(
+                warehouse=self.warehouse,
+                variant=self.variant,
+            ).exists()
+        )
