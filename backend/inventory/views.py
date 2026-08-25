@@ -374,6 +374,11 @@ def _list_movements(request):
         company=membership.company,
     )
 
+    movements = _filter_movements(
+        movements=movements,
+        request=request,
+    )
+
     return Response(
         {
             "movements": InventoryMovementSerializer(
@@ -382,6 +387,45 @@ def _list_movements(request):
             ).data,
         }
     )
+
+
+def _filter_movements(
+    *,
+    movements,
+    request,
+):
+
+    warehouse_id = request.query_params.get(
+        "warehouse",
+    )
+
+    if warehouse_id not in (None, ""):
+        movements = movements.filter(
+            warehouse_id=warehouse_id,
+        )
+
+
+    variant_id = request.query_params.get(
+        "variant",
+    )
+
+    if variant_id not in (None, ""):
+        movements = movements.filter(
+            variant_id=variant_id,
+        )
+
+
+    movement_type = request.query_params.get(
+        "movement_type",
+    )
+
+    if movement_type not in (None, ""):
+        movements = movements.filter(
+            movement_type=movement_type,
+        )
+
+
+    return movements
 
 
 def _create_movement(request):

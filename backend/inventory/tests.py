@@ -1149,3 +1149,48 @@ class InventoryMovementApiTests(TestCase):
                 variant=self.variant,
             ).exists()
         )
+
+    def test_list_movements_filters_by_type(self):
+
+        InventoryMovement.objects.create(
+            warehouse=self.warehouse,
+            variant=self.variant,
+            movement_type=InventoryMovement.MovementType.ENTRY,
+            quantity_delta=10,
+            created_by=self.user,
+        )
+
+        InventoryMovement.objects.create(
+            warehouse=self.warehouse,
+            variant=self.variant,
+            movement_type=InventoryMovement.MovementType.EXIT,
+            quantity_delta=-3,
+            created_by=self.user,
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            (
+                "/api/inventory/movements/"
+                f"?company={self.company.id}"
+                "&movement_type=ENTRY"
+            ),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        movements = response.json()["movements"]
+
+        self.assertEqual(
+            len(movements),
+            1,
+        )
+
+        self.assertEqual(
+            movements[0]["movement_type"],
+            InventoryMovement.MovementType.ENTRY,
+        )
