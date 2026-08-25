@@ -1,3 +1,6 @@
+from decimal import Decimal
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -26,6 +29,7 @@ from .models import (
     InventoryStock,
 )
 
+from .services import apply_inventory_movement
 
 User = get_user_model()
 
@@ -591,4 +595,265 @@ class InventoryMovementPermissionSeedTests(TestCase):
         self.assertEqual(
             permission.scope_behavior,
             "BRANCH_SCOPED",
+        )
+
+
+class InventoryMovementServiceTests(TestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="inventory-service-user",
+            email="inventory-service@example.com",
+            password="test-password",
+        )
+
+        self.company = Company.objects.create(
+            name="Empresa Inventory Service",
+        )
+
+        self.branch = Branch.objects.create(
+            company=self.company,
+            code="SUC-SERVICE",
+            name="Sucursal Service",
+        )
+
+        self.warehouse = Warehouse.objects.create(
+            company=self.company,
+            branch=self.branch,
+            code="BOD-SERVICE",
+            name="Bodega Service",
+        )
+
+        self.category = Category.objects.create(
+            company=self.company,
+            name="Categoria Service",
+        )
+
+        self.product = Product.objects.create(
+            company=self.company,
+            category=self.category,
+            name="Producto Service",
+            status=Product.Status.ACTIVE,
+        )
+
+        self.variant = ProductVariant.objects.create(
+            product=self.product,
+            sku="SKU-SERVICE",
+            base_price=100,
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+    def create_stock(self, quantity):
+        return InventoryStock.objects.create(
+            warehouse=self.warehouse,
+            variant=self.variant,
+            quantity=Decimal(quantity),
+        )
+
+    def test_entry_increases_existing_stock(self):
+        stock = self.create_stock("10.000")
+
+        movement, returned_stock = apply_inventory_movement(
+            warehouse=self.warehouse,
+            variant=self.variant,
+            movement_type=InventoryMovement.MovementType.ENTRY,
+            quantity_delta=Decimal("5.000"),
+            created_by=self.user,
+        )
+
+        stock.refresh_from_db()
+
+        self.assertEqual(
+            stock.quantity,
+            Decimal("15.000"),
+        )
+        self.assertEqual(
+            returned_stock.pk,
+            stock.pk,
+        )
+        self.assertEqual(
+            movement.quantity_delta,
+            Decimal("5.000"),
+        )
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            1,
+        )
+
+    def test_entry_creates_stock_when_it_does_not_exist(self):
+        movement, stock = apply_inventory_movement(
+            warehouse=self.warehouse,
+            variant=self.variant,
+            movement_type=InventoryMovement.MovementType.ENTRY,
+            quantity_delta=Decimal("5.000"),
+            created_by=self.user,
+        )
+
+        self.assertEqual(
+            stock.quantity,
+            Decimal("5.000"),
+        )
+        self.assertEqual(
+            InventoryStock.objects.count(),
+            1,
+        )
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            1,
+        )
+        self.assertEqual(
+            movement.warehouse,
+            self.warehouse,
+        )
+
+    def test_exit_decreases_existing_stock(self):
+        stock = self.create_stock("10.000")
+
+        apply_inventory_movement(
+            warehouse=self.warehouse,
+            variant=self.variant,
+            movement_type=InventoryMovement.MovementType.EXIT,
+            quantity_delta=Decimal("-4.000"),
+            created_by=self.user,
+        )
+
+        stock.refresh_from_db()
+
+        self.assertEqual(
+            stock.quantity,
+            Decimal("6.000"),
+        )
+
+    def test_positive_adjustment_increases_stock(self):
+        stock = self.create_stock("10.000")
+
+        apply_inventory_movement(
+            warehouse=self.warehouse,
+            variant=self.variant,
+            movement_type=InventoryMovement.MovementType.ADJUSTMENT,
+            quantity_delta=Decimal("2.000"),
+            created_by=self.user,
+        )
+
+        stock.refresh_from_db()
+
+        self.assertEqual(
+            stock.quantity,
+            Decimal("12.000"),
+        )
+
+    def test_negative_adjustment_decreases_stock(self):
+        stock = self.create_stock("10.000")
+
+        apply_inventory_movement(
+            warehouse=self.warehouse,
+            variant=self.variant,
+            movement_type=InventoryMovement.MovementType.ADJUSTMENT,
+            quantity_delta=Decimal("-3.000"),
+            created_by=self.user,
+        )
+
+        stock.refresh_from_db()
+
+        self.assertEqual(
+            stock.quantity,
+            Decimal("7.000"),
+        )
+
+    def test_movement_cannot_leave_negative_stock(self):
+        stock = self.create_stock("3.000")
+
+        with self.assertRaises(ValidationError):
+            apply_inventory_movement(
+                warehouse=self.warehouse,
+                variant=self.variant,
+                movement_type=InventoryMovement.MovementType.EXIT,
+                quantity_delta=Decimal("-5.000"),
+                created_by=self.user,
+            )
+
+        stock.refresh_from_db()
+
+        self.assertEqual(
+            stock.quantity,
+            Decimal("3.000"),
+        )
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            0,
+        )
+
+    def test_negative_movement_without_stock_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            apply_inventory_movement(
+                warehouse=self.warehouse,
+                variant=self.variant,
+                movement_type=InventoryMovement.MovementType.EXIT,
+                quantity_delta=Decimal("-1.000"),
+                created_by=self.user,
+            )
+
+        self.assertFalse(
+            InventoryStock.objects.filter(
+                warehouse=self.warehouse,
+                variant=self.variant,
+            ).exists()
+        )
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            0,
+        )
+
+    def test_invalid_entry_does_not_modify_stock(self):
+        stock = self.create_stock("10.000")
+
+        with self.assertRaises(ValidationError):
+            apply_inventory_movement(
+                warehouse=self.warehouse,
+                variant=self.variant,
+                movement_type=InventoryMovement.MovementType.ENTRY,
+                quantity_delta=Decimal("-2.000"),
+                created_by=self.user,
+            )
+
+        stock.refresh_from_db()
+
+        self.assertEqual(
+            stock.quantity,
+            Decimal("10.000"),
+        )
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            0,
+        )
+
+    def test_transaction_rolls_back_stock_if_movement_save_fails(self):
+        stock = self.create_stock("10.000")
+
+        with patch(
+            "inventory.services.InventoryMovement.save",
+            side_effect=RuntimeError(
+                "Error simulado al guardar movimiento."
+            ),
+        ):
+            with self.assertRaises(RuntimeError):
+                apply_inventory_movement(
+                    warehouse=self.warehouse,
+                    variant=self.variant,
+                    movement_type=(
+                        InventoryMovement.MovementType.ENTRY
+                    ),
+                    quantity_delta=Decimal("5.000"),
+                    created_by=self.user,
+                )
+
+        stock.refresh_from_db()
+
+        self.assertEqual(
+            stock.quantity,
+            Decimal("10.000"),
+        )
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            0,
         )
