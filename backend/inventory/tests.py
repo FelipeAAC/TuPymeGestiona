@@ -1713,3 +1713,125 @@ class InventoryTransferApiTests(TestCase):
             response.status_code,
             403,
         )
+
+
+    def test_list_transfers_returns_authorized_transfers(self):
+
+        self.client.force_login(
+            self.user,
+        )
+
+        transfer = InventoryTransfer.objects.create(
+            company=self.company,
+            source_warehouse=self.source,
+            destination_warehouse=self.destination,
+            created_by=self.user,
+        )
+
+        InventoryTransferItem.objects.create(
+            transfer=transfer,
+            variant=self.variant,
+            quantity=Decimal("20.000"),
+        )
+
+        response = self.client.get(
+            "/api/inventory/transfers/",
+            {
+                "company": self.company.id,
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            len(response.data["transfers"]),
+            1,
+        )
+
+        self.assertEqual(
+            response.data["transfers"][0]["id"],
+            transfer.id,
+        )
+
+        self.assertEqual(
+            len(
+                response.data["transfers"][0]["items"]
+            ),
+            1,
+        )
+
+
+    def test_list_transfers_without_permission_returns_empty_list(self):
+
+        RoleAssignment.objects.all().delete()
+
+        self.client.force_login(
+            self.user,
+        )
+
+        InventoryTransfer.objects.create(
+            company=self.company,
+            source_warehouse=self.source,
+            destination_warehouse=self.destination,
+            created_by=self.user,
+        )
+
+        response = self.client.get(
+            "/api/inventory/transfers/",
+            {
+                "company": self.company.id,
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response.data["transfers"],
+            [],
+        )
+
+
+    def test_list_transfers_by_destination_branch_permission(self):
+
+        RoleAssignment.objects.filter(
+            branch=self.branch_a,
+        ).delete()
+
+        self.client.force_login(
+            self.user,
+        )
+
+        transfer = InventoryTransfer.objects.create(
+            company=self.company,
+            source_warehouse=self.source,
+            destination_warehouse=self.destination,
+            created_by=self.user,
+        )
+
+        response = self.client.get(
+            "/api/inventory/transfers/",
+            {
+                "company": self.company.id,
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            len(response.data["transfers"]),
+            1,
+        )
+
+        self.assertEqual(
+            response.data["transfers"][0]["id"],
+            transfer.id,
+        )

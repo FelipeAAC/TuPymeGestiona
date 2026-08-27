@@ -9,8 +9,10 @@ from inventory.models import (
 
 
 class InventoryStockSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = InventoryStock
+
         fields = (
             "id",
             "warehouse",
@@ -22,8 +24,10 @@ class InventoryStockSerializer(serializers.ModelSerializer):
 
 
 class InventoryStockCreateSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = InventoryStock
+
         fields = (
             "warehouse",
             "variant",
@@ -31,6 +35,7 @@ class InventoryStockCreateSerializer(serializers.ModelSerializer):
         )
 
     def validate(self, attrs):
+
         company = self.context["company"]
 
         warehouse = attrs.get("warehouse")
@@ -59,9 +64,12 @@ class InventoryStockCreateSerializer(serializers.ModelSerializer):
         return attrs
 
 
+
 class InventoryMovementSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = InventoryMovement
+
         fields = (
             "id",
             "warehouse",
@@ -73,11 +81,14 @@ class InventoryMovementSerializer(serializers.ModelSerializer):
         )
 
 
+
 class InventoryMovementCreateSerializer(
     serializers.ModelSerializer
 ):
+
     class Meta:
         model = InventoryMovement
+
         fields = (
             "warehouse",
             "variant",
@@ -86,6 +97,7 @@ class InventoryMovementCreateSerializer(
         )
 
     def validate(self, attrs):
+
         company = self.context["company"]
 
         warehouse = attrs.get("warehouse")
@@ -114,15 +126,33 @@ class InventoryMovementCreateSerializer(
         return attrs
 
 
+
 class InventoryTransferItemCreateSerializer(
     serializers.ModelSerializer
 ):
+
     class Meta:
         model = InventoryTransferItem
+
         fields = (
             "variant",
             "quantity",
         )
+
+
+
+class InventoryTransferItemSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+        model = InventoryTransferItem
+
+        fields = (
+            "variant",
+            "quantity",
+        )
+
 
 
 class InventoryTransferCreateSerializer(
@@ -135,6 +165,7 @@ class InventoryTransferCreateSerializer(
 
     class Meta:
         model = InventoryTransfer
+
         fields = (
             "source_warehouse",
             "destination_warehouse",
@@ -214,18 +245,18 @@ class InventoryTransferCreateSerializer(
         return attrs
 
 
+
 class InventoryTransferSerializer(
     serializers.ModelSerializer
 ):
 
-    items = InventoryTransferItemCreateSerializer(
+    items = InventoryTransferItemSerializer(
         many=True,
         read_only=True,
     )
 
 
     class Meta:
-
         model = InventoryTransfer
 
         fields = (

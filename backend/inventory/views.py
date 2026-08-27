@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 
 from rest_framework import status
 from rest_framework.decorators import (
@@ -158,6 +159,50 @@ def _get_authorized_movements(*, user, company):
         warehouse__branch_id__in=branch_ids,
     )
 
+
+def _get_authorized_transfers(*, user, company):
+
+    assignments = RoleAssignment.objects.filter(
+        membership__user=user,
+        membership__company=company,
+        membership__status=CompanyMembership.Status.ACTIVE,
+        role__permission_links__permission__code=(
+            INVENTORY_TRANSFERS_MANAGE_PERMISSION_CODE
+        ),
+        role__status="ACTIVE",
+    ).distinct()
+
+
+    if not assignments.exists():
+        return InventoryTransfer.objects.none()
+
+
+    if assignments.filter(
+        branch__isnull=True,
+    ).exists():
+
+        return InventoryTransfer.objects.filter(
+            company=company,
+        )
+
+
+    branch_ids = assignments.values_list(
+        "branch_id",
+        flat=True,
+    )
+
+
+    return InventoryTransfer.objects.filter(
+        company=company,
+    ).filter(
+        Q(
+            source_warehouse__branch_id__in=branch_ids
+        )
+        |
+        Q(
+            destination_warehouse__branch_id__in=branch_ids
+        )
+    )
 
 
 @api_view(["GET", "POST"])
@@ -548,9 +593,7 @@ def _create_movement(request):
     )
 
 
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def transfer_create_view(request):
+def _create_transfer(request):
 
     raw_company_id = request.data.get(
         "company",
@@ -680,3 +723,73 @@ def transfer_create_view(request):
         },
         status=status.HTTP_201_CREATED,
     )
+
+
+def _list_transfers(request):
+
+    raw_company_id = request.query_params.get(
+        "company",
+    )
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": (
+                    "El parametro company es obligatorio."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(
+        raw_company_id,
+    )
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": (
+                    "El parametro company debe ser un entero valido."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": (
+                    "No tienes acceso a esta empresa."
+                ),
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    transfers = _get_authorized_transfers(
+        user=request.user,
+        company=membership.company,
+    )
+
+    return Response(
+        {
+            "transfers": InventoryTransferSerializer(
+                transfers,
+                many=True,
+            ).data,
+        }
+    )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def transfer_list_create_view(request):
+
+    if request.method == "POST":
+        return _create_transfer(request)
+
+    return _list_transfers(request)
