@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from inventory.models import (
     InventoryMovement,
     InventoryStock,
+    InventoryTransfer,
 )
 
 from inventory.serializers import (
@@ -18,9 +19,14 @@ from inventory.serializers import (
     InventoryMovementSerializer,
     InventoryStockCreateSerializer,
     InventoryStockSerializer,
+    InventoryTransferCreateSerializer,
+    InventoryTransferSerializer,
 )
 
-from inventory.services import apply_inventory_movement
+from inventory.services import (
+    apply_inventory_movement,
+    create_inventory_transfer,
+)
 
 from organizations.authorization import has_permission
 
@@ -36,6 +42,10 @@ INVENTORY_STOCKS_MANAGE_PERMISSION_CODE = (
 
 INVENTORY_MOVEMENTS_MANAGE_PERMISSION_CODE = (
     "inventory.movements.manage"
+)
+
+INVENTORY_TRANSFERS_MANAGE_PERMISSION_CODE = (
+    "inventory.transfers.manage"
 )
 
 
@@ -532,6 +542,140 @@ def _create_movement(request):
             ).data,
             "stock": InventoryStockSerializer(
                 stock,
+            ).data,
+        },
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def transfer_create_view(request):
+
+    raw_company_id = request.data.get(
+        "company",
+    )
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": (
+                    "El campo company es obligatorio."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(
+        raw_company_id,
+    )
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": (
+                    "El campo company debe ser un entero valido."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": (
+                    "No tienes acceso a esta empresa."
+                ),
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    serializer = InventoryTransferCreateSerializer(
+        data=request.data,
+        context={
+            "company": company,
+        },
+    )
+
+    serializer.is_valid(
+        raise_exception=True,
+    )
+
+    source = serializer.validated_data[
+        "source_warehouse"
+    ]
+
+    destination = serializer.validated_data[
+        "destination_warehouse"
+    ]
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=(
+            INVENTORY_TRANSFERS_MANAGE_PERMISSION_CODE
+        ),
+        branch=source.branch,
+    ):
+        return Response(
+            {
+                "detail": (
+                    "No tienes permiso para realizar "
+                    "transferencias desde esta sucursal."
+                ),
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=(
+            INVENTORY_TRANSFERS_MANAGE_PERMISSION_CODE
+        ),
+        branch=destination.branch,
+    ):
+        return Response(
+            {
+                "detail": (
+                    "No tienes permiso para realizar "
+                    "transferencias hacia esta sucursal."
+                ),
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+
+        transfer = create_inventory_transfer(
+            company=company,
+            source_warehouse=source,
+            destination_warehouse=destination,
+            items=serializer.validated_data["items"],
+            created_by=request.user,
+        )
+
+    except ValidationError as error:
+
+        return Response(
+            {
+                "detail": error.message_dict,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+    return Response(
+        {
+            "transfer": InventoryTransferSerializer(
+                transfer,
             ).data,
         },
         status=status.HTTP_201_CREATED,

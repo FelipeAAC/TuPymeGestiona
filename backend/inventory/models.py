@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from catalog.models import ProductVariant
-from organizations.models import Warehouse
+from organizations.models import Company, Warehouse
 
 
 class InventoryStock(models.Model):
@@ -190,4 +190,162 @@ class InventoryMovement(models.Model):
             f"{self.warehouse} - "
             f"{self.variant} - "
             f"{self.quantity_delta}"
+        )
+
+
+class InventoryTransfer(models.Model):
+
+    class Status(models.TextChoices):
+        COMPLETED = "COMPLETED", "Completada"
+        CANCELLED = "CANCELLED", "Cancelada"
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        related_name="inventory_transfers",
+    )
+
+    source_warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.PROTECT,
+        related_name="outgoing_inventory_transfers",
+    )
+
+    destination_warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.PROTECT,
+        related_name="incoming_inventory_transfers",
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_inventory_transfers",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.COMPLETED,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    def clean(self):
+        super().clean()
+
+        if (
+            self.source_warehouse_id
+            and self.destination_warehouse_id
+            and self.source_warehouse_id
+            == self.destination_warehouse_id
+        ):
+            raise ValidationError(
+                {
+                    "destination_warehouse": (
+                        "La bodega destino debe "
+                        "ser diferente a la bodega origen."
+                    )
+                }
+            )
+
+        if (
+            self.source_warehouse_id
+            and self.company_id
+            and self.source_warehouse.company_id
+            != self.company_id
+        ):
+            raise ValidationError(
+                {
+                    "source_warehouse": (
+                        "La bodega origen debe "
+                        "pertenecer a la empresa."
+                    )
+                }
+            )
+
+        if (
+            self.destination_warehouse_id
+            and self.company_id
+            and self.destination_warehouse.company_id
+            != self.company_id
+        ):
+            raise ValidationError(
+                {
+                    "destination_warehouse": (
+                        "La bodega destino debe "
+                        "pertenecer a la empresa."
+                    )
+                }
+            )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (
+            f"Transferencia {self.id}: "
+            f"{self.source_warehouse} -> "
+            f"{self.destination_warehouse}"
+        )
+
+
+class InventoryTransferItem(models.Model):
+
+    transfer = models.ForeignKey(
+        InventoryTransfer,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.PROTECT,
+        related_name="inventory_transfer_items",
+    )
+
+    quantity = models.DecimalField(
+        max_digits=14,
+        decimal_places=3,
+    )
+
+    def clean(self):
+        super().clean()
+
+        if self.quantity <= 0:
+            raise ValidationError(
+                {
+                    "quantity": (
+                        "La cantidad transferida "
+                        "debe ser mayor a cero."
+                    )
+                }
+            )
+
+        if (
+            self.transfer_id
+            and self.variant_id
+            and self.transfer.company_id
+            != self.variant.product.company_id
+        ):
+            raise ValidationError(
+                {
+                    "variant": (
+                        "La variante debe pertenecer "
+                        "a la misma empresa."
+                    )
+                }
+            )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (
+            f"{self.variant} - "
+            f"{self.quantity}"
         )

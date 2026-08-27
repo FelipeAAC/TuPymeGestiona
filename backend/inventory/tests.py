@@ -27,9 +27,14 @@ from organizations.models import (
 from .models import (
     InventoryMovement,
     InventoryStock,
+    InventoryTransfer,
+    InventoryTransferItem,
 )
 
-from .services import apply_inventory_movement
+from .services import (
+    apply_inventory_movement,
+    create_inventory_transfer,
+)
 
 User = get_user_model()
 
@@ -1193,4 +1198,518 @@ class InventoryMovementApiTests(TestCase):
         self.assertEqual(
             movements[0]["movement_type"],
             InventoryMovement.MovementType.ENTRY,
+        )
+
+
+class InventoryTransferModelsTests(TestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="inventory-transfer-user",
+            email="inventory-transfer@example.com",
+            password="test-password",
+        )
+
+        self.company = Company.objects.create(
+            name="Empresa Transfer",
+        )
+
+        self.branch_a = Branch.objects.create(
+            company=self.company,
+            code="SUC-TRANSFER-A",
+            name="Sucursal Transfer A",
+        )
+
+        self.branch_b = Branch.objects.create(
+            company=self.company,
+            code="SUC-TRANSFER-B",
+            name="Sucursal Transfer B",
+        )
+
+        self.warehouse_a = Warehouse.objects.create(
+            company=self.company,
+            branch=self.branch_a,
+            code="BOD-TRANSFER-A",
+            name="Bodega Origen",
+        )
+
+        self.warehouse_b = Warehouse.objects.create(
+            company=self.company,
+            branch=self.branch_b,
+            code="BOD-TRANSFER-B",
+            name="Bodega Destino",
+        )
+
+        category = Category.objects.create(
+            company=self.company,
+            name="Categoria Transfer",
+        )
+
+        product = Product.objects.create(
+            company=self.company,
+            category=category,
+            name="Producto Transfer",
+            status=Product.Status.ACTIVE,
+        )
+
+        self.variant = ProductVariant.objects.create(
+            product=product,
+            sku="SKU-TRANSFER",
+            base_price=100,
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+
+    def test_inventory_transfer_can_be_created(self):
+
+        transfer = InventoryTransfer.objects.create(
+            company=self.company,
+            source_warehouse=self.warehouse_a,
+            destination_warehouse=self.warehouse_b,
+            created_by=self.user,
+        )
+
+        self.assertIsNotNone(
+            transfer.pk,
+        )
+
+        self.assertEqual(
+            transfer.status,
+            InventoryTransfer.Status.COMPLETED,
+        )
+
+
+    def test_transfer_cannot_use_same_warehouse(self):
+
+        transfer = InventoryTransfer(
+            company=self.company,
+            source_warehouse=self.warehouse_a,
+            destination_warehouse=self.warehouse_a,
+            created_by=self.user,
+        )
+
+        with self.assertRaises(ValidationError):
+            transfer.full_clean()
+
+
+    def test_transfer_item_requires_positive_quantity(self):
+
+        transfer = InventoryTransfer.objects.create(
+            company=self.company,
+            source_warehouse=self.warehouse_a,
+            destination_warehouse=self.warehouse_b,
+            created_by=self.user,
+        )
+
+        item = InventoryTransferItem(
+            transfer=transfer,
+            variant=self.variant,
+            quantity=0,
+        )
+
+        with self.assertRaises(ValidationError):
+            item.full_clean()
+
+
+class InventoryTransferServiceTests(TestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="transfer-service-user",
+            email="transfer-service@example.com",
+            password="test-password",
+        )
+
+        self.company = Company.objects.create(
+            name="Empresa Transfer Service",
+        )
+
+        self.branch_a = Branch.objects.create(
+            company=self.company,
+            code="SUC-TRANS-A",
+            name="Sucursal Origen",
+        )
+
+        self.branch_b = Branch.objects.create(
+            company=self.company,
+            code="SUC-TRANS-B",
+            name="Sucursal Destino",
+        )
+
+        self.source = Warehouse.objects.create(
+            company=self.company,
+            branch=self.branch_a,
+            code="BOD-TRANS-A",
+            name="Bodega Origen",
+        )
+
+        self.destination = Warehouse.objects.create(
+            company=self.company,
+            branch=self.branch_b,
+            code="BOD-TRANS-B",
+            name="Bodega Destino",
+        )
+
+        category = Category.objects.create(
+            company=self.company,
+            name="Categoria Transfer Service",
+        )
+
+        product = Product.objects.create(
+            company=self.company,
+            category=category,
+            name="Producto Transfer Service",
+            status=Product.Status.ACTIVE,
+        )
+
+        self.variant = ProductVariant.objects.create(
+            product=product,
+            sku="SKU-TRANS-SERVICE",
+            base_price=100,
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+
+    def test_transfer_moves_stock_between_warehouses(self):
+
+        InventoryStock.objects.create(
+            warehouse=self.source,
+            variant=self.variant,
+            quantity=Decimal("100.000"),
+        )
+
+        transfer = create_inventory_transfer(
+            company=self.company,
+            source_warehouse=self.source,
+            destination_warehouse=self.destination,
+            items=[
+                {
+                    "variant": self.variant,
+                    "quantity": Decimal("20.000"),
+                }
+            ],
+            created_by=self.user,
+        )
+
+        self.assertIsNotNone(
+            transfer.pk,
+        )
+
+        source_stock = InventoryStock.objects.get(
+            warehouse=self.source,
+            variant=self.variant,
+        )
+
+        destination_stock = InventoryStock.objects.get(
+            warehouse=self.destination,
+            variant=self.variant,
+        )
+
+        self.assertEqual(
+            source_stock.quantity,
+            Decimal("80.000"),
+        )
+
+        self.assertEqual(
+            destination_stock.quantity,
+            Decimal("20.000"),
+        )
+
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            2,
+        )
+
+
+    def test_transfer_without_stock_rolls_back(self):
+
+        with self.assertRaises(ValidationError):
+
+            create_inventory_transfer(
+                company=self.company,
+                source_warehouse=self.source,
+                destination_warehouse=self.destination,
+                items=[
+                    {
+                        "variant": self.variant,
+                        "quantity": Decimal("20.000"),
+                    }
+                ],
+                created_by=self.user,
+            )
+
+        self.assertFalse(
+            InventoryTransfer.objects.exists()
+        )
+
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            0,
+        )
+
+    def test_transfer_rolls_back_if_destination_entry_fails(self):
+
+        InventoryStock.objects.create(
+            warehouse=self.source,
+            variant=self.variant,
+            quantity=Decimal("100.000"),
+        )
+
+        with patch(
+            "inventory.services.apply_inventory_movement",
+            side_effect=RuntimeError(
+                "Fallo simulado en entrada destino"
+            ),
+        ):
+
+            with self.assertRaises(RuntimeError):
+
+                create_inventory_transfer(
+                    company=self.company,
+                    source_warehouse=self.source,
+                    destination_warehouse=self.destination,
+                    items=[
+                        {
+                            "variant": self.variant,
+                            "quantity": Decimal("20.000"),
+                        }
+                    ],
+                    created_by=self.user,
+                )
+
+        self.assertFalse(
+            InventoryTransfer.objects.exists()
+        )
+
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            0,
+        )
+
+        stock = InventoryStock.objects.get(
+            warehouse=self.source,
+            variant=self.variant,
+        )
+
+        self.assertEqual(
+            stock.quantity,
+            Decimal("100.000"),
+        )
+
+
+class InventoryTransferApiTests(TestCase):
+
+    def setUp(self):
+
+        self.user = User.objects.create_user(
+            username="inventory-transfer-api-user",
+            email="inventory-transfer-api@example.com",
+            password="test-password",
+        )
+
+        self.company = Company.objects.create(
+            name="Empresa Transfer API",
+        )
+
+        self.branch_a = Branch.objects.create(
+            company=self.company,
+            code="SUC-TRANS-API-A",
+            name="Sucursal Transfer Origen",
+        )
+
+        self.branch_b = Branch.objects.create(
+            company=self.company,
+            code="SUC-TRANS-API-B",
+            name="Sucursal Transfer Destino",
+        )
+
+
+        self.membership = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+
+        MembershipBranch.objects.create(
+            membership=self.membership,
+            branch=self.branch_a,
+        )
+
+
+        MembershipBranch.objects.create(
+            membership=self.membership,
+            branch=self.branch_b,
+        )
+
+
+        self.permission = Permission.objects.get(
+            code="inventory.transfers.manage",
+        )
+
+
+        self.role = CompanyRole.objects.create(
+            company=self.company,
+            name="Administrador Transferencias",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+
+        CompanyRolePermission.objects.create(
+            role=self.role,
+            permission=self.permission,
+        )
+
+
+        RoleAssignment.objects.create(
+            membership=self.membership,
+            role=self.role,
+            branch=self.branch_a,
+        )
+
+
+        RoleAssignment.objects.create(
+            membership=self.membership,
+            role=self.role,
+            branch=self.branch_b,
+        )
+
+
+        category = Category.objects.create(
+            company=self.company,
+            name="Categoria Transfer API",
+        )
+
+
+        product = Product.objects.create(
+            company=self.company,
+            category=category,
+            name="Producto Transfer API",
+            status=Product.Status.ACTIVE,
+        )
+
+
+        self.variant = ProductVariant.objects.create(
+            product=product,
+            sku="SKU-TRANSFER-API",
+            base_price=100,
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+
+        self.source = Warehouse.objects.create(
+            company=self.company,
+            branch=self.branch_a,
+            code="BOD-TRANS-API-A",
+            name="Bodega Origen API",
+        )
+
+
+        self.destination = Warehouse.objects.create(
+            company=self.company,
+            branch=self.branch_b,
+            code="BOD-TRANS-API-B",
+            name="Bodega Destino API",
+        )
+
+
+
+    def test_create_transfer_updates_stock(self):
+
+        self.client.force_login(
+            self.user,
+        )
+
+
+        InventoryStock.objects.create(
+            warehouse=self.source,
+            variant=self.variant,
+            quantity=Decimal("100.000"),
+        )
+
+
+        response = self.client.post(
+            "/api/inventory/transfers/",
+            {
+                "company": self.company.id,
+                "source_warehouse": self.source.id,
+                "destination_warehouse": self.destination.id,
+                "items": [
+                    {
+                        "variant": self.variant.id,
+                        "quantity": "25.000",
+                    }
+                ],
+            },
+            content_type="application/json",
+        )
+
+
+        self.assertEqual(
+            response.status_code,
+            201,
+        )
+
+
+        source_stock = InventoryStock.objects.get(
+            warehouse=self.source,
+            variant=self.variant,
+        )
+
+
+        destination_stock = InventoryStock.objects.get(
+            warehouse=self.destination,
+            variant=self.variant,
+        )
+
+
+        self.assertEqual(
+            source_stock.quantity,
+            Decimal("75.000"),
+        )
+
+
+        self.assertEqual(
+            destination_stock.quantity,
+            Decimal("25.000"),
+        )
+
+
+        self.assertEqual(
+            InventoryMovement.objects.count(),
+            2,
+        )
+
+
+
+    def test_create_transfer_without_permission_returns_403(self):
+
+        RoleAssignment.objects.all().delete()
+
+
+        self.client.force_login(
+            self.user,
+        )
+
+
+        response = self.client.post(
+            "/api/inventory/transfers/",
+            {
+                "company": self.company.id,
+                "source_warehouse": self.source.id,
+                "destination_warehouse": self.destination.id,
+                "items": [
+                    {
+                        "variant": self.variant.id,
+                        "quantity": "10.000",
+                    }
+                ],
+            },
+            content_type="application/json",
+        )
+
+
+        self.assertEqual(
+            response.status_code,
+            403,
         )

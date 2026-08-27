@@ -3,6 +3,8 @@ from rest_framework import serializers
 from inventory.models import (
     InventoryMovement,
     InventoryStock,
+    InventoryTransfer,
+    InventoryTransferItem,
 )
 
 
@@ -110,3 +112,128 @@ class InventoryMovementCreateSerializer(
             )
 
         return attrs
+
+
+class InventoryTransferItemCreateSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = InventoryTransferItem
+        fields = (
+            "variant",
+            "quantity",
+        )
+
+
+class InventoryTransferCreateSerializer(
+    serializers.ModelSerializer
+):
+
+    items = InventoryTransferItemCreateSerializer(
+        many=True,
+    )
+
+    class Meta:
+        model = InventoryTransfer
+        fields = (
+            "source_warehouse",
+            "destination_warehouse",
+            "items",
+        )
+
+
+    def validate(self, attrs):
+
+        company = self.context["company"]
+
+        source = attrs.get(
+            "source_warehouse",
+        )
+
+        destination = attrs.get(
+            "destination_warehouse",
+        )
+
+        items = attrs.get(
+            "items",
+        )
+
+
+        if source.company_id != company.id:
+
+            raise serializers.ValidationError(
+                {
+                    "source_warehouse": (
+                        "La bodega origen debe pertenecer "
+                        "a la misma empresa."
+                    )
+                }
+            )
+
+
+        if destination.company_id != company.id:
+
+            raise serializers.ValidationError(
+                {
+                    "destination_warehouse": (
+                        "La bodega destino debe pertenecer "
+                        "a la misma empresa."
+                    )
+                }
+            )
+
+
+        if source.id == destination.id:
+
+            raise serializers.ValidationError(
+                {
+                    "destination_warehouse": (
+                        "La bodega destino debe ser "
+                        "diferente a la bodega origen."
+                    )
+                }
+            )
+
+
+        for item in items:
+
+            variant = item["variant"]
+
+            if variant.product.company_id != company.id:
+
+                raise serializers.ValidationError(
+                    {
+                        "items": (
+                            "Todas las variantes deben "
+                            "pertenecer a la empresa."
+                        )
+                    }
+                )
+
+
+        return attrs
+
+
+class InventoryTransferSerializer(
+    serializers.ModelSerializer
+):
+
+    items = InventoryTransferItemCreateSerializer(
+        many=True,
+        read_only=True,
+    )
+
+
+    class Meta:
+
+        model = InventoryTransfer
+
+        fields = (
+            "id",
+            "source_warehouse",
+            "destination_warehouse",
+            "created_by",
+            "status",
+            "created_at",
+            "items",
+        )
