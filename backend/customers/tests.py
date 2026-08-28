@@ -1,6 +1,8 @@
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
+from rest_framework.test import APIClient
+
 from organizations.models import Company
 
 from .models import Customer
@@ -16,6 +18,8 @@ class CustomerModelTests(TestCase):
         self.company = Company.objects.create(
             name="Empresa Test",
         )
+
+        self.client = APIClient()
 
     def test_create_customer(self):
         customer = Customer.objects.create(
@@ -133,4 +137,52 @@ class CustomerModelTests(TestCase):
         self.assertTrue(
             serializer.is_valid(),
             serializer.errors,
+        )
+
+    def test_customer_list_api(self):
+        Customer.objects.create(
+            company=self.company,
+            code="CLI001",
+            name="Cliente API",
+        )
+
+        response = self.client.get(
+            "/api/customers/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            len(response.data),
+            1,
+        )
+
+    def test_customer_create_api(self):
+        data = {
+            "company": self.company.id,
+            "code": "CLI002",
+            "name": "Cliente Creado API",
+            "tax_id": "55555",
+            "email": "api@test.com",
+            "phone": "123456",
+            "status": "ACTIVE",
+        }
+
+        response = self.client.post(
+            "/api/customers/",
+            data,
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            201,
+        )
+
+        self.assertEqual(
+            response.data["name"],
+            "Cliente Creado API",
         )
