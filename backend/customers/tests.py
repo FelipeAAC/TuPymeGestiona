@@ -1,27 +1,40 @@
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from rest_framework.test import APIClient
 
-from organizations.models import Company
+from organizations.models import (
+    Company,
+    CompanyMembership,
+    CompanyRole,
+    CompanyRolePermission,
+    Permission,
+    RoleAssignment,
+)
 
 from .models import Customer
+
 from .serializers import (
     CustomerCreateSerializer,
     CustomerSerializer,
 )
 
 
+User = get_user_model()
+
+
 class CustomerModelTests(TestCase):
 
     def setUp(self):
+
         self.company = Company.objects.create(
             name="Empresa Test",
         )
 
-        self.client = APIClient()
 
     def test_create_customer(self):
+
         customer = Customer.objects.create(
             company=self.company,
             code="CLI001",
@@ -41,7 +54,9 @@ class CustomerModelTests(TestCase):
             self.company,
         )
 
+
     def test_customer_code_unique_per_company(self):
+
         Customer.objects.create(
             company=self.company,
             code="CLI001",
@@ -49,13 +64,16 @@ class CustomerModelTests(TestCase):
         )
 
         with self.assertRaises(Exception):
+
             Customer.objects.create(
                 company=self.company,
                 code="CLI001",
                 name="Cliente Dos",
             )
 
+
     def test_customer_requires_name(self):
+
         customer = Customer(
             company=self.company,
             code="CLI001",
@@ -63,9 +81,12 @@ class CustomerModelTests(TestCase):
         )
 
         with self.assertRaises(ValidationError):
+
             customer.clean()
 
+
     def test_customer_requires_code(self):
+
         customer = Customer(
             company=self.company,
             code="",
@@ -73,9 +94,12 @@ class CustomerModelTests(TestCase):
         )
 
         with self.assertRaises(ValidationError):
+
             customer.clean()
 
+
     def test_customers_can_share_code_between_companies(self):
+
         company_two = Company.objects.create(
             name="Otra Empresa",
         )
@@ -97,7 +121,9 @@ class CustomerModelTests(TestCase):
             customer_two.company,
         )
 
+
     def test_customer_serializer_output(self):
+
         customer = Customer.objects.create(
             company=self.company,
             code="CLI001",
@@ -107,7 +133,9 @@ class CustomerModelTests(TestCase):
             phone="111111",
         )
 
-        serializer = CustomerSerializer(customer)
+        serializer = CustomerSerializer(
+            customer,
+        )
 
         self.assertEqual(
             serializer.data["code"],
@@ -119,7 +147,9 @@ class CustomerModelTests(TestCase):
             "Cliente Serializer",
         )
 
+
     def test_customer_create_serializer_valid(self):
+
         data = {
             "company": self.company.id,
             "code": "CLI002",
@@ -139,50 +169,147 @@ class CustomerModelTests(TestCase):
             serializer.errors,
         )
 
-    def test_customer_list_api(self):
+
+
+class CustomerPermissionApiTests(TestCase):
+
+    def setUp(self):
+
+        self.client = APIClient()
+
+
+        self.user = User.objects.create_user(
+            username="customer-api-user",
+            email="customer-api@example.com",
+            password="test-password",
+        )
+
+
+        self.company = Company.objects.create(
+            name="Empresa Customer API",
+        )
+
+
+        self.membership = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+
+        self.permission = Permission.objects.get(
+            code="customers.manage",
+        )
+
+
+        self.role = CompanyRole.objects.create(
+            company=self.company,
+            name="Administrador Clientes",
+            status=CompanyRole.Status.ACTIVE,
+        )
+
+
+        CompanyRolePermission.objects.create(
+            role=self.role,
+            permission=self.permission,
+        )
+
+
+        RoleAssignment.objects.create(
+            membership=self.membership,
+            role=self.role,
+        )
+
+
+
+    def test_list_customers_with_permission(self):
+
         Customer.objects.create(
             company=self.company,
             code="CLI001",
-            name="Cliente API",
+            name="Cliente Permitido",
         )
+
+
+        self.client.force_login(
+            self.user,
+        )
+
 
         response = self.client.get(
             "/api/customers/",
+            {
+                "company": self.company.id,
+            },
         )
+
 
         self.assertEqual(
             response.status_code,
             200,
         )
 
+
         self.assertEqual(
-            len(response.data),
+            len(response.data["customers"]),
             1,
         )
 
-    def test_customer_create_api(self):
-        data = {
-            "company": self.company.id,
-            "code": "CLI002",
-            "name": "Cliente Creado API",
-            "tax_id": "55555",
-            "email": "api@test.com",
-            "phone": "123456",
-            "status": "ACTIVE",
-        }
+
+
+    def test_create_customer_with_permission(self):
+
+        self.client.force_login(
+            self.user,
+        )
+
 
         response = self.client.post(
             "/api/customers/",
-            data,
-            format="json",
+            {
+                "company": self.company.id,
+                "code": "CLI002",
+                "name": "Cliente Nuevo",
+            },
+            content_type="application/json",
         )
+
 
         self.assertEqual(
             response.status_code,
             201,
         )
 
+
         self.assertEqual(
-            response.data["name"],
-            "Cliente Creado API",
+            response.data["customer"]["name"],
+            "Cliente Nuevo",
+        )
+
+
+
+    def test_create_customer_without_permission_returns_403(self):
+
+        RoleAssignment.objects.all().delete()
+
+
+        self.client.force_login(
+            self.user,
+        )
+
+
+        response = self.client.post(
+            "/api/customers/",
+            {
+                "company": self.company.id,
+                "code": "CLI003",
+                "name": "Cliente Bloqueado",
+            },
+            content_type="application/json",
+        )
+
+
+        self.assertEqual(
+            response.status_code,
+            403,
         )
