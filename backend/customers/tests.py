@@ -4,6 +4,10 @@ from django.test import TestCase
 from organizations.models import Company
 
 from .models import Customer
+from .serializers import (
+    CustomerCreateSerializer,
+    CustomerSerializer,
+)
 
 
 class CustomerModelTests(TestCase):
@@ -23,8 +27,15 @@ class CustomerModelTests(TestCase):
             phone="999999999",
         )
 
-        self.assertEqual(customer.name, "Cliente Uno")
-        self.assertEqual(customer.company, self.company)
+        self.assertEqual(
+            customer.name,
+            "Cliente Uno",
+        )
+
+        self.assertEqual(
+            customer.company,
+            self.company,
+        )
 
     def test_customer_code_unique_per_company(self):
         Customer.objects.create(
@@ -80,4 +91,46 @@ class CustomerModelTests(TestCase):
         self.assertNotEqual(
             customer_one.company,
             customer_two.company,
+        )
+
+    def test_customer_serializer_output(self):
+        customer = Customer.objects.create(
+            company=self.company,
+            code="CLI001",
+            name="Cliente Serializer",
+            tax_id="12345",
+            email="test@test.com",
+            phone="111111",
+        )
+
+        serializer = CustomerSerializer(customer)
+
+        self.assertEqual(
+            serializer.data["code"],
+            "CLI001",
+        )
+
+        self.assertEqual(
+            serializer.data["name"],
+            "Cliente Serializer",
+        )
+
+    def test_customer_create_serializer_valid(self):
+        data = {
+            "company": self.company.id,
+            "code": "CLI002",
+            "name": "Cliente Nuevo",
+            "tax_id": "98765",
+            "email": "nuevo@test.com",
+            "phone": "222222",
+            "status": "ACTIVE",
+        }
+
+        serializer = CustomerCreateSerializer(
+            data=data,
+        )
+
+        self.assertTrue(
+            serializer.is_valid(),
+            serializer.errors,
         )
