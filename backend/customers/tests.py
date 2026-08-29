@@ -1177,3 +1177,496 @@ class CustomerUpdateApiTests(
             "email",
             response.data,
         )
+
+
+class CustomerListFilterPaginationApiTests(
+    CustomerApiPermissionMixin,
+    TestCase,
+):
+
+    def setUp(self):
+
+        self.client = APIClient()
+
+        self.user = User.objects.create_user(
+            username="customer-list-user",
+            email="customer-list@example.com",
+            password="test-password",
+        )
+
+        self.company = Company.objects.create(
+            name="Empresa Customer List",
+        )
+
+        self.other_company = Company.objects.create(
+            name="Otra Empresa Customer List",
+        )
+
+        self.membership = CompanyMembership.objects.create(
+            user=self.user,
+            company=self.company,
+            status=CompanyMembership.Status.ACTIVE,
+        )
+
+        self.grant_customers_manage(
+            company=self.company,
+            membership=self.membership,
+            role_name="Customer List Manager",
+        )
+
+        self.alpha = Customer.objects.create(
+            company=self.company,
+            code="CLI-100",
+            name="Acme Norte",
+            tax_id="76.111.111-1",
+            email="ventas@acme.test",
+            phone="+56 9 1111 1000",
+            status=Customer.Status.ACTIVE,
+        )
+
+        self.beta = Customer.objects.create(
+            company=self.company,
+            code="VIP-200",
+            name="Beta Sur",
+            tax_id="76.222.222-2",
+            email="compras@beta.test",
+            phone="+56 9 2222 2000",
+            status=Customer.Status.INACTIVE,
+        )
+
+        self.gamma = Customer.objects.create(
+            company=self.company,
+            code="CLI-300",
+            name="Acme Centro",
+            tax_id="77.333.333-3",
+            email="contacto@gamma.test",
+            phone="+56 9 3333 3000",
+            status=Customer.Status.ACTIVE,
+        )
+
+        self.repeated_one = Customer.objects.create(
+            company=self.company,
+            code="ORD-400",
+            name="Repetido",
+            status=Customer.Status.ACTIVE,
+        )
+
+        self.repeated_two = Customer.objects.create(
+            company=self.company,
+            code="ORD-500",
+            name="Repetido",
+            status=Customer.Status.ACTIVE,
+        )
+
+        self.other_customer = Customer.objects.create(
+            company=self.other_company,
+            code="CLI-999",
+            name="Acme Fantasma",
+            tax_id="99.999.999-9",
+            email="hidden@example.com",
+            phone="+56 9 9999 9999",
+        )
+
+        self.client.force_login(
+            self.user,
+        )
+
+
+    def list_customers(self, **params):
+
+        return self.client.get(
+            "/api/customers/",
+            {
+                "company": self.company.pk,
+                **params,
+            },
+        )
+
+
+    def create_pagination_customers(self, count=20):
+
+        customers = []
+
+        for index in range(count):
+            customers.append(
+                Customer.objects.create(
+                    company=self.company,
+                    code=f"PAGE-{index:03d}",
+                    name=f"Cliente Paginado {index:03d}",
+                )
+            )
+
+        return customers
+
+
+    def test_customer_list_uses_default_pagination(self):
+
+        self.create_pagination_customers()
+
+        response = self.list_customers()
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            len(response.data["customers"]),
+            20,
+        )
+
+        self.assertEqual(
+            response.data["pagination"],
+            {
+                "count": 25,
+                "page": 1,
+                "page_size": 20,
+                "total_pages": 2,
+                "next_page": 2,
+                "previous_page": None,
+            },
+        )
+
+
+    def test_customer_list_returns_second_page_without_duplicates(self):
+
+        self.create_pagination_customers()
+
+        first_response = self.list_customers()
+        second_response = self.list_customers(page=2)
+
+        self.assertEqual(
+            second_response.status_code,
+            200,
+        )
+
+        first_ids = {
+            customer["id"]
+            for customer in first_response.data["customers"]
+        }
+        second_ids = {
+            customer["id"]
+            for customer in second_response.data["customers"]
+        }
+
+        self.assertEqual(
+            len(second_ids),
+            5,
+        )
+
+        self.assertFalse(
+            first_ids & second_ids,
+        )
+
+        self.assertEqual(
+            second_response.data["pagination"]["previous_page"],
+            1,
+        )
+
+        self.assertIsNone(
+            second_response.data["pagination"]["next_page"],
+        )
+
+
+    def test_customer_list_accepts_custom_page_size(self):
+
+        response = self.list_customers(
+            page=2,
+            page_size=2,
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            len(response.data["customers"]),
+            2,
+        )
+
+        self.assertEqual(
+            response.data["pagination"],
+            {
+                "count": 5,
+                "page": 2,
+                "page_size": 2,
+                "total_pages": 3,
+                "next_page": 3,
+                "previous_page": 1,
+            },
+        )
+
+
+    def test_customer_list_rejects_invalid_pagination_values(self):
+
+        invalid_queries = (
+            ({"page": "invalid"}, "page"),
+            ({"page": 0}, "page"),
+            ({"page_size": 0}, "page_size"),
+            ({"page_size": 101}, "page_size"),
+        )
+
+        for query, error_field in invalid_queries:
+            with self.subTest(query=query):
+                response = self.list_customers(**query)
+
+                self.assertEqual(
+                    response.status_code,
+                    400,
+                )
+
+                self.assertIn(
+                    error_field,
+                    response.data,
+                )
+
+
+    def test_customer_list_rejects_page_outside_result_set(self):
+
+        response = self.list_customers(
+            page=2,
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+        self.assertIn(
+            "page",
+            response.data,
+        )
+
+
+    def test_customer_list_filters_by_partial_code(self):
+
+        response = self.list_customers(
+            code="cli-",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            {
+                customer["id"]
+                for customer in response.data["customers"]
+            },
+            {
+                self.alpha.pk,
+                self.gamma.pk,
+            },
+        )
+
+
+    def test_customer_list_filters_by_partial_name(self):
+
+        response = self.list_customers(
+            name="ACME",
+        )
+
+        self.assertEqual(
+            {
+                customer["id"]
+                for customer in response.data["customers"]
+            },
+            {
+                self.alpha.pk,
+                self.gamma.pk,
+            },
+        )
+
+
+    def test_customer_list_filters_by_partial_tax_id(self):
+
+        response = self.list_customers(
+            tax_id="333.333",
+        )
+
+        self.assertEqual(
+            [
+                customer["id"]
+                for customer in response.data["customers"]
+            ],
+            [self.gamma.pk],
+        )
+
+
+    def test_customer_list_filters_by_status(self):
+
+        response = self.list_customers(
+            status=Customer.Status.INACTIVE,
+        )
+
+        self.assertEqual(
+            [
+                customer["id"]
+                for customer in response.data["customers"]
+            ],
+            [self.beta.pk],
+        )
+
+
+    def test_customer_list_rejects_invalid_status(self):
+
+        response = self.list_customers(
+            status="SUSPENDED",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+        self.assertIn(
+            "status",
+            response.data,
+        )
+
+
+    def test_customer_list_searches_across_supported_fields(self):
+
+        searches = (
+            ("vip-200", self.beta.pk),
+            ("centro", self.gamma.pk),
+            ("76.111.111", self.alpha.pk),
+            ("compras@beta", self.beta.pk),
+            ("9 2222 2000", self.beta.pk),
+        )
+
+        for search, expected_id in searches:
+            with self.subTest(search=search):
+                response = self.list_customers(
+                    search=search,
+                )
+
+                self.assertEqual(
+                    response.status_code,
+                    200,
+                )
+
+                self.assertEqual(
+                    [
+                        customer["id"]
+                        for customer in response.data["customers"]
+                    ],
+                    [expected_id],
+                )
+
+
+    def test_customer_list_combines_filters(self):
+
+        response = self.list_customers(
+            name="acme",
+            status=Customer.Status.ACTIVE,
+            search="CLI-300",
+        )
+
+        self.assertEqual(
+            [
+                customer["id"]
+                for customer in response.data["customers"]
+            ],
+            [self.gamma.pk],
+        )
+
+
+    def test_customer_list_uses_id_as_ascending_tiebreaker(self):
+
+        response = self.list_customers(
+            name="Repetido",
+            ordering="name",
+        )
+
+        self.assertEqual(
+            [
+                customer["id"]
+                for customer in response.data["customers"]
+            ],
+            [
+                self.repeated_one.pk,
+                self.repeated_two.pk,
+            ],
+        )
+
+
+    def test_customer_list_uses_id_as_descending_tiebreaker(self):
+
+        response = self.list_customers(
+            name="Repetido",
+            ordering="-name",
+        )
+
+        self.assertEqual(
+            [
+                customer["id"]
+                for customer in response.data["customers"]
+            ],
+            [
+                self.repeated_two.pk,
+                self.repeated_one.pk,
+            ],
+        )
+
+
+    def test_customer_list_orders_by_allowed_field(self):
+
+        response = self.list_customers(
+            ordering="-code",
+        )
+
+        self.assertEqual(
+            [
+                customer["code"]
+                for customer in response.data["customers"]
+            ],
+            [
+                "VIP-200",
+                "ORD-500",
+                "ORD-400",
+                "CLI-300",
+                "CLI-100",
+            ],
+        )
+
+
+    def test_customer_list_rejects_invalid_ordering(self):
+
+        response = self.list_customers(
+            ordering="company",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+        self.assertIn(
+            "ordering",
+            response.data,
+        )
+
+
+    def test_customer_list_pagination_excludes_other_company(self):
+
+        response = self.list_customers(
+            search="Acme",
+        )
+
+        returned_ids = {
+            customer["id"]
+            for customer in response.data["customers"]
+        }
+
+        self.assertEqual(
+            response.data["pagination"]["count"],
+            2,
+        )
+
+        self.assertNotIn(
+            self.other_customer.pk,
+            returned_ids,
+        )

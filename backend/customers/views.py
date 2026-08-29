@@ -1,3 +1,6 @@
+from django.core.paginator import EmptyPage, Paginator
+from django.db.models import Q
+
 from rest_framework import status
 from rest_framework.decorators import (
     api_view,
@@ -13,6 +16,7 @@ from organizations.models import CompanyMembership
 from .models import Customer
 from .serializers import (
     CustomerCreateSerializer,
+    CustomerListQuerySerializer,
     CustomerSerializer,
     CustomerUpdateSerializer,
 )
@@ -163,12 +167,101 @@ def _list_customers(request):
     )
 
 
+    query_serializer = CustomerListQuerySerializer(
+        data=request.query_params,
+    )
+
+    query_serializer.is_valid(
+        raise_exception=True,
+    )
+
+    query = query_serializer.validated_data
+
+
+    if query.get("code"):
+        customers = customers.filter(
+            code__icontains=query["code"],
+        )
+
+    if query.get("name"):
+        customers = customers.filter(
+            name__icontains=query["name"],
+        )
+
+    if query.get("tax_id"):
+        customers = customers.filter(
+            tax_id__icontains=query["tax_id"],
+        )
+
+    if query.get("status"):
+        customers = customers.filter(
+            status=query["status"],
+        )
+
+    if query.get("search"):
+        search = query["search"]
+        customers = customers.filter(
+            Q(code__icontains=search)
+            | Q(name__icontains=search)
+            | Q(tax_id__icontains=search)
+            | Q(email__icontains=search)
+            | Q(phone__icontains=search)
+        )
+
+
+    ordering = query["ordering"]
+    ordering_direction = (
+        "-" if ordering.startswith("-") else ""
+    )
+
+    customers = customers.order_by(
+        ordering,
+        f"{ordering_direction}id",
+    )
+
+
+    paginator = Paginator(
+        customers,
+        query["page_size"],
+    )
+
+    try:
+        customer_page = paginator.page(
+            query["page"],
+        )
+    except EmptyPage:
+        return Response(
+            {
+                "page": [
+                    "La página solicitada no existe.",
+                ],
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
     return Response(
         {
             "customers": CustomerSerializer(
-                customers,
+                customer_page.object_list,
                 many=True,
             ).data,
+            "pagination": {
+                "count": paginator.count,
+                "page": customer_page.number,
+                "page_size": query["page_size"],
+                "total_pages": paginator.num_pages,
+                "next_page": (
+                    customer_page.next_page_number()
+                    if customer_page.has_next()
+                    else None
+                ),
+                "previous_page": (
+                    customer_page.previous_page_number()
+                    if customer_page.has_previous()
+                    else None
+                ),
+            },
         }
     )
 

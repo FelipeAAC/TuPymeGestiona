@@ -6,6 +6,18 @@ from rest_framework import serializers
 from .models import Customer
 
 
+CUSTOMER_ORDERING_CHOICES = (
+    ("name", "Nombre ascendente"),
+    ("-name", "Nombre descendente"),
+    ("code", "Código ascendente"),
+    ("-code", "Código descendente"),
+    ("created_at", "Fecha de creación ascendente"),
+    ("-created_at", "Fecha de creación descendente"),
+    ("updated_at", "Fecha de actualización ascendente"),
+    ("-updated_at", "Fecha de actualización descendente"),
+)
+
+
 def _validation_error_detail(error):
     if hasattr(error, "message_dict"):
         return error.message_dict
@@ -65,6 +77,49 @@ class CustomerSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+
+class CustomerListQuerySerializer(serializers.Serializer):
+    code = serializers.CharField(
+        max_length=50,
+        required=False,
+        allow_blank=True,
+    )
+    name = serializers.CharField(
+        max_length=150,
+        required=False,
+        allow_blank=True,
+    )
+    tax_id = serializers.CharField(
+        max_length=50,
+        required=False,
+        allow_blank=True,
+    )
+    status = serializers.ChoiceField(
+        choices=Customer.Status.choices,
+        required=False,
+    )
+    search = serializers.CharField(
+        max_length=150,
+        required=False,
+        allow_blank=True,
+    )
+    ordering = serializers.ChoiceField(
+        choices=CUSTOMER_ORDERING_CHOICES,
+        required=False,
+        default="name",
+    )
+    page = serializers.IntegerField(
+        min_value=1,
+        required=False,
+        default=1,
+    )
+    page_size = serializers.IntegerField(
+        min_value=1,
+        max_value=100,
+        required=False,
+        default=20,
+    )
 
 
 class CustomerCreateSerializer(serializers.Serializer):
