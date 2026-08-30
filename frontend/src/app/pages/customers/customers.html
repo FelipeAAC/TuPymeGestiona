@@ -1,0 +1,256 @@
+<section class="customers-page">
+  <header class="customers-header">
+    <div>
+      <span class="section-label">Relación comercial</span>
+      <h1>Clientes</h1>
+
+      @if (selectedMembership(); as membership) {
+        <p>
+          Administra los datos de contacto y el estado de los clientes de
+          <strong>{{ membership.company.name }}</strong
+          >.
+        </p>
+      } @else {
+        <p>Selecciona una empresa para consultar sus clientes.</p>
+      }
+    </div>
+
+    @if (selectedMembership() && canManageCustomers()) {
+      <button class="primary-button header-action" type="button" (click)="openCreateEditor()">
+        <span aria-hidden="true">+</span>
+        Nuevo cliente
+      </button>
+    }
+  </header>
+
+  @if (!selectedMembership()) {
+    <div class="state-card">
+      <strong>Sin empresa seleccionada</strong>
+      <p>Necesitas una empresa activa para administrar clientes.</p>
+    </div>
+  } @else {
+    @if (successMessage()) {
+      <div class="page-alert page-alert-success" role="status">
+        <span aria-hidden="true">✓</span>
+        {{ successMessage() }}
+      </div>
+    }
+
+    <section class="summary-grid" aria-label="Resumen de clientes">
+      <article class="summary-card">
+        <span class="summary-icon summary-icon-total" aria-hidden="true">CL</span>
+        <div>
+          <span>Total registrados</span>
+          <strong>{{ pagination().count }}</strong>
+        </div>
+      </article>
+
+      <article class="summary-card">
+        <span class="summary-icon summary-icon-active" aria-hidden="true">AC</span>
+        <div>
+          <span>Activos en esta página</span>
+          <strong>{{ activeCustomersOnPage() }}</strong>
+        </div>
+      </article>
+
+      <article class="summary-card">
+        <span class="summary-icon summary-icon-inactive" aria-hidden="true">IN</span>
+        <div>
+          <span>Inactivos en esta página</span>
+          <strong>{{ inactiveCustomersOnPage() }}</strong>
+        </div>
+      </article>
+    </section>
+
+    <section class="customers-panel">
+      <header class="panel-header">
+        <div>
+          <span class="panel-label">Directorio comercial</span>
+          <h2>Clientes registrados</h2>
+        </div>
+
+        <span class="result-count">
+          {{ pagination().count }}
+          {{ pagination().count === 1 ? 'resultado' : 'resultados' }}
+        </span>
+      </header>
+
+      <form class="filter-bar" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+        <div class="filter-field filter-field-search">
+          <label for="customer-search">Buscar</label>
+          <input
+            id="customer-search"
+            type="search"
+            formControlName="search"
+            maxlength="150"
+            placeholder="Nombre, código, RUT, correo o teléfono"
+          />
+        </div>
+
+        <div class="filter-field">
+          <label for="customer-status-filter">Estado</label>
+          <select id="customer-status-filter" formControlName="status">
+            <option value="">Todos</option>
+            <option value="ACTIVE">Activos</option>
+            <option value="INACTIVE">Inactivos</option>
+          </select>
+        </div>
+
+        <div class="filter-field">
+          <label for="customer-ordering">Orden</label>
+          <select id="customer-ordering" formControlName="ordering">
+            <option value="name">Nombre A–Z</option>
+            <option value="-name">Nombre Z–A</option>
+            <option value="code">Código ascendente</option>
+            <option value="-code">Código descendente</option>
+            <option value="-updated_at">Actualizados recientemente</option>
+            <option value="-created_at">Creados recientemente</option>
+          </select>
+        </div>
+
+        <div class="filter-field filter-field-size">
+          <label for="customer-page-size">Por página</label>
+          <select id="customer-page-size" formControlName="pageSize">
+            <option [ngValue]="10">10</option>
+            <option [ngValue]="20">20</option>
+            <option [ngValue]="50">50</option>
+          </select>
+        </div>
+
+        <div class="filter-actions">
+          <button class="secondary-button" type="button" (click)="clearFilters()">Limpiar</button>
+          <button class="primary-button" type="submit" [disabled]="isLoading()">
+            {{ isLoading() ? 'Buscando...' : 'Aplicar filtros' }}
+          </button>
+        </div>
+      </form>
+
+      @if (isLoading()) {
+        <div class="state-card state-card-panel">
+          <span class="loading-indicator" aria-hidden="true"></span>
+          <div>
+            <strong>Cargando clientes...</strong>
+            <p>Estamos consultando el directorio de la empresa seleccionada.</p>
+          </div>
+        </div>
+      } @else if (listErrorMessage()) {
+        <div class="state-card state-card-panel state-card-error" role="alert">
+          <strong>No pudimos mostrar los clientes</strong>
+          <p>{{ listErrorMessage() }}</p>
+        </div>
+      } @else if (customers().length === 0) {
+        <div class="state-card state-card-panel state-card-empty">
+          <span class="empty-icon" aria-hidden="true">CL</span>
+          <div>
+            <strong>No encontramos clientes</strong>
+            <p>Prueba con otros filtros o registra el primer cliente de esta empresa.</p>
+          </div>
+        </div>
+      } @else {
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Cliente</th>
+                <th scope="col">Código / RUT</th>
+                <th scope="col">Contacto</th>
+                <th scope="col">Estado</th>
+                <th scope="col">Actualización</th>
+                <th scope="col"><span class="visually-hidden">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (customer of customers(); track customer.id) {
+                <tr>
+                  <td data-label="Cliente">
+                    <div class="customer-identity">
+                      <span class="customer-avatar" aria-hidden="true">
+                        {{ customerInitials(customer.name) }}
+                      </span>
+                      <div>
+                        <strong>{{ customer.name }}</strong>
+                        <span>Cliente #{{ customer.id }}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td data-label="Código / RUT">
+                    <div class="stacked-value">
+                      <strong>{{ customer.code }}</strong>
+                      <span>{{ customer.tax_id || 'Sin RUT registrado' }}</span>
+                    </div>
+                  </td>
+                  <td data-label="Contacto">
+                    <div class="stacked-value contact-value">
+                      <span>{{ customer.email || 'Sin correo' }}</span>
+                      <span>{{ customer.phone || 'Sin teléfono' }}</span>
+                    </div>
+                  </td>
+                  <td data-label="Estado">
+                    <span
+                      class="status-badge"
+                      [class.status-inactive]="customer.status === 'INACTIVE'"
+                    >
+                      {{ customer.status === 'ACTIVE' ? 'Activo' : 'Inactivo' }}
+                    </span>
+                  </td>
+                  <td data-label="Actualización">
+                    <span class="updated-value">
+                      {{ customer.updated_at | date: 'dd/MM/yyyy, HH:mm' }}
+                    </span>
+                  </td>
+                  <td class="actions-cell">
+                    <button
+                      class="row-action"
+                      type="button"
+                      [attr.aria-label]="'Editar a ' + customer.name"
+                      (click)="openEditEditor(customer)"
+                    >
+                      Editar
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <footer class="pagination-bar">
+          <p>
+            Mostrando
+            <strong>{{ firstVisibleCustomer() }}–{{ lastVisibleCustomer() }}</strong>
+            de <strong>{{ pagination().count }}</strong>
+          </p>
+
+          <div class="pagination-actions">
+            <button
+              type="button"
+              [disabled]="pagination().previous_page === null || isLoading()"
+              (click)="goToPage(pagination().previous_page)"
+            >
+              Anterior
+            </button>
+            <span>Página {{ pagination().page }} de {{ pagination().total_pages }}</span>
+            <button
+              type="button"
+              [disabled]="pagination().next_page === null || isLoading()"
+              (click)="goToPage(pagination().next_page)"
+            >
+              Siguiente
+            </button>
+          </div>
+        </footer>
+      }
+    </section>
+  }
+</section>
+
+@if (isEditorOpen()) {
+  <app-customer-editor
+    [editingCustomer]="editingCustomer()"
+    [customerForm]="customerForm"
+    [isSaving]="isSaving()"
+    [saveErrorMessage]="saveErrorMessage()"
+    (closed)="closeEditor()"
+    (submitted)="saveCustomer()"
+  />
+}

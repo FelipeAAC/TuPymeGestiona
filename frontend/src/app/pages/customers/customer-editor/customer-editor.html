@@ -1,0 +1,140 @@
+<div class="modal-backdrop" (click)="closeFromBackdrop($event)">
+  <section
+    class="customer-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="customer-editor-title"
+  >
+    <header class="modal-header">
+      <div>
+        <span class="panel-label">
+          {{ editingCustomer() ? 'Edición' : 'Nuevo registro' }}
+        </span>
+        <h2 id="customer-editor-title">
+          {{ editingCustomer() ? 'Editar cliente' : 'Nuevo cliente' }}
+        </h2>
+        <p>
+          {{
+            editingCustomer()
+              ? 'Actualiza la información comercial del cliente.'
+              : 'Registra los datos principales del cliente.'
+          }}
+        </p>
+      </div>
+
+      <button
+        class="modal-close"
+        type="button"
+        aria-label="Cerrar formulario"
+        [disabled]="isSaving()"
+        (click)="requestClose()"
+      >
+        ×
+      </button>
+    </header>
+
+    <form class="customer-form" [formGroup]="customerForm()" (ngSubmit)="submitted.emit()">
+      <div class="form-grid">
+        <div class="form-field">
+          <label for="customer-code">
+            Código
+            <span>*</span>
+          </label>
+          <input
+            id="customer-code"
+            type="text"
+            formControlName="code"
+            maxlength="50"
+            placeholder="Ej. CLI-0001"
+          />
+          @if (customerForm().controls.code.invalid && customerForm().controls.code.touched) {
+            <small class="field-error">Ingresa un código válido y único.</small>
+          }
+        </div>
+
+        <div class="form-field">
+          <label for="customer-tax-id">RUT</label>
+          <input
+            id="customer-tax-id"
+            type="text"
+            formControlName="taxId"
+            maxlength="50"
+            placeholder="Ej. 12.345.678-9"
+          />
+        </div>
+
+        <div class="form-field form-field-wide">
+          <label for="customer-name">
+            Nombre o razón social
+            <span>*</span>
+          </label>
+          <input
+            id="customer-name"
+            type="text"
+            formControlName="name"
+            maxlength="150"
+            placeholder="Ej. Comercial Los Andes SpA"
+          />
+          @if (customerForm().controls.name.invalid && customerForm().controls.name.touched) {
+            <small class="field-error">Ingresa un nombre válido.</small>
+          }
+        </div>
+
+        <div class="form-field">
+          <label for="customer-email">Correo</label>
+          <input
+            id="customer-email"
+            type="email"
+            formControlName="email"
+            maxlength="254"
+            placeholder="cliente@empresa.cl"
+          />
+          @if (customerForm().controls.email.invalid && customerForm().controls.email.touched) {
+            <small class="field-error">Ingresa un correo válido.</small>
+          }
+        </div>
+
+        <div class="form-field">
+          <label for="customer-phone">Teléfono</label>
+          <input
+            id="customer-phone"
+            type="tel"
+            formControlName="phone"
+            maxlength="50"
+            placeholder="+56 9 1234 5678"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="customer-status">Estado</label>
+          <select id="customer-status" formControlName="status">
+            <option value="ACTIVE">Activo</option>
+            <option value="INACTIVE">Inactivo</option>
+          </select>
+        </div>
+      </div>
+
+      @if (saveErrorMessage()) {
+        <div class="form-alert" role="alert">
+          {{ saveErrorMessage() }}
+        </div>
+      }
+
+      <footer class="modal-actions">
+        <button
+          class="secondary-button"
+          type="button"
+          [disabled]="isSaving()"
+          (click)="requestClose()"
+        >
+          Cancelar
+        </button>
+        <button class="primary-button" type="submit" [disabled]="isSaving()">
+          {{
+            isSaving() ? 'Guardando...' : editingCustomer() ? 'Guardar cambios' : 'Crear cliente'
+          }}
+        </button>
+      </footer>
+    </form>
+  </section>
+</div>

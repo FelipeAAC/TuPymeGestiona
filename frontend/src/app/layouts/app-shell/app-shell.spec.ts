@@ -1,14 +1,43 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { of } from 'rxjs';
 
+import { AuthService } from '../../core/auth/auth.service';
+import { OrganizationContextService } from '../../core/organization/organization-context.service';
 import { AppShell } from './app-shell';
 
 describe('AppShell', () => {
   let component: AppShell;
   let fixture: ComponentFixture<AppShell>;
 
+  const currentUser = signal(null);
+  const memberships = signal([]);
+  const selectedMembership = signal(null);
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AppShell],
+      providers: [
+        provideRouter([]),
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: currentUser.asReadonly(),
+            logout: vi.fn(() => of(undefined)),
+          },
+        },
+        {
+          provide: OrganizationContextService,
+          useValue: {
+            memberships: memberships.asReadonly(),
+            selectedMembership: selectedMembership.asReadonly(),
+            load: vi.fn(() => of([])),
+            selectMembership: vi.fn(),
+            clear: vi.fn(),
+          },
+        },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AppShell);
