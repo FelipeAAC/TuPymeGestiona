@@ -6,6 +6,12 @@ from inventory import views
 urlpatterns = [
 
     path(
+        "options/",
+        views.inventory_options_view,
+        name="inventory-options",
+    ),
+
+    path(
         "stocks/",
         views.stock_list_create_view,
         name="inventory-stock-list-create",

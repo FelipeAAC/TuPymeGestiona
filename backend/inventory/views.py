@@ -9,6 +9,8 @@ from rest_framework.decorators import (
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from catalog.models import ProductVariant
+
 from inventory.models import (
     InventoryMovement,
     InventoryStock,
@@ -34,6 +36,7 @@ from organizations.authorization import has_permission
 from organizations.models import (
     CompanyMembership,
     RoleAssignment,
+    Warehouse,
 )
 
 
@@ -202,6 +205,200 @@ def _get_authorized_transfers(*, user, company):
         Q(
             destination_warehouse__branch_id__in=branch_ids
         )
+    )
+
+
+def _get_warehouse_permission_scope(
+    *,
+    user,
+    company,
+    permission_code,
+):
+
+    assignments = RoleAssignment.objects.filter(
+        membership__user=user,
+        membership__company=company,
+        membership__status=CompanyMembership.Status.ACTIVE,
+        role__permission_links__permission__code=permission_code,
+        role__status="ACTIVE",
+    ).distinct()
+
+    if not assignments.exists():
+        return False, set()
+
+    warehouses = Warehouse.objects.filter(
+        company=company,
+    )
+
+    if not assignments.filter(
+        branch__isnull=True,
+    ).exists():
+        branch_ids = assignments.values_list(
+            "branch_id",
+            flat=True,
+        )
+
+        warehouses = warehouses.filter(
+            branch_id__in=branch_ids,
+        )
+
+    return True, set(
+        warehouses.values_list(
+            "id",
+            flat=True,
+        )
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inventory_options_view(request):
+
+    raw_company_id = request.query_params.get(
+        "company",
+    )
+
+    if raw_company_id in (None, ""):
+        return Response(
+            {
+                "detail": (
+                    "El parametro company es obligatorio."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company_id = _parse_company_id(
+        raw_company_id,
+    )
+
+    if company_id is None:
+        return Response(
+            {
+                "detail": (
+                    "El parametro company debe ser un entero valido."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership = _get_active_membership(
+        user=request.user,
+        company_id=company_id,
+    )
+
+    if membership is None:
+        return Response(
+            {
+                "detail": (
+                    "No tienes acceso a esta empresa."
+                ),
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company = membership.company
+
+    stocks_manage, stock_warehouse_ids = (
+        _get_warehouse_permission_scope(
+            user=request.user,
+            company=company,
+            permission_code=(
+                INVENTORY_STOCKS_MANAGE_PERMISSION_CODE
+            ),
+        )
+    )
+
+    movements_manage, movement_warehouse_ids = (
+        _get_warehouse_permission_scope(
+            user=request.user,
+            company=company,
+            permission_code=(
+                INVENTORY_MOVEMENTS_MANAGE_PERMISSION_CODE
+            ),
+        )
+    )
+
+    transfers_manage, transfer_warehouse_ids = (
+        _get_warehouse_permission_scope(
+            user=request.user,
+            company=company,
+            permission_code=(
+                INVENTORY_TRANSFERS_MANAGE_PERMISSION_CODE
+            ),
+        )
+    )
+
+    warehouse_ids = (
+        stock_warehouse_ids
+        | movement_warehouse_ids
+        | transfer_warehouse_ids
+    )
+
+    warehouses = (
+        Warehouse.objects.filter(
+            company=company,
+            id__in=warehouse_ids,
+        )
+        .select_related("branch")
+        .order_by("name", "id")
+    )
+
+    variants = ProductVariant.objects.none()
+
+    if stocks_manage or movements_manage or transfers_manage:
+        variants = (
+            ProductVariant.objects.filter(
+                product__company=company,
+            )
+            .select_related("product")
+            .order_by("product__name", "sku", "id")
+        )
+
+    return Response(
+        {
+            "permissions": {
+                "stocks_manage": stocks_manage,
+                "movements_manage": movements_manage,
+                "transfers_manage": transfers_manage,
+            },
+            "warehouses": [
+                {
+                    "id": warehouse.id,
+                    "branch": warehouse.branch_id,
+                    "branch_name": (
+                        warehouse.branch.name
+                        if warehouse.branch is not None
+                        else ""
+                    ),
+                    "code": warehouse.code,
+                    "name": warehouse.name,
+                    "capabilities": {
+                        "stocks": (
+                            warehouse.id in stock_warehouse_ids
+                        ),
+                        "movements": (
+                            warehouse.id in movement_warehouse_ids
+                        ),
+                        "transfers": (
+                            warehouse.id in transfer_warehouse_ids
+                        ),
+                    },
+                }
+                for warehouse in warehouses
+            ],
+            "variants": [
+                {
+                    "id": variant.id,
+                    "product": variant.product_id,
+                    "product_name": variant.product.name,
+                    "sku": variant.sku,
+                    "gtin": variant.gtin,
+                    "status": variant.status,
+                }
+                for variant in variants
+            ],
+        }
     )
 
 

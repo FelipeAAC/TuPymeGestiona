@@ -381,6 +381,101 @@ class InventoryStockApiTests(TestCase):
         )
 
 
+    def test_options_return_authorized_warehouses_and_variants(self):
+
+        Warehouse.objects.create(
+            company=self.company_a,
+            branch=self.branch_b,
+            code="BOD-INV-OTHER",
+            name="Bodega Sin Acceso",
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            "/api/inventory/options/",
+            {
+                "company": self.company_a.id,
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response.data["permissions"],
+            {
+                "stocks_manage": True,
+                "movements_manage": False,
+                "transfers_manage": False,
+            },
+        )
+
+        self.assertEqual(
+            len(response.data["warehouses"]),
+            1,
+        )
+
+        self.assertEqual(
+            response.data["warehouses"][0]["id"],
+            self.warehouse.id,
+        )
+
+        self.assertEqual(
+            response.data["warehouses"][0]["capabilities"],
+            {
+                "stocks": True,
+                "movements": False,
+                "transfers": False,
+            },
+        )
+
+        self.assertEqual(
+            response.data["variants"][0]["id"],
+            self.variant.id,
+        )
+
+
+    def test_options_without_inventory_permission_are_empty(self):
+
+        RoleAssignment.objects.all().delete()
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            "/api/inventory/options/",
+            {
+                "company": self.company_a.id,
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response.data["permissions"],
+            {
+                "stocks_manage": False,
+                "movements_manage": False,
+                "transfers_manage": False,
+            },
+        )
+
+        self.assertEqual(
+            response.data["warehouses"],
+            [],
+        )
+
+        self.assertEqual(
+            response.data["variants"],
+            [],
+        )
+
+
 class InventoryMovementModelsTests(TestCase):
 
     def setUp(self):

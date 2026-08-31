@@ -1,0 +1,737 @@
+<section class="inventory-page">
+  <header class="inventory-header">
+    <div>
+      <span class="section-label">Operaciones</span>
+      <h1>Inventario</h1>
+
+      @if (selectedMembership(); as membership) {
+        <p>
+          Control de existencias y movimientos de
+          <strong>{{ membership.company.name }}</strong
+          >.
+        </p>
+      } @else {
+        <p>Selecciona una empresa para consultar su inventario.</p>
+      }
+    </div>
+
+    @if (selectedMembership() && !isOptionsLoading() && !optionsErrorMessage()) {
+      <div class="header-actions">
+        @if (permissions().movements_manage) {
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="!canCreateMovement()"
+            (click)="openMovementEditor()"
+          >
+            Registrar movimiento
+          </button>
+        }
+
+        @if (permissions().transfers_manage) {
+          <button
+            type="button"
+            class="primary-button"
+            [disabled]="!canCreateTransfer()"
+            (click)="openTransferEditor()"
+          >
+            Nueva transferencia
+          </button>
+        }
+      </div>
+    }
+  </header>
+
+  @if (!selectedMembership()) {
+    <div class="state-card">
+      <strong>Sin empresa seleccionada</strong>
+      <p>Necesitas una empresa activa para consultar el inventario.</p>
+    </div>
+  } @else if (isOptionsLoading()) {
+    <div class="state-card">
+      <strong>Preparando inventario...</strong>
+      <p>Estamos consultando tus bodegas y permisos disponibles.</p>
+    </div>
+  } @else if (optionsErrorMessage()) {
+    <div class="state-card state-card-error" role="alert">
+      <strong>No pudimos preparar el inventario</strong>
+      <p>{{ optionsErrorMessage() }}</p>
+    </div>
+  } @else if (
+    !permissions().stocks_manage &&
+    !permissions().movements_manage &&
+    !permissions().transfers_manage
+  ) {
+    <div class="state-card">
+      <strong>Sin acceso al inventario</strong>
+      <p>No tienes permisos de inventario asignados en esta empresa.</p>
+    </div>
+  } @else {
+    <section class="summary-grid" aria-label="Resumen de inventario">
+      <article class="summary-card summary-card-primary">
+        <span>Unidades disponibles</span>
+        <strong>{{ totalUnits() | number: '1.0-3' }}</strong>
+        <small>Suma de existencias autorizadas</small>
+      </article>
+
+      <article class="summary-card">
+        <span>Posiciones de stock</span>
+        <strong>{{ stockPositions() }}</strong>
+        <small>Combinaciones de bodega y variante</small>
+      </article>
+
+      <article class="summary-card">
+        <span>Bodegas con stock</span>
+        <strong>{{ stockedWarehouses() }}</strong>
+        <small>Dentro de tu alcance</small>
+      </article>
+
+      <article class="summary-card">
+        <span>Sin existencias</span>
+        <strong>{{ emptyPositions() }}</strong>
+        <small>Posiciones con cantidad cero</small>
+      </article>
+    </section>
+
+    @if (successMessage()) {
+      <div class="page-alert page-alert-success" role="status">
+        {{ successMessage() }}
+      </div>
+    }
+
+    @if (
+      (permissions().movements_manage && !canCreateMovement()) ||
+      (permissions().transfers_manage && !canCreateTransfer())
+    ) {
+      <div class="page-alert page-alert-info">
+        @if (activeVariants().length === 0) {
+          Registra al menos una variante activa para operar el inventario.
+        } @else if (movementWarehouses().length === 0) {
+          No hay bodegas disponibles para registrar movimientos.
+        } @else if (permissions().transfers_manage && transferWarehouses().length < 2) {
+          Se necesitan al menos dos bodegas autorizadas para realizar transferencias.
+        }
+      </div>
+    }
+
+    <div class="inventory-tabs" role="tablist" aria-label="Secciones de inventario">
+      <button
+        type="button"
+        role="tab"
+        [attr.aria-selected]="activeTab() === 'stocks'"
+        [class.active]="activeTab() === 'stocks'"
+        (click)="selectTab('stocks')"
+      >
+        Existencias
+        <span>{{ stocks().length }}</span>
+      </button>
+
+      <button
+        type="button"
+        role="tab"
+        [attr.aria-selected]="activeTab() === 'movements'"
+        [class.active]="activeTab() === 'movements'"
+        (click)="selectTab('movements')"
+      >
+        Movimientos
+        <span>{{ movements().length }}</span>
+      </button>
+
+      <button
+        type="button"
+        role="tab"
+        [attr.aria-selected]="activeTab() === 'transfers'"
+        [class.active]="activeTab() === 'transfers'"
+        (click)="selectTab('transfers')"
+      >
+        Transferencias
+        <span>{{ transfers().length }}</span>
+      </button>
+    </div>
+
+    @if (activeTab() === 'stocks') {
+      <section class="inventory-panel" role="tabpanel">
+        <header class="panel-header">
+          <div>
+            <span class="panel-label">Stock actual</span>
+            <h2>Existencias por bodega</h2>
+            <p>Consulta las cantidades disponibles para cada variante.</p>
+          </div>
+        </header>
+
+        @if (!permissions().stocks_manage) {
+          <div class="panel-state">
+            <strong>Sin permiso de existencias</strong>
+            <p>No tienes acceso al stock de esta empresa.</p>
+          </div>
+        } @else {
+          <form class="filter-bar" [formGroup]="stockFilterForm" (ngSubmit)="applyStockFilters()">
+            <div class="filter-field filter-search">
+              <label for="stock-search">Buscar</label>
+              <input
+                id="stock-search"
+                type="search"
+                formControlName="search"
+                maxlength="150"
+                placeholder="Producto, SKU o bodega"
+              />
+            </div>
+
+            <div class="filter-field">
+              <label for="stock-warehouse">Bodega</label>
+              <select id="stock-warehouse" formControlName="warehouseId">
+                <option [ngValue]="0">Todas las bodegas</option>
+                @for (warehouse of stockWarehouses(); track warehouse.id) {
+                  <option [ngValue]="warehouse.id">
+                    {{ warehouse.name }} · {{ warehouse.code }}
+                  </option>
+                }
+              </select>
+            </div>
+
+            <div class="filter-actions">
+              <button type="submit" class="filter-button">Aplicar</button>
+              <button type="button" class="filter-clear" (click)="clearStockFilters()">
+                Limpiar
+              </button>
+            </div>
+          </form>
+
+          @if (isStocksLoading()) {
+            <div class="panel-state">
+              <strong>Cargando existencias...</strong>
+              <p>Consultando el stock disponible.</p>
+            </div>
+          } @else if (stocksErrorMessage()) {
+            <div class="panel-state panel-state-error" role="alert">
+              <strong>No pudimos mostrar las existencias</strong>
+              <p>{{ stocksErrorMessage() }}</p>
+            </div>
+          } @else if (visibleStocks().length === 0) {
+            <div class="panel-state">
+              <strong>No hay existencias para mostrar</strong>
+              <p>
+                {{
+                  stocks().length === 0
+                    ? 'Registra una entrada para crear la primera posición de stock.'
+                    : 'Prueba cambiando los filtros de búsqueda.'
+                }}
+              </p>
+            </div>
+          } @else {
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Producto</th>
+                    <th>Bodega</th>
+                    <th class="quantity-column">Disponible</th>
+                    <th>Última actualización</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (stock of visibleStocks(); track stock.id) {
+                    <tr>
+                      <td>
+                        <div class="primary-cell">
+                          <strong>{{ variantName(stock.variant) }}</strong>
+                          <span>SKU {{ variantSku(stock.variant) || stock.variant }}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div class="primary-cell">
+                          <strong>{{ warehouseName(stock.warehouse) }}</strong>
+                          <span>{{ warehouseCode(stock.warehouse) }}</span>
+                        </div>
+                      </td>
+                      <td class="quantity-column">
+                        <strong
+                          class="stock-quantity"
+                          [class.stock-empty]="quantityAsNumber(stock.quantity) === 0"
+                        >
+                          {{ quantityAsNumber(stock.quantity) | number: '1.0-3' }}
+                        </strong>
+                      </td>
+                      <td>
+                        <span class="date-cell">
+                          {{ stock.updated_at | date: 'dd/MM/yyyy, HH:mm' }}
+                        </span>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        }
+      </section>
+    }
+
+    @if (activeTab() === 'movements') {
+      <section class="inventory-panel" role="tabpanel">
+        <header class="panel-header panel-header-actions">
+          <div>
+            <span class="panel-label">Trazabilidad</span>
+            <h2>Historial de movimientos</h2>
+            <p>Entradas, salidas y ajustes registrados en las bodegas autorizadas.</p>
+          </div>
+
+          @if (permissions().movements_manage) {
+            <button
+              type="button"
+              class="primary-button compact-button"
+              [disabled]="!canCreateMovement()"
+              (click)="openMovementEditor()"
+            >
+              Registrar movimiento
+            </button>
+          }
+        </header>
+
+        @if (!permissions().movements_manage) {
+          <div class="panel-state">
+            <strong>Sin permiso de movimientos</strong>
+            <p>No tienes acceso al historial de movimientos de esta empresa.</p>
+          </div>
+        } @else {
+          <form
+            class="filter-bar movement-filters"
+            [formGroup]="movementFilterForm"
+            (ngSubmit)="applyMovementFilters()"
+          >
+            <div class="filter-field">
+              <label for="movement-warehouse-filter">Bodega</label>
+              <select id="movement-warehouse-filter" formControlName="warehouseId">
+                <option [ngValue]="0">Todas las bodegas</option>
+                @for (warehouse of movementWarehouses(); track warehouse.id) {
+                  <option [ngValue]="warehouse.id">{{ warehouse.name }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="filter-field filter-variant">
+              <label for="movement-variant-filter">Producto o variante</label>
+              <select id="movement-variant-filter" formControlName="variantId">
+                <option [ngValue]="0">Todas las variantes</option>
+                @for (variant of variants(); track variant.id) {
+                  <option [ngValue]="variant.id">
+                    {{ variant.product_name }} · {{ variant.sku }}
+                  </option>
+                }
+              </select>
+            </div>
+
+            <div class="filter-field">
+              <label for="movement-type-filter">Tipo</label>
+              <select id="movement-type-filter" formControlName="movementType">
+                <option value="">Todos</option>
+                <option value="ENTRY">Entradas</option>
+                <option value="EXIT">Salidas</option>
+                <option value="ADJUSTMENT">Ajustes</option>
+              </select>
+            </div>
+
+            <div class="filter-actions">
+              <button type="submit" class="filter-button">Aplicar</button>
+              <button type="button" class="filter-clear" (click)="clearMovementFilters()">
+                Limpiar
+              </button>
+            </div>
+          </form>
+
+          @if (isMovementsLoading()) {
+            <div class="panel-state">
+              <strong>Cargando movimientos...</strong>
+              <p>Consultando la trazabilidad del inventario.</p>
+            </div>
+          } @else if (movementsErrorMessage()) {
+            <div class="panel-state panel-state-error" role="alert">
+              <strong>No pudimos mostrar los movimientos</strong>
+              <p>{{ movementsErrorMessage() }}</p>
+            </div>
+          } @else if (movements().length === 0) {
+            <div class="panel-state">
+              <strong>No hay movimientos registrados</strong>
+              <p>Aún no existen movimientos para los filtros seleccionados.</p>
+            </div>
+          } @else {
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tipo</th>
+                    <th>Producto</th>
+                    <th>Bodega</th>
+                    <th class="quantity-column">Variación</th>
+                    <th>Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (movement of movements(); track movement.id) {
+                    <tr>
+                      <td>
+                        <span
+                          class="type-badge"
+                          [class.movement-entry]="movement.movement_type === 'ENTRY'"
+                          [class.movement-exit]="movement.movement_type === 'EXIT'"
+                          [class.movement-adjustment]="movement.movement_type === 'ADJUSTMENT'"
+                        >
+                          {{ movementTypeLabel(movement.movement_type) }}
+                        </span>
+                      </td>
+                      <td>
+                        <div class="primary-cell">
+                          <strong>{{ variantName(movement.variant) }}</strong>
+                          <span>SKU {{ variantSku(movement.variant) || movement.variant }}</span>
+                        </div>
+                      </td>
+                      <td>{{ warehouseName(movement.warehouse) }}</td>
+                      <td class="quantity-column">
+                        <strong
+                          class="movement-quantity"
+                          [class.negative]="quantityAsNumber(movement.quantity_delta) < 0"
+                        >
+                          {{ quantityAsNumber(movement.quantity_delta) > 0 ? '+' : ''
+                          }}{{ quantityAsNumber(movement.quantity_delta) | number: '1.0-3' }}
+                        </strong>
+                      </td>
+                      <td>
+                        <span class="date-cell">
+                          {{ movement.created_at | date: 'dd/MM/yyyy, HH:mm' }}
+                        </span>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        }
+      </section>
+    }
+
+    @if (activeTab() === 'transfers') {
+      <section class="inventory-panel" role="tabpanel">
+        <header class="panel-header panel-header-actions">
+          <div>
+            <span class="panel-label">Traslados internos</span>
+            <h2>Transferencias entre bodegas</h2>
+            <p>Revisa los movimientos de stock realizados entre ubicaciones.</p>
+          </div>
+
+          @if (permissions().transfers_manage) {
+            <button
+              type="button"
+              class="primary-button compact-button"
+              [disabled]="!canCreateTransfer()"
+              (click)="openTransferEditor()"
+            >
+              Nueva transferencia
+            </button>
+          }
+        </header>
+
+        @if (!permissions().transfers_manage) {
+          <div class="panel-state">
+            <strong>Sin permiso de transferencias</strong>
+            <p>No tienes acceso a las transferencias de esta empresa.</p>
+          </div>
+        } @else if (isTransfersLoading()) {
+          <div class="panel-state">
+            <strong>Cargando transferencias...</strong>
+            <p>Consultando los traslados realizados.</p>
+          </div>
+        } @else if (transfersErrorMessage()) {
+          <div class="panel-state panel-state-error" role="alert">
+            <strong>No pudimos mostrar las transferencias</strong>
+            <p>{{ transfersErrorMessage() }}</p>
+          </div>
+        } @else if (transfers().length === 0) {
+          <div class="panel-state">
+            <strong>No hay transferencias registradas</strong>
+            <p>Aún no se han trasladado existencias entre bodegas.</p>
+          </div>
+        } @else {
+          <div class="transfer-list">
+            @for (transfer of transfers(); track transfer.id) {
+              <article class="transfer-card">
+                <header>
+                  <div>
+                    <span class="transfer-number">Transferencia #{{ transfer.id }}</span>
+                    <strong>
+                      {{ warehouseName(transfer.source_warehouse) }}
+                      <span aria-hidden="true">→</span>
+                      {{ warehouseName(transfer.destination_warehouse) }}
+                    </strong>
+                  </div>
+
+                  <span
+                    class="status-badge"
+                    [class.status-completed]="transfer.status === 'COMPLETED'"
+                  >
+                    {{ transferStatusLabel(transfer.status) }}
+                  </span>
+                </header>
+
+                <div class="transfer-items">
+                  @for (item of transfer.items; track item.variant) {
+                    <div>
+                      <span>
+                        {{ variantName(item.variant) }} · SKU
+                        {{ variantSku(item.variant) || item.variant }}
+                      </span>
+                      <strong>{{ quantityAsNumber(item.quantity) | number: '1.0-3' }}</strong>
+                    </div>
+                  }
+                </div>
+
+                <footer>
+                  {{ transfer.created_at | date: 'dd/MM/yyyy, HH:mm' }}
+                </footer>
+              </article>
+            }
+          </div>
+        }
+      </section>
+    }
+  }
+</section>
+
+@if (openEditor() === 'movement') {
+  <div class="modal-backdrop">
+    <section
+      class="inventory-modal movement-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="movement-editor-title"
+    >
+      <header class="modal-header">
+        <div>
+          <span class="panel-label">Inventario</span>
+          <h2 id="movement-editor-title">Registrar movimiento</h2>
+          <p>Actualiza el stock dejando trazabilidad de la operación.</p>
+        </div>
+
+        <button type="button" class="close-button" aria-label="Cerrar" (click)="closeEditor()">
+          ×
+        </button>
+      </header>
+
+      <form class="editor-form" [formGroup]="movementForm" (ngSubmit)="saveMovement()">
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="movement-type">Tipo de movimiento <span>*</span></label>
+            <select id="movement-type" formControlName="movementType">
+              <option value="ENTRY">Entrada</option>
+              <option value="EXIT">Salida</option>
+              <option value="ADJUSTMENT">Ajuste</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label for="movement-warehouse">Bodega <span>*</span></label>
+            <select id="movement-warehouse" formControlName="warehouseId">
+              @for (warehouse of movementWarehouses(); track warehouse.id) {
+                <option [ngValue]="warehouse.id">
+                  {{ warehouse.name }} · {{ warehouse.code }}
+                </option>
+              }
+            </select>
+          </div>
+
+          <div class="form-field form-field-wide">
+            <label for="movement-variant">Producto o variante <span>*</span></label>
+            <select id="movement-variant" formControlName="variantId">
+              @for (variant of activeVariants(); track variant.id) {
+                <option [ngValue]="variant.id">
+                  {{ variant.product_name }} · SKU {{ variant.sku }}
+                </option>
+              }
+            </select>
+          </div>
+
+          <div class="form-field form-field-wide">
+            <label for="movement-quantity">Cantidad <span>*</span></label>
+            <input
+              id="movement-quantity"
+              type="number"
+              step="0.001"
+              [attr.min]="
+                movementForm.controls.movementType.value === 'ADJUSTMENT' ? null : '0.001'
+              "
+              formControlName="quantity"
+              placeholder="0.000"
+            />
+
+            @if (movementForm.controls.movementType.value === 'EXIT') {
+              <small>Ingresa una cantidad positiva; el sistema la descontará del stock.</small>
+            } @else if (movementForm.controls.movementType.value === 'ADJUSTMENT') {
+              <small>Usa un valor positivo para sumar o negativo para descontar.</small>
+            } @else {
+              <small>La entrada creará la posición de stock si todavía no existe.</small>
+            }
+
+            @if (movementForm.controls.quantity.invalid && movementForm.controls.quantity.touched) {
+              <small class="field-error">Ingresa una cantidad válida distinta de cero.</small>
+            }
+          </div>
+        </div>
+
+        @if (saveErrorMessage()) {
+          <div class="form-alert form-alert-error" role="alert">
+            {{ saveErrorMessage() }}
+          </div>
+        }
+
+        <footer class="modal-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="isSaving()"
+            (click)="closeEditor()"
+          >
+            Cancelar
+          </button>
+          <button type="submit" class="primary-button" [disabled]="isSaving()">
+            {{ isSaving() ? 'Registrando...' : 'Registrar movimiento' }}
+          </button>
+        </footer>
+      </form>
+    </section>
+  </div>
+}
+
+@if (openEditor() === 'transfer') {
+  <div class="modal-backdrop">
+    <section
+      class="inventory-modal transfer-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="transfer-editor-title"
+    >
+      <header class="modal-header">
+        <div>
+          <span class="panel-label">Inventario</span>
+          <h2 id="transfer-editor-title">Nueva transferencia</h2>
+          <p>Traslada una o más variantes entre bodegas autorizadas.</p>
+        </div>
+
+        <button type="button" class="close-button" aria-label="Cerrar" (click)="closeEditor()">
+          ×
+        </button>
+      </header>
+
+      <form class="editor-form" [formGroup]="transferForm" (ngSubmit)="saveTransfer()">
+        <div class="form-grid warehouse-grid">
+          <div class="form-field">
+            <label for="transfer-source">Bodega origen <span>*</span></label>
+            <select id="transfer-source" formControlName="sourceWarehouseId">
+              @for (warehouse of transferWarehouses(); track warehouse.id) {
+                <option [ngValue]="warehouse.id">
+                  {{ warehouse.name }} · {{ warehouse.code }}
+                </option>
+              }
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label for="transfer-destination">Bodega destino <span>*</span></label>
+            <select id="transfer-destination" formControlName="destinationWarehouseId">
+              @for (warehouse of transferWarehouses(); track warehouse.id) {
+                <option [ngValue]="warehouse.id">
+                  {{ warehouse.name }} · {{ warehouse.code }}
+                </option>
+              }
+            </select>
+
+            @if (
+              transferForm.controls.destinationWarehouseId.hasError('sameWarehouse') &&
+              transferForm.controls.destinationWarehouseId.touched
+            ) {
+              <small class="field-error">La bodega destino debe ser diferente.</small>
+            }
+          </div>
+        </div>
+
+        <section class="transfer-editor-items">
+          <header>
+            <div>
+              <h3>Productos a transferir</h3>
+              <p>Agrega las variantes y cantidades que saldrán de la bodega origen.</p>
+            </div>
+            <button
+              type="button"
+              class="add-line-button"
+              [disabled]="isSaving()"
+              (click)="addTransferItem()"
+            >
+              Agregar línea
+            </button>
+          </header>
+
+          <div formArrayName="items" class="transfer-editor-list">
+            @for (item of transferItems.controls; track item; let index = $index) {
+              <div class="transfer-editor-row" [formGroupName]="index">
+                <div class="form-field">
+                  <label [for]="'transfer-variant-' + index">Variante <span>*</span></label>
+                  <select [id]="'transfer-variant-' + index" formControlName="variantId">
+                    @for (variant of activeVariants(); track variant.id) {
+                      <option [ngValue]="variant.id">
+                        {{ variant.product_name }} · SKU {{ variant.sku }}
+                      </option>
+                    }
+                  </select>
+                </div>
+
+                <div class="form-field quantity-field">
+                  <label [for]="'transfer-quantity-' + index">Cantidad <span>*</span></label>
+                  <input
+                    [id]="'transfer-quantity-' + index"
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    formControlName="quantity"
+                    placeholder="0.000"
+                  />
+                  @if (item.controls.quantity.invalid && item.controls.quantity.touched) {
+                    <small class="field-error">Ingresa una cantidad mayor a cero.</small>
+                  }
+                </div>
+
+                <button
+                  type="button"
+                  class="remove-line-button"
+                  [disabled]="transferItems.length === 1 || isSaving()"
+                  [attr.aria-label]="'Eliminar línea ' + (index + 1)"
+                  (click)="removeTransferItem(index)"
+                >
+                  Eliminar
+                </button>
+              </div>
+            }
+          </div>
+        </section>
+
+        @if (saveErrorMessage()) {
+          <div class="form-alert form-alert-error" role="alert">
+            {{ saveErrorMessage() }}
+          </div>
+        }
+
+        <footer class="modal-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="isSaving()"
+            (click)="closeEditor()"
+          >
+            Cancelar
+          </button>
+          <button type="submit" class="primary-button" [disabled]="isSaving()">
+            {{ isSaving() ? 'Transfiriendo...' : 'Realizar transferencia' }}
+          </button>
+        </footer>
+      </form>
+    </section>
+  </div>
+}

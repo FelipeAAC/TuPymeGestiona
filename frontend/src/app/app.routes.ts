@@ -6,6 +6,7 @@ import { AppShell } from './layouts/app-shell/app-shell';
 import { Categories } from './pages/categories/categories';
 import { Customers } from './pages/customers/customers';
 import { Dashboard } from './pages/dashboard/dashboard';
+import { Inventory } from './pages/inventory/inventory';
 import { Login } from './pages/login/login';
 import { Products } from './pages/products/products';
 
@@ -48,6 +49,10 @@ export const routes: Routes = [
       {
         path: 'customers',
         component: Customers,
+      },
+      {
+        path: 'inventory',
+        component: Inventory,
       },
     ],
   },

@@ -48,4 +48,11 @@ describe('AppShell', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('shows the inventory navigation link', () => {
+    const inventoryLink = fixture.nativeElement.querySelector('a[href="/app/inventory"]');
+
+    expect(inventoryLink).toBeTruthy();
+    expect(inventoryLink.textContent).toContain('Inventario');
+  });
 });
