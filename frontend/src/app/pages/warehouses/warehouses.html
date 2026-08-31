@@ -1,0 +1,210 @@
+<section class="warehouses-page">
+  <header class="warehouses-header">
+    <div>
+      <span class="section-label">Operación logística</span>
+      <h1>Bodegas</h1>
+
+      @if (selectedMembership(); as membership) {
+        <p>
+          Administra los espacios de almacenamiento y su relación con las sucursales de
+          <strong>{{ membership.company.name }}</strong
+          >.
+        </p>
+      } @else {
+        <p>Selecciona una empresa para consultar sus bodegas.</p>
+      }
+    </div>
+
+    @if (selectedMembership() && canManageWarehouses()) {
+      <button class="primary-button header-action" type="button" (click)="openCreateEditor()">
+        <span aria-hidden="true">+</span>
+        Nueva bodega
+      </button>
+    }
+  </header>
+
+  @if (!selectedMembership()) {
+    <div class="state-card">
+      <strong>Sin empresa seleccionada</strong>
+      <p>Necesitas una empresa activa para administrar bodegas.</p>
+    </div>
+  } @else {
+    @if (successMessage()) {
+      <div class="page-alert" role="status">
+        <span aria-hidden="true">✓</span>
+        {{ successMessage() }}
+      </div>
+    }
+
+    <section class="summary-grid" aria-label="Resumen de bodegas">
+      <article class="summary-card">
+        <span class="summary-icon summary-icon-total" aria-hidden="true">BO</span>
+        <div>
+          <span>Total registradas</span>
+          <strong>{{ warehouses().length }}</strong>
+        </div>
+      </article>
+
+      <article class="summary-card">
+        <span class="summary-icon summary-icon-assigned" aria-hidden="true">SU</span>
+        <div>
+          <span>Con sucursal</span>
+          <strong>{{ assignedWarehouses() }}</strong>
+        </div>
+      </article>
+
+      <article class="summary-card">
+        <span class="summary-icon summary-icon-general" aria-hidden="true">GE</span>
+        <div>
+          <span>Alcance general</span>
+          <strong>{{ generalWarehouses() }}</strong>
+        </div>
+      </article>
+    </section>
+
+    <section class="warehouses-panel">
+      <header class="panel-header">
+        <div>
+          <span class="panel-label">Directorio logístico</span>
+          <h2>Bodegas registradas</h2>
+        </div>
+
+        <span class="result-count">
+          {{ filteredWarehouses().length }}
+          {{ filteredWarehouses().length === 1 ? 'resultado' : 'resultados' }}
+        </span>
+      </header>
+
+      <form class="filter-bar" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+        <div class="filter-field filter-field-search">
+          <label for="warehouse-search">Buscar</label>
+          <input
+            id="warehouse-search"
+            type="search"
+            formControlName="search"
+            maxlength="200"
+            placeholder="Código, nombre o sucursal"
+          />
+        </div>
+
+        <div class="filter-field">
+          <label for="warehouse-branch-filter">Sucursal</label>
+          <select id="warehouse-branch-filter" formControlName="branchId">
+            <option [ngValue]="0">Todas</option>
+            <option [ngValue]="-1">Sin sucursal</option>
+            @for (branch of branches(); track branch.id) {
+              <option [ngValue]="branch.id">{{ branch.code }} · {{ branch.name }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="filter-actions">
+          <button class="secondary-button" type="button" (click)="clearFilters()">Limpiar</button>
+          <button class="primary-button" type="submit">Aplicar filtros</button>
+        </div>
+      </form>
+
+      @if (isLoading()) {
+        <div class="state-card state-card-panel">
+          <span class="loading-indicator" aria-hidden="true"></span>
+          <div>
+            <strong>Cargando bodegas...</strong>
+            <p>Estamos consultando los espacios autorizados para la empresa seleccionada.</p>
+          </div>
+        </div>
+      } @else if (listErrorMessage()) {
+        <div class="state-card state-card-panel state-card-error" role="alert">
+          <strong>No pudimos mostrar las bodegas</strong>
+          <p>{{ listErrorMessage() }}</p>
+        </div>
+      } @else if (filteredWarehouses().length === 0) {
+        <div class="state-card state-card-panel state-card-empty">
+          <span class="empty-icon" aria-hidden="true">BO</span>
+          <div>
+            <strong>No encontramos bodegas</strong>
+            <p>
+              {{
+                warehouses().length === 0
+                  ? 'Registra la primera bodega de esta empresa.'
+                  : 'Prueba con otros criterios de búsqueda o sucursal.'
+              }}
+            </p>
+          </div>
+        </div>
+      } @else {
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Bodega</th>
+                <th scope="col">Código</th>
+                <th scope="col">Sucursal</th>
+                <th scope="col">Alcance</th>
+                <th scope="col"><span class="visually-hidden">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (warehouse of filteredWarehouses(); track warehouse.id) {
+                <tr>
+                  <td data-label="Bodega">
+                    <div class="warehouse-identity">
+                      <span class="warehouse-avatar" aria-hidden="true">
+                        {{ warehouseInitials(warehouse.name) }}
+                      </span>
+                      <div>
+                        <strong>{{ warehouse.name }}</strong>
+                        <span>Bodega #{{ warehouse.id }}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td data-label="Código">
+                    <span class="code-badge">{{ warehouse.code }}</span>
+                  </td>
+                  <td data-label="Sucursal">
+                    @if (branchFor(warehouse); as branch) {
+                      <div class="stacked-value">
+                        <strong>{{ branch.name }}</strong>
+                        <span>{{ branch.code }}</span>
+                      </div>
+                    } @else if (warehouse.branch) {
+                      <span class="branch-fallback">Sucursal #{{ warehouse.branch }}</span>
+                    } @else {
+                      <span class="branch-fallback">Sin sucursal específica</span>
+                    }
+                  </td>
+                  <td data-label="Alcance">
+                    <span class="scope-badge" [class.scope-general]="warehouse.branch === null">
+                      {{ warehouse.branch === null ? 'General' : 'Sucursal' }}
+                    </span>
+                  </td>
+                  <td class="actions-cell">
+                    <button
+                      class="row-action"
+                      type="button"
+                      [attr.aria-label]="'Editar ' + warehouse.name"
+                      (click)="openEditEditor(warehouse)"
+                    >
+                      Editar
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
+</section>
+
+@if (isEditorOpen()) {
+  <app-warehouse-editor
+    [editingWarehouse]="editingWarehouse()"
+    [branches]="branches()"
+    [warehouseForm]="warehouseForm"
+    [isSaving]="isSaving()"
+    [saveErrorMessage]="saveErrorMessage()"
+    (closed)="closeEditor()"
+    (submitted)="saveWarehouse()"
+  />
+}

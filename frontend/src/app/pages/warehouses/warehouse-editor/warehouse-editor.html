@@ -1,0 +1,116 @@
+<div class="modal-backdrop" (click)="closeFromBackdrop($event)">
+  <section
+    class="warehouse-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="warehouse-editor-title"
+  >
+    <header class="modal-header">
+      <div>
+        <span class="panel-label">
+          {{ editingWarehouse() ? 'Edición' : 'Nuevo registro' }}
+        </span>
+        <h2 id="warehouse-editor-title">
+          {{ editingWarehouse() ? 'Editar bodega' : 'Nueva bodega' }}
+        </h2>
+        <p>
+          {{
+            editingWarehouse()
+              ? 'Actualiza la identificación y ubicación organizacional de la bodega.'
+              : 'Registra un espacio para controlar existencias y movimientos.'
+          }}
+        </p>
+      </div>
+
+      <button
+        class="modal-close"
+        type="button"
+        aria-label="Cerrar formulario"
+        [disabled]="isSaving()"
+        (click)="requestClose()"
+      >
+        ×
+      </button>
+    </header>
+
+    <form class="warehouse-form" [formGroup]="warehouseForm()" (ngSubmit)="submitted.emit()">
+      <div class="form-grid">
+        <div class="form-field">
+          <label for="warehouse-code">
+            Código
+            <span>*</span>
+          </label>
+          <input
+            id="warehouse-code"
+            type="text"
+            formControlName="code"
+            maxlength="50"
+            placeholder="Ej. BOD-CENTRAL"
+          />
+          @if (warehouseForm().controls.code.invalid && warehouseForm().controls.code.touched) {
+            <small class="field-error">Ingresa un código válido.</small>
+          }
+        </div>
+
+        <div class="form-field form-field-wide">
+          <label for="warehouse-name">
+            Nombre
+            <span>*</span>
+          </label>
+          <input
+            id="warehouse-name"
+            type="text"
+            formControlName="name"
+            maxlength="150"
+            placeholder="Ej. Bodega Central"
+          />
+          @if (warehouseForm().controls.name.invalid && warehouseForm().controls.name.touched) {
+            <small class="field-error">Ingresa un nombre válido.</small>
+          }
+        </div>
+
+        <div class="form-field form-field-wide">
+          <label for="warehouse-branch">Sucursal</label>
+          <select id="warehouse-branch" formControlName="branchId">
+            <option [ngValue]="null">Sin sucursal específica</option>
+            @for (branch of branches(); track branch.id) {
+              <option [ngValue]="branch.id">{{ branch.code }} · {{ branch.name }}</option>
+            }
+            @if (editingWarehouse()?.branch; as currentBranchId) {
+              @if (!hasBranch(currentBranchId)) {
+                <option [ngValue]="currentBranchId">
+                  Sucursal #{{ currentBranchId }} (actual)
+                </option>
+              }
+            }
+          </select>
+          <small class="field-hint">
+            Déjala sin sucursal cuando la bodega tenga alcance general dentro de la empresa.
+          </small>
+        </div>
+      </div>
+
+      @if (saveErrorMessage()) {
+        <div class="form-alert" role="alert">
+          {{ saveErrorMessage() }}
+        </div>
+      }
+
+      <footer class="modal-actions">
+        <button
+          class="secondary-button"
+          type="button"
+          [disabled]="isSaving()"
+          (click)="requestClose()"
+        >
+          Cancelar
+        </button>
+        <button class="primary-button" type="submit" [disabled]="isSaving()">
+          {{
+            isSaving() ? 'Guardando...' : editingWarehouse() ? 'Guardar cambios' : 'Crear bodega'
+          }}
+        </button>
+      </footer>
+    </form>
+  </section>
+</div>

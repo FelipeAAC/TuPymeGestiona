@@ -10,6 +10,7 @@ import { Inventory } from './pages/inventory/inventory';
 import { Login } from './pages/login/login';
 import { Products } from './pages/products/products';
 import { Suppliers } from './pages/suppliers/suppliers';
+import { Warehouses } from './pages/warehouses/warehouses';
 
 export const routes: Routes = [
   {
@@ -50,6 +51,10 @@ export const routes: Routes = [
       {
         path: 'suppliers',
         component: Suppliers,
+      },
+      {
+        path: 'warehouses',
+        component: Warehouses,
       },
       {
         path: 'customers',
