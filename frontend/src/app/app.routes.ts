@@ -1,16 +1,6 @@
 import { Routes } from '@angular/router';
 
-import { Brands } from './pages/brands/brands';
 import { authGuard } from './core/auth/auth.guard';
-import { AppShell } from './layouts/app-shell/app-shell';
-import { Categories } from './pages/categories/categories';
-import { Customers } from './pages/customers/customers';
-import { Dashboard } from './pages/dashboard/dashboard';
-import { Inventory } from './pages/inventory/inventory';
-import { Login } from './pages/login/login';
-import { Products } from './pages/products/products';
-import { Suppliers } from './pages/suppliers/suppliers';
-import { Warehouses } from './pages/warehouses/warehouses';
 
 export const routes: Routes = [
   {
@@ -20,11 +10,11 @@ export const routes: Routes = [
   },
   {
     path: 'login',
-    component: Login,
+    loadComponent: () => import('./pages/login/login').then((module) => module.Login),
   },
   {
     path: 'app',
-    component: AppShell,
+    loadComponent: () => import('./layouts/app-shell/app-shell').then((module) => module.AppShell),
     canActivate: [authGuard],
     children: [
       {
@@ -34,35 +24,41 @@ export const routes: Routes = [
       },
       {
         path: 'dashboard',
-        component: Dashboard,
+        loadComponent: () =>
+          import('./pages/dashboard/dashboard').then((module) => module.Dashboard),
       },
       {
         path: 'products',
-        component: Products,
+        loadComponent: () => import('./pages/products/products').then((module) => module.Products),
       },
       {
         path: 'categories',
-        component: Categories,
+        loadComponent: () =>
+          import('./pages/categories/categories').then((module) => module.Categories),
       },
       {
         path: 'brands',
-        component: Brands,
+        loadComponent: () => import('./pages/brands/brands').then((module) => module.Brands),
       },
       {
         path: 'suppliers',
-        component: Suppliers,
+        loadComponent: () =>
+          import('./pages/suppliers/suppliers').then((module) => module.Suppliers),
       },
       {
         path: 'warehouses',
-        component: Warehouses,
+        loadComponent: () =>
+          import('./pages/warehouses/warehouses').then((module) => module.Warehouses),
       },
       {
         path: 'customers',
-        component: Customers,
+        loadComponent: () =>
+          import('./pages/customers/customers').then((module) => module.Customers),
       },
       {
         path: 'inventory',
-        component: Inventory,
+        loadComponent: () =>
+          import('./pages/inventory/inventory').then((module) => module.Inventory),
       },
     ],
   },
