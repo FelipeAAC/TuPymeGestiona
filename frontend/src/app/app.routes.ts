@@ -9,6 +9,7 @@ import { Dashboard } from './pages/dashboard/dashboard';
 import { Inventory } from './pages/inventory/inventory';
 import { Login } from './pages/login/login';
 import { Products } from './pages/products/products';
+import { Suppliers } from './pages/suppliers/suppliers';
 
 export const routes: Routes = [
   {
@@ -45,6 +46,10 @@ export const routes: Routes = [
       {
         path: 'brands',
         component: Brands,
+      },
+      {
+        path: 'suppliers',
+        component: Suppliers,
       },
       {
         path: 'customers',

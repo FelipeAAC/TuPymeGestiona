@@ -1,0 +1,206 @@
+<section class="suppliers-page">
+  <header class="suppliers-header">
+    <div>
+      <span class="section-label">Abastecimiento</span>
+      <h1>Proveedores</h1>
+
+      @if (selectedMembership(); as membership) {
+        <p>
+          Administra los contactos y el estado de los proveedores de
+          <strong>{{ membership.company.name }}</strong
+          >.
+        </p>
+      } @else {
+        <p>Selecciona una empresa para consultar sus proveedores.</p>
+      }
+    </div>
+
+    @if (selectedMembership() && canManageSuppliers()) {
+      <button class="primary-button header-action" type="button" (click)="openCreateEditor()">
+        <span aria-hidden="true">+</span>
+        Nuevo proveedor
+      </button>
+    }
+  </header>
+
+  @if (!selectedMembership()) {
+    <div class="state-card">
+      <strong>Sin empresa seleccionada</strong>
+      <p>Necesitas una empresa activa para administrar proveedores.</p>
+    </div>
+  } @else {
+    @if (successMessage()) {
+      <div class="page-alert" role="status">
+        <span aria-hidden="true">✓</span>
+        {{ successMessage() }}
+      </div>
+    }
+
+    <section class="summary-grid" aria-label="Resumen de proveedores">
+      <article class="summary-card">
+        <span class="summary-icon summary-icon-total" aria-hidden="true">PR</span>
+        <div>
+          <span>Total registrados</span>
+          <strong>{{ suppliers().length }}</strong>
+        </div>
+      </article>
+
+      <article class="summary-card">
+        <span class="summary-icon summary-icon-active" aria-hidden="true">AC</span>
+        <div>
+          <span>Proveedores activos</span>
+          <strong>{{ activeSuppliers() }}</strong>
+        </div>
+      </article>
+
+      <article class="summary-card">
+        <span class="summary-icon summary-icon-inactive" aria-hidden="true">IN</span>
+        <div>
+          <span>Proveedores inactivos</span>
+          <strong>{{ inactiveSuppliers() }}</strong>
+        </div>
+      </article>
+    </section>
+
+    <section class="suppliers-panel">
+      <header class="panel-header">
+        <div>
+          <span class="panel-label">Directorio de abastecimiento</span>
+          <h2>Proveedores registrados</h2>
+        </div>
+
+        <span class="result-count">
+          {{ filteredSuppliers().length }}
+          {{ filteredSuppliers().length === 1 ? 'resultado' : 'resultados' }}
+        </span>
+      </header>
+
+      <form class="filter-bar" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+        <div class="filter-field filter-field-search">
+          <label for="supplier-search">Buscar</label>
+          <input
+            id="supplier-search"
+            type="search"
+            formControlName="search"
+            maxlength="200"
+            placeholder="Nombre, contacto, correo o teléfono"
+          />
+        </div>
+
+        <div class="filter-field">
+          <label for="supplier-status-filter">Estado</label>
+          <select id="supplier-status-filter" formControlName="status">
+            <option value="">Todos</option>
+            <option value="ACTIVE">Activos</option>
+            <option value="INACTIVE">Inactivos</option>
+          </select>
+        </div>
+
+        <div class="filter-actions">
+          <button class="secondary-button" type="button" (click)="clearFilters()">Limpiar</button>
+          <button class="primary-button" type="submit">Aplicar filtros</button>
+        </div>
+      </form>
+
+      @if (isLoading()) {
+        <div class="state-card state-card-panel">
+          <span class="loading-indicator" aria-hidden="true"></span>
+          <div>
+            <strong>Cargando proveedores...</strong>
+            <p>Estamos consultando el directorio de la empresa seleccionada.</p>
+          </div>
+        </div>
+      } @else if (listErrorMessage()) {
+        <div class="state-card state-card-panel state-card-error" role="alert">
+          <strong>No pudimos mostrar los proveedores</strong>
+          <p>{{ listErrorMessage() }}</p>
+        </div>
+      } @else if (filteredSuppliers().length === 0) {
+        <div class="state-card state-card-panel state-card-empty">
+          <span class="empty-icon" aria-hidden="true">PR</span>
+          <div>
+            <strong>No encontramos proveedores</strong>
+            <p>
+              {{
+                suppliers().length === 0
+                  ? 'Registra el primer proveedor de esta empresa.'
+                  : 'Prueba con otros criterios de búsqueda o estado.'
+              }}
+            </p>
+          </div>
+        </div>
+      } @else {
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Proveedor</th>
+                <th scope="col">Persona de contacto</th>
+                <th scope="col">Canales de contacto</th>
+                <th scope="col">Estado</th>
+                <th scope="col"><span class="visually-hidden">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (supplier of filteredSuppliers(); track supplier.id) {
+                <tr>
+                  <td data-label="Proveedor">
+                    <div class="supplier-identity">
+                      <span class="supplier-avatar" aria-hidden="true">
+                        {{ supplierInitials(supplier.name) }}
+                      </span>
+                      <div>
+                        <strong>{{ supplier.name }}</strong>
+                        <span>Proveedor #{{ supplier.id }}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td data-label="Persona de contacto">
+                    <span class="contact-name">
+                      {{ supplier.contact_name || 'Sin persona registrada' }}
+                    </span>
+                  </td>
+                  <td data-label="Canales de contacto">
+                    <div class="stacked-value contact-value">
+                      <span>{{ supplier.email || 'Sin correo' }}</span>
+                      <span>{{ supplier.phone || 'Sin teléfono' }}</span>
+                    </div>
+                  </td>
+                  <td data-label="Estado">
+                    <span
+                      class="status-badge"
+                      [class.status-inactive]="supplier.status === 'INACTIVE'"
+                    >
+                      {{ supplier.status === 'ACTIVE' ? 'Activo' : 'Inactivo' }}
+                    </span>
+                  </td>
+                  <td class="actions-cell">
+                    <button
+                      class="row-action"
+                      type="button"
+                      [attr.aria-label]="'Editar a ' + supplier.name"
+                      (click)="openEditEditor(supplier)"
+                    >
+                      Editar
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
+</section>
+
+@if (isEditorOpen()) {
+  <app-supplier-editor
+    [editingSupplier]="editingSupplier()"
+    [supplierForm]="supplierForm"
+    [isSaving]="isSaving()"
+    [saveErrorMessage]="saveErrorMessage()"
+    (closed)="closeEditor()"
+    (submitted)="saveSupplier()"
+  />
+}

@@ -1,0 +1,123 @@
+<div class="modal-backdrop" (click)="closeFromBackdrop($event)">
+  <section
+    class="supplier-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="supplier-editor-title"
+  >
+    <header class="modal-header">
+      <div>
+        <span class="panel-label">
+          {{ editingSupplier() ? 'Edición' : 'Nuevo registro' }}
+        </span>
+        <h2 id="supplier-editor-title">
+          {{ editingSupplier() ? 'Editar proveedor' : 'Nuevo proveedor' }}
+        </h2>
+        <p>
+          {{
+            editingSupplier()
+              ? 'Actualiza los datos comerciales y de contacto del proveedor.'
+              : 'Registra la información necesaria para gestionar el abastecimiento.'
+          }}
+        </p>
+      </div>
+
+      <button
+        class="modal-close"
+        type="button"
+        aria-label="Cerrar formulario"
+        [disabled]="isSaving()"
+        (click)="requestClose()"
+      >
+        ×
+      </button>
+    </header>
+
+    <form class="supplier-form" [formGroup]="supplierForm()" (ngSubmit)="submitted.emit()">
+      <div class="form-grid">
+        <div class="form-field form-field-wide">
+          <label for="supplier-name">
+            Nombre o razón social
+            <span>*</span>
+          </label>
+          <input
+            id="supplier-name"
+            type="text"
+            formControlName="name"
+            maxlength="200"
+            placeholder="Ej. Distribuidora Los Andes SpA"
+          />
+          @if (supplierForm().controls.name.invalid && supplierForm().controls.name.touched) {
+            <small class="field-error">Ingresa un nombre válido.</small>
+          }
+        </div>
+
+        <div class="form-field form-field-wide">
+          <label for="supplier-contact-name">Persona de contacto</label>
+          <input
+            id="supplier-contact-name"
+            type="text"
+            formControlName="contactName"
+            maxlength="150"
+            placeholder="Ej. Ana Pérez"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="supplier-email">Correo</label>
+          <input
+            id="supplier-email"
+            type="email"
+            formControlName="email"
+            maxlength="254"
+            placeholder="contacto@proveedor.cl"
+          />
+          @if (supplierForm().controls.email.invalid && supplierForm().controls.email.touched) {
+            <small class="field-error">Ingresa un correo válido.</small>
+          }
+        </div>
+
+        <div class="form-field">
+          <label for="supplier-phone">Teléfono</label>
+          <input
+            id="supplier-phone"
+            type="tel"
+            formControlName="phone"
+            maxlength="50"
+            placeholder="+56 9 1234 5678"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="supplier-status">Estado</label>
+          <select id="supplier-status" formControlName="status">
+            <option value="ACTIVE">Activo</option>
+            <option value="INACTIVE">Inactivo</option>
+          </select>
+        </div>
+      </div>
+
+      @if (saveErrorMessage()) {
+        <div class="form-alert" role="alert">
+          {{ saveErrorMessage() }}
+        </div>
+      }
+
+      <footer class="modal-actions">
+        <button
+          class="secondary-button"
+          type="button"
+          [disabled]="isSaving()"
+          (click)="requestClose()"
+        >
+          Cancelar
+        </button>
+        <button class="primary-button" type="submit" [disabled]="isSaving()">
+          {{
+            isSaving() ? 'Guardando...' : editingSupplier() ? 'Guardar cambios' : 'Crear proveedor'
+          }}
+        </button>
+      </footer>
+    </form>
+  </section>
+</div>

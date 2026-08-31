@@ -55,4 +55,11 @@ describe('AppShell', () => {
     expect(inventoryLink).toBeTruthy();
     expect(inventoryLink.textContent).toContain('Inventario');
   });
+
+  it('shows the supplier navigation link', () => {
+    const supplierLink = fixture.nativeElement.querySelector('a[href="/app/suppliers"]');
+
+    expect(supplierLink).toBeTruthy();
+    expect(supplierLink.textContent).toContain('Proveedores');
+  });
 });
