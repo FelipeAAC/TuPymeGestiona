@@ -6,7 +6,7 @@ from catalog.models import ProductVariant
 from customers.models import Customer
 from organizations.models import Branch, Warehouse
 
-from .models import Order, OrderItem
+from .models import Order, OrderInventoryMovement, OrderItem
 
 
 ORDER_ORDERING_CHOICES = (
@@ -37,6 +37,36 @@ class OrderItemInputSerializer(serializers.Serializer):
     )
 
 
+class OrderInventoryMovementSerializer(serializers.ModelSerializer):
+    movement_type = serializers.CharField(
+        source="inventory_movement.movement_type",
+        read_only=True,
+    )
+    quantity_delta = serializers.DecimalField(
+        source="inventory_movement.quantity_delta",
+        max_digits=14,
+        decimal_places=3,
+        read_only=True,
+    )
+    created_by = serializers.IntegerField(
+        source="inventory_movement.created_by_id",
+        read_only=True,
+    )
+
+    class Meta:
+        model = OrderInventoryMovement
+        fields = (
+            "id",
+            "kind",
+            "inventory_movement",
+            "movement_type",
+            "quantity_delta",
+            "created_by",
+            "created_at",
+        )
+        read_only_fields = fields
+
+
 class OrderItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(
         source="variant.product.name",
@@ -51,6 +81,10 @@ class OrderItemSerializer(serializers.ModelSerializer):
         decimal_places=2,
         read_only=True,
     )
+    stock_movements = OrderInventoryMovementSerializer(
+        many=True,
+        read_only=True,
+    )
 
     class Meta:
         model = OrderItem
@@ -62,6 +96,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "quantity",
             "unit_price",
             "line_total",
+            "stock_movements",
         )
 
 

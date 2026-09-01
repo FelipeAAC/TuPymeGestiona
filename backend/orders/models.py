@@ -6,6 +6,7 @@ from django.db import models
 
 from catalog.models import ProductVariant
 from customers.models import Customer
+from inventory.models import InventoryMovement
 from organizations.models import Branch, Company, Warehouse
 
 
@@ -282,3 +283,110 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"Pedido {self.order.number} - {self.variant}"
+
+
+class OrderInventoryMovement(models.Model):
+    class Kind(models.TextChoices):
+        CONFIRMATION = "CONFIRMATION", "Confirmacion"
+        CANCELLATION = "CANCELLATION", "Anulacion"
+
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.PROTECT,
+        related_name="stock_movements",
+    )
+    inventory_movement = models.OneToOneField(
+        InventoryMovement,
+        on_delete=models.PROTECT,
+        related_name="order_stock_link",
+    )
+    kind = models.CharField(
+        max_length=20,
+        choices=Kind.choices,
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = [
+            "order_item__order_id",
+            "order_item_id",
+            "created_at",
+            "id",
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "order_item",
+                    "kind",
+                ],
+                name="uniq_order_item_stock_movement_kind",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if not self.order_item_id or not self.inventory_movement_id:
+            return
+
+        order_item = self.order_item
+        movement = self.inventory_movement
+
+        if movement.warehouse_id != order_item.order.warehouse_id:
+            raise ValidationError(
+                {
+                    "inventory_movement": (
+                        "El movimiento debe pertenecer a la bodega "
+                        "del pedido."
+                    )
+                }
+            )
+
+        if movement.variant_id != order_item.variant_id:
+            raise ValidationError(
+                {
+                    "inventory_movement": (
+                        "El movimiento debe corresponder a la variante "
+                        "del item."
+                    )
+                }
+            )
+
+        if self.kind == self.Kind.CONFIRMATION:
+            expected_type = InventoryMovement.MovementType.EXIT
+            expected_delta = -order_item.quantity
+        else:
+            expected_type = InventoryMovement.MovementType.ENTRY
+            expected_delta = order_item.quantity
+
+        if movement.movement_type != expected_type:
+            raise ValidationError(
+                {
+                    "inventory_movement": (
+                        "El tipo de movimiento no corresponde "
+                        "a la operacion del pedido."
+                    )
+                }
+            )
+
+        if movement.quantity_delta != expected_delta:
+            raise ValidationError(
+                {
+                    "inventory_movement": (
+                        "La cantidad del movimiento debe coincidir "
+                        "con la cantidad del item."
+                    )
+                }
+            )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (
+            f"Pedido {self.order_item.order.number} - "
+            f"{self.get_kind_display()}"
+        )

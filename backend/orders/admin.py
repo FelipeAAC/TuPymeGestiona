@@ -1,6 +1,11 @@
 from django.contrib import admin
 
-from .models import Order, OrderItem, OrderNumberSequence
+from .models import (
+    Order,
+    OrderInventoryMovement,
+    OrderItem,
+    OrderNumberSequence,
+)
 
 
 class OrderItemInline(admin.TabularInline):
@@ -37,3 +42,14 @@ class OrderNumberSequenceAdmin(admin.ModelAdmin):
         "company",
         "next_number",
     )
+
+
+@admin.register(OrderInventoryMovement)
+class OrderInventoryMovementAdmin(admin.ModelAdmin):
+    list_display = (
+        "order_item",
+        "kind",
+        "inventory_movement",
+        "created_at",
+    )
+    list_filter = ("kind",)

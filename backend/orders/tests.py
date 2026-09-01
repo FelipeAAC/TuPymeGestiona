@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 
 from catalog.models import Category, Product, ProductVariant
 from customers.models import Customer
+from inventory.models import InventoryMovement, InventoryStock
 from organizations.models import (
     Branch,
     Company,
@@ -21,9 +22,17 @@ from organizations.models import (
     Warehouse,
 )
 
-from .models import Order, OrderItem, OrderNumberSequence
+from .models import (
+    Order,
+    OrderInventoryMovement,
+    OrderItem,
+    OrderNumberSequence,
+)
 from .services import (
     OrderNotEditableError,
+    OrderTransitionError,
+    cancel_order,
+    confirm_order,
     create_draft_order,
     update_draft_order,
 )
@@ -220,6 +229,19 @@ class OrderFixtureMixin:
             ],
         }
 
+    def create_stock(
+        self,
+        *,
+        quantity=Decimal("10.000"),
+        variant=None,
+        warehouse=None,
+    ):
+        return InventoryStock.objects.create(
+            warehouse=warehouse or self.warehouse,
+            variant=variant or self.variant,
+            quantity=quantity,
+        )
+
 
 class OrderModelTests(OrderFixtureMixin, TestCase):
     def test_orders_permission_is_branch_scoped(self):
@@ -382,6 +404,335 @@ class OrderServiceTests(OrderFixtureMixin, TestCase):
                 validated_data={"notes": "No permitido"},
                 replace_items=False,
             )
+
+
+class OrderInventoryServiceTests(OrderFixtureMixin, TestCase):
+    def test_confirm_order_deducts_stock_and_records_trace(self):
+        stock = self.create_stock()
+        order = self.create_order()
+
+        confirmed = confirm_order(
+            order=order,
+            performed_by=self.user,
+        )
+
+        stock.refresh_from_db()
+        self.assertEqual(confirmed.status, Order.Status.CONFIRMED)
+        self.assertEqual(stock.quantity, Decimal("8.000"))
+
+        link = OrderInventoryMovement.objects.get()
+        self.assertEqual(
+            link.kind,
+            OrderInventoryMovement.Kind.CONFIRMATION,
+        )
+        self.assertEqual(
+            link.inventory_movement.movement_type,
+            InventoryMovement.MovementType.EXIT,
+        )
+        self.assertEqual(
+            link.inventory_movement.quantity_delta,
+            Decimal("-2.000"),
+        )
+
+    def test_confirm_order_rolls_back_every_item_if_stock_is_insufficient(self):
+        first_stock = self.create_stock(
+            quantity=Decimal("10.000"),
+        )
+        second_stock = self.create_stock(
+            quantity=Decimal("1.000"),
+            variant=self.second_variant,
+        )
+        order = self.create_order()
+        OrderItem.objects.create(
+            order=order,
+            variant=self.second_variant,
+            quantity=Decimal("3.000"),
+            unit_price=Decimal("500.00"),
+        )
+
+        with self.assertRaises(ValidationError):
+            confirm_order(
+                order=order,
+                performed_by=self.user,
+            )
+
+        first_stock.refresh_from_db()
+        second_stock.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(first_stock.quantity, Decimal("10.000"))
+        self.assertEqual(second_stock.quantity, Decimal("1.000"))
+        self.assertEqual(order.status, Order.Status.DRAFT)
+        self.assertFalse(InventoryMovement.objects.exists())
+        self.assertFalse(OrderInventoryMovement.objects.exists())
+
+    def test_confirm_order_requires_at_least_one_item(self):
+        order = Order.objects.create(
+            company=self.company,
+            branch=self.branch,
+            warehouse=self.warehouse,
+            customer=self.customer,
+            number=1,
+            created_by=self.user,
+        )
+
+        with self.assertRaises(ValidationError):
+            confirm_order(
+                order=order,
+                performed_by=self.user,
+            )
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.DRAFT)
+
+    def test_confirm_order_cannot_run_twice(self):
+        self.create_stock()
+        order = self.create_order()
+        confirm_order(
+            order=order,
+            performed_by=self.user,
+        )
+
+        with self.assertRaises(OrderTransitionError):
+            confirm_order(
+                order=order,
+                performed_by=self.user,
+            )
+
+        self.assertEqual(InventoryMovement.objects.count(), 1)
+
+    def test_cancel_confirmed_order_restores_exact_stock(self):
+        stock = self.create_stock()
+        order = self.create_order()
+        order = confirm_order(
+            order=order,
+            performed_by=self.user,
+        )
+
+        cancelled = cancel_order(
+            order=order,
+            performed_by=self.user,
+        )
+
+        stock.refresh_from_db()
+        self.assertEqual(cancelled.status, Order.Status.CANCELLED)
+        self.assertEqual(stock.quantity, Decimal("10.000"))
+        self.assertEqual(InventoryMovement.objects.count(), 2)
+        self.assertEqual(OrderInventoryMovement.objects.count(), 2)
+        cancellation = OrderInventoryMovement.objects.get(
+            kind=OrderInventoryMovement.Kind.CANCELLATION,
+        )
+        self.assertEqual(
+            cancellation.inventory_movement.quantity_delta,
+            Decimal("2.000"),
+        )
+
+    def test_cancel_draft_does_not_move_stock(self):
+        stock = self.create_stock()
+        order = self.create_order()
+
+        cancelled = cancel_order(
+            order=order,
+            performed_by=self.user,
+        )
+
+        stock.refresh_from_db()
+        self.assertEqual(cancelled.status, Order.Status.CANCELLED)
+        self.assertEqual(stock.quantity, Decimal("10.000"))
+        self.assertFalse(InventoryMovement.objects.exists())
+
+    def test_cancel_rejects_statuses_outside_supported_flow(self):
+        for order_status in (
+            Order.Status.PREPARED,
+            Order.Status.DELIVERED,
+            Order.Status.CANCELLED,
+        ):
+            with self.subTest(order_status=order_status):
+                order = self.create_order(
+                    number=10 + len(Order.objects.all()),
+                    status=order_status,
+                )
+
+                with self.assertRaises(OrderTransitionError):
+                    cancel_order(
+                        order=order,
+                        performed_by=self.user,
+                    )
+
+    def test_cancel_rejects_confirmed_order_without_complete_trace(self):
+        order = self.create_order(
+            status=Order.Status.CONFIRMED,
+        )
+
+        with self.assertRaises(ValidationError):
+            cancel_order(
+                order=order,
+                performed_by=self.user,
+            )
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.CONFIRMED)
+
+
+class OrderTransitionApiTests(OrderFixtureMixin, TestCase):
+    def test_confirm_endpoint_requires_authentication(self):
+        order = self.create_order()
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/confirm/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_confirm_endpoint_deducts_stock(self):
+        stock = self.create_stock()
+        order = self.create_order()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/confirm/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["order"]["status"],
+            Order.Status.CONFIRMED,
+        )
+        self.assertEqual(
+            response.data["order"]["items"][0]["stock_movements"][0][
+                "quantity_delta"
+            ],
+            "-2.000",
+        )
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal("8.000"))
+
+    def test_confirm_endpoint_reports_insufficient_stock_without_changes(self):
+        stock = self.create_stock(
+            quantity=Decimal("1.000"),
+        )
+        order = self.create_order()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/confirm/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        stock.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.DRAFT)
+        self.assertEqual(stock.quantity, Decimal("1.000"))
+        self.assertFalse(InventoryMovement.objects.exists())
+
+    def test_confirm_endpoint_hides_order_outside_branch_scope(self):
+        order = self.create_order(
+            branch=self.other_branch,
+            warehouse=self.other_warehouse,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/confirm/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_confirm_endpoint_cannot_run_twice(self):
+        self.create_stock()
+        order = self.create_order()
+        self.client.force_login(self.user)
+
+        first = self.client.post(
+            f"/api/orders/{order.id}/confirm/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+        second = self.client.post(
+            f"/api/orders/{order.id}/confirm/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(InventoryMovement.objects.count(), 1)
+
+    def test_cancel_endpoint_restores_confirmed_stock(self):
+        stock = self.create_stock()
+        order = self.create_order()
+        order = confirm_order(
+            order=order,
+            performed_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/cancel/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["order"]["status"],
+            Order.Status.CANCELLED,
+        )
+        movements = response.data["order"]["items"][0][
+            "stock_movements"
+        ]
+        self.assertEqual(len(movements), 2)
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal("10.000"))
+
+    def test_cancel_endpoint_cancels_draft_without_inventory_effect(self):
+        order = self.create_order()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/cancel/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["order"]["status"],
+            Order.Status.CANCELLED,
+        )
+        self.assertFalse(InventoryMovement.objects.exists())
+
+    def test_transition_endpoint_requires_company(self):
+        order = self.create_order()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/confirm/",
+            {},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_transition_endpoint_without_permission_does_not_expose_order(self):
+        order = self.create_order()
+        self.assignment.delete()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/confirm/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
 
 
 class OrderApiTests(OrderFixtureMixin, TestCase):

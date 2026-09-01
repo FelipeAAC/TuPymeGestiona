@@ -1,12 +1,27 @@
+from django.core.exceptions import ValidationError
 from django.db import transaction
+
+from inventory.models import InventoryMovement
+from inventory.services import apply_inventory_movement
 
 from organizations.models import Company
 
-from .models import Order, OrderItem, OrderNumberSequence
+from .models import (
+    Order,
+    OrderInventoryMovement,
+    OrderItem,
+    OrderNumberSequence,
+)
 
 
 class OrderNotEditableError(Exception):
     pass
+
+
+class OrderTransitionError(Exception):
+    def __init__(self, detail):
+        self.detail = detail
+        super().__init__(detail)
 
 
 def _create_items(*, order, items):
@@ -100,5 +115,140 @@ def update_draft_order(
             order=locked_order,
             items=items or [],
         )
+
+    return locked_order
+
+
+def _lock_order(order):
+    return (
+        Order.objects.select_for_update()
+        .select_related(
+            "company",
+            "branch",
+            "warehouse",
+            "customer",
+        )
+        .get(pk=order.pk)
+    )
+
+
+def _set_order_status(*, order, new_status):
+    order.status = new_status
+    order.save(update_fields=("status", "updated_at"))
+
+
+@transaction.atomic
+def confirm_order(*, order, performed_by):
+    locked_order = _lock_order(order)
+
+    if locked_order.status != Order.Status.DRAFT:
+        raise OrderTransitionError(
+            "Solo se pueden confirmar pedidos en borrador."
+        )
+
+    items = list(
+        locked_order.items.select_related(
+            "variant__product",
+        ).order_by(
+            "variant_id",
+            "id",
+        )
+    )
+
+    if not items:
+        raise ValidationError(
+            {
+                "items": (
+                    "El pedido debe contener al menos un item "
+                    "antes de confirmarse."
+                )
+            }
+        )
+
+    for item in items:
+        movement, _ = apply_inventory_movement(
+            warehouse=locked_order.warehouse,
+            variant=item.variant,
+            movement_type=InventoryMovement.MovementType.EXIT,
+            quantity_delta=-item.quantity,
+            created_by=performed_by,
+        )
+
+        OrderInventoryMovement.objects.create(
+            order_item=item,
+            inventory_movement=movement,
+            kind=OrderInventoryMovement.Kind.CONFIRMATION,
+        )
+
+    _set_order_status(
+        order=locked_order,
+        new_status=Order.Status.CONFIRMED,
+    )
+
+    return locked_order
+
+
+@transaction.atomic
+def cancel_order(*, order, performed_by):
+    locked_order = _lock_order(order)
+
+    if locked_order.status == Order.Status.DRAFT:
+        _set_order_status(
+            order=locked_order,
+            new_status=Order.Status.CANCELLED,
+        )
+        return locked_order
+
+    if locked_order.status != Order.Status.CONFIRMED:
+        raise OrderTransitionError(
+            "Solo se pueden anular pedidos en borrador o confirmados."
+        )
+
+    confirmation_links = list(
+        OrderInventoryMovement.objects.filter(
+            order_item__order=locked_order,
+            kind=OrderInventoryMovement.Kind.CONFIRMATION,
+        )
+        .select_related(
+            "order_item__variant",
+            "inventory_movement",
+        )
+        .order_by(
+            "order_item__variant_id",
+            "order_item_id",
+        )
+    )
+
+    if len(confirmation_links) != locked_order.items.count():
+        raise ValidationError(
+            {
+                "inventory": (
+                    "No se puede anular el pedido porque su trazabilidad "
+                    "de inventario esta incompleta."
+                )
+            }
+        )
+
+    for link in confirmation_links:
+        quantity = -link.inventory_movement.quantity_delta
+
+        movement, _ = apply_inventory_movement(
+            warehouse=locked_order.warehouse,
+            variant=link.order_item.variant,
+            movement_type=InventoryMovement.MovementType.ENTRY,
+            quantity_delta=quantity,
+            created_by=performed_by,
+        )
+
+        OrderInventoryMovement.objects.create(
+            order_item=link.order_item,
+            inventory_movement=movement,
+            kind=OrderInventoryMovement.Kind.CANCELLATION,
+        )
+
+    _set_order_status(
+        order=locked_order,
+        new_status=Order.Status.CANCELLED,
+    )
 
     return locked_order

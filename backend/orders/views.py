@@ -26,6 +26,9 @@ from .serializers import (
 )
 from .services import (
     OrderNotEditableError,
+    OrderTransitionError,
+    cancel_order,
+    confirm_order,
     create_draft_order,
     update_draft_order,
 )
@@ -152,6 +155,7 @@ def _get_authorized_orders(*, user, company):
         "created_by",
     ).prefetch_related(
         "items__variant__product",
+        "items__stock_movements__inventory_movement",
     )
 
 
@@ -275,6 +279,26 @@ def order_detail_view(request, order_id):
     return _retrieve_order(
         request,
         order_id=order_id,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def order_confirm_view(request, order_id):
+    return _transition_order(
+        request,
+        order_id=order_id,
+        transition=confirm_order,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def order_cancel_view(request, order_id):
+    return _transition_order(
+        request,
+        order_id=order_id,
+        transition=cancel_order,
     )
 
 
@@ -462,6 +486,62 @@ def _retrieve_order(request, *, order_id):
             },
             status=status.HTTP_404_NOT_FOUND,
         )
+
+    return Response(
+        {
+            "order": OrderSerializer(order).data,
+        }
+    )
+
+
+def _transition_order(request, *, order_id, transition):
+    membership, error_response = _resolve_membership(
+        request=request,
+        source=request.data,
+        location="campo",
+    )
+
+    if error_response is not None:
+        return error_response
+
+    company = membership.company
+    order = _get_authorized_orders(
+        user=request.user,
+        company=company,
+    ).filter(pk=order_id).first()
+
+    if order is None:
+        return Response(
+            {
+                "detail": "El pedido no existe en el alcance autorizado.",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    try:
+        order = transition(
+            order=order,
+            performed_by=request.user,
+        )
+    except OrderTransitionError as error:
+        return Response(
+            {
+                "detail": error.detail,
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+    except ValidationError as error:
+        return Response(
+            {
+                "detail": error.message_dict,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    order = _get_authorized_orders(
+        user=request.user,
+        company=company,
+    ).get(pk=order.pk)
 
     return Response(
         {
