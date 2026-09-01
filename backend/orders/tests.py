@@ -34,6 +34,8 @@ from .services import (
     cancel_order,
     confirm_order,
     create_draft_order,
+    deliver_order,
+    prepare_order,
     update_draft_order,
 )
 from .views import ORDERS_MANAGE_PERMISSION_CODE
@@ -500,6 +502,71 @@ class OrderInventoryServiceTests(OrderFixtureMixin, TestCase):
 
         self.assertEqual(InventoryMovement.objects.count(), 1)
 
+    def test_prepare_and_deliver_follow_the_operational_sequence(self):
+        self.create_stock()
+        order = self.create_order()
+        order = confirm_order(
+            order=order,
+            performed_by=self.user,
+        )
+
+        prepared = prepare_order(
+            order=order,
+            performed_by=self.user,
+        )
+        delivered = deliver_order(
+            order=prepared,
+            performed_by=self.user,
+        )
+
+        self.assertEqual(prepared.status, Order.Status.PREPARED)
+        self.assertEqual(delivered.status, Order.Status.DELIVERED)
+        self.assertEqual(InventoryMovement.objects.count(), 1)
+
+    def test_prepare_rejects_every_status_except_confirmed(self):
+        for order_status in (
+            Order.Status.DRAFT,
+            Order.Status.PREPARED,
+            Order.Status.DELIVERED,
+            Order.Status.CANCELLED,
+        ):
+            with self.subTest(order_status=order_status):
+                order = self.create_order(
+                    number=10 + Order.objects.count(),
+                    status=order_status,
+                )
+
+                with self.assertRaises(OrderTransitionError):
+                    prepare_order(
+                        order=order,
+                        performed_by=self.user,
+                    )
+
+                order.refresh_from_db()
+                self.assertEqual(order.status, order_status)
+
+    def test_deliver_rejects_every_status_except_prepared(self):
+        for order_status in (
+            Order.Status.DRAFT,
+            Order.Status.CONFIRMED,
+            Order.Status.DELIVERED,
+            Order.Status.CANCELLED,
+        ):
+            with self.subTest(order_status=order_status):
+                order = self.create_order(
+                    number=20 + Order.objects.count(),
+                    status=order_status,
+                )
+
+                with self.assertRaises(OrderTransitionError):
+                    deliver_order(
+                        order=order,
+                        performed_by=self.user,
+                    )
+
+                order.refresh_from_db()
+                self.assertEqual(order.status, order_status)
+
     def test_cancel_confirmed_order_restores_exact_stock(self):
         stock = self.create_stock()
         order = self.create_order()
@@ -540,9 +607,31 @@ class OrderInventoryServiceTests(OrderFixtureMixin, TestCase):
         self.assertEqual(stock.quantity, Decimal("10.000"))
         self.assertFalse(InventoryMovement.objects.exists())
 
+    def test_cancel_prepared_order_restores_exact_stock(self):
+        stock = self.create_stock()
+        order = self.create_order()
+        order = confirm_order(
+            order=order,
+            performed_by=self.user,
+        )
+        order = prepare_order(
+            order=order,
+            performed_by=self.user,
+        )
+
+        cancelled = cancel_order(
+            order=order,
+            performed_by=self.user,
+        )
+
+        stock.refresh_from_db()
+        self.assertEqual(cancelled.status, Order.Status.CANCELLED)
+        self.assertEqual(stock.quantity, Decimal("10.000"))
+        self.assertEqual(InventoryMovement.objects.count(), 2)
+        self.assertEqual(OrderInventoryMovement.objects.count(), 2)
+
     def test_cancel_rejects_statuses_outside_supported_flow(self):
         for order_status in (
-            Order.Status.PREPARED,
             Order.Status.DELIVERED,
             Order.Status.CANCELLED,
         ):
@@ -665,6 +754,140 @@ class OrderTransitionApiTests(OrderFixtureMixin, TestCase):
         self.assertEqual(second.status_code, 409)
         self.assertEqual(InventoryMovement.objects.count(), 1)
 
+    def test_prepare_and_deliver_endpoints_advance_confirmed_order(self):
+        self.create_stock()
+        order = self.create_order()
+        order = confirm_order(
+            order=order,
+            performed_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        prepared = self.client.post(
+            f"/api/orders/{order.id}/prepare/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+        delivered = self.client.post(
+            f"/api/orders/{order.id}/deliver/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(prepared.status_code, 200)
+        self.assertEqual(
+            prepared.data["order"]["status"],
+            Order.Status.PREPARED,
+        )
+        self.assertEqual(delivered.status_code, 200)
+        self.assertEqual(
+            delivered.data["order"]["status"],
+            Order.Status.DELIVERED,
+        )
+
+    def test_prepare_endpoint_rejects_invalid_transition_without_changes(self):
+        order = self.create_order()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/prepare/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.DRAFT)
+
+    def test_deliver_endpoint_retry_is_safe(self):
+        self.create_stock()
+        order = self.create_order()
+        order = confirm_order(
+            order=order,
+            performed_by=self.user,
+        )
+        order = prepare_order(
+            order=order,
+            performed_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        first = self.client.post(
+            f"/api/orders/{order.id}/deliver/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+        delivered_at = first.data["order"]["updated_at"]
+        second = self.client.post(
+            f"/api/orders/{order.id}/deliver/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 409)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.DELIVERED)
+        self.assertEqual(
+            order.updated_at.isoformat().replace("+00:00", "Z"),
+            delivered_at,
+        )
+
+    def test_prepare_endpoint_hides_cross_tenant_order(self):
+        order = self.create_order(
+            company=self.other_company,
+            branch=self.foreign_branch,
+            warehouse=self.foreign_warehouse,
+            customer=self.foreign_customer,
+            variant=self.foreign_variant,
+            status=Order.Status.CONFIRMED,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/prepare/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_operational_endpoints_hide_orders_outside_branch_scope(self):
+        scenarios = (
+            ("prepare", Order.Status.CONFIRMED),
+            ("deliver", Order.Status.PREPARED),
+        )
+        self.client.force_login(self.user)
+
+        for endpoint, order_status in scenarios:
+            with self.subTest(endpoint=endpoint):
+                order = self.create_order(
+                    number=30 + Order.objects.count(),
+                    branch=self.other_branch,
+                    warehouse=self.other_warehouse,
+                    status=order_status,
+                )
+
+                response = self.client.post(
+                    f"/api/orders/{order.id}/{endpoint}/",
+                    {"company": self.company.id},
+                    content_type="application/json",
+                )
+
+                self.assertEqual(response.status_code, 404)
+
+    def test_deliver_endpoint_rejects_company_without_membership(self):
+        order = self.create_order(status=Order.Status.PREPARED)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/deliver/",
+            {"company": self.other_company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
     def test_cancel_endpoint_restores_confirmed_stock(self):
         stock = self.create_stock()
         order = self.create_order()
@@ -691,6 +914,63 @@ class OrderTransitionApiTests(OrderFixtureMixin, TestCase):
         self.assertEqual(len(movements), 2)
         stock.refresh_from_db()
         self.assertEqual(stock.quantity, Decimal("10.000"))
+
+    def test_cancel_endpoint_restores_prepared_stock(self):
+        stock = self.create_stock()
+        order = self.create_order()
+        order = confirm_order(
+            order=order,
+            performed_by=self.user,
+        )
+        order = prepare_order(
+            order=order,
+            performed_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/cancel/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["order"]["status"],
+            Order.Status.CANCELLED,
+        )
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal("10.000"))
+
+    def test_cancel_endpoint_rejects_delivered_without_restocking(self):
+        stock = self.create_stock()
+        order = self.create_order()
+        order = confirm_order(
+            order=order,
+            performed_by=self.user,
+        )
+        order = prepare_order(
+            order=order,
+            performed_by=self.user,
+        )
+        order = deliver_order(
+            order=order,
+            performed_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/cancel/",
+            {"company": self.company.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        order.refresh_from_db()
+        stock.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.DELIVERED)
+        self.assertEqual(stock.quantity, Decimal("8.000"))
+        self.assertEqual(InventoryMovement.objects.count(), 1)
 
     def test_cancel_endpoint_cancels_draft_without_inventory_effect(self):
         order = self.create_order()

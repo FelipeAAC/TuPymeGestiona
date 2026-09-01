@@ -889,9 +889,15 @@ class EffectivePermissionTests(TestCase):
         branch=None,
         role_status=CompanyRole.Status.ACTIVE,
     ):
-        permission = Permission.objects.create(
+        permission, _ = Permission.objects.get_or_create(
             code=permission_code,
-            scope_behavior=scope_behavior,
+            defaults={
+                "scope_behavior": scope_behavior,
+            },
+        )
+        self.assertEqual(
+            permission.scope_behavior,
+            scope_behavior,
         )
 
         role = CompanyRole.objects.create(

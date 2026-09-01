@@ -189,6 +189,40 @@ def confirm_order(*, order, performed_by):
 
 
 @transaction.atomic
+def prepare_order(*, order, performed_by):
+    locked_order = _lock_order(order)
+
+    if locked_order.status != Order.Status.CONFIRMED:
+        raise OrderTransitionError(
+            "Solo se pueden preparar pedidos confirmados."
+        )
+
+    _set_order_status(
+        order=locked_order,
+        new_status=Order.Status.PREPARED,
+    )
+
+    return locked_order
+
+
+@transaction.atomic
+def deliver_order(*, order, performed_by):
+    locked_order = _lock_order(order)
+
+    if locked_order.status != Order.Status.PREPARED:
+        raise OrderTransitionError(
+            "Solo se pueden entregar pedidos preparados."
+        )
+
+    _set_order_status(
+        order=locked_order,
+        new_status=Order.Status.DELIVERED,
+    )
+
+    return locked_order
+
+
+@transaction.atomic
 def cancel_order(*, order, performed_by):
     locked_order = _lock_order(order)
 
@@ -199,9 +233,15 @@ def cancel_order(*, order, performed_by):
         )
         return locked_order
 
-    if locked_order.status != Order.Status.CONFIRMED:
+    if locked_order.status not in (
+        Order.Status.CONFIRMED,
+        Order.Status.PREPARED,
+    ):
         raise OrderTransitionError(
-            "Solo se pueden anular pedidos en borrador o confirmados."
+            (
+                "Solo se pueden anular pedidos en borrador, "
+                "confirmados o preparados."
+            )
         )
 
     confirmation_links = list(

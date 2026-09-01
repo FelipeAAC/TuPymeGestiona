@@ -25,6 +25,16 @@ urlpatterns = [
         name="order-confirm",
     ),
     path(
+        "<int:order_id>/prepare/",
+        views.order_prepare_view,
+        name="order-prepare",
+    ),
+    path(
+        "<int:order_id>/deliver/",
+        views.order_deliver_view,
+        name="order-deliver",
+    ),
+    path(
         "<int:order_id>/cancel/",
         views.order_cancel_view,
         name="order-cancel",

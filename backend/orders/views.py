@@ -30,6 +30,8 @@ from .services import (
     cancel_order,
     confirm_order,
     create_draft_order,
+    deliver_order,
+    prepare_order,
     update_draft_order,
 )
 
@@ -289,6 +291,26 @@ def order_confirm_view(request, order_id):
         request,
         order_id=order_id,
         transition=confirm_order,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def order_prepare_view(request, order_id):
+    return _transition_order(
+        request,
+        order_id=order_id,
+        transition=prepare_order,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def order_deliver_view(request, order_id):
+    return _transition_order(
+        request,
+        order_id=order_id,
+        transition=deliver_order,
     )
 
 
