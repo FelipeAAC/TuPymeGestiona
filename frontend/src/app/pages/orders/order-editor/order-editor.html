@@ -1,0 +1,158 @@
+<div class="modal-backdrop" (click)="closeFromBackdrop($event)">
+  <section class="order-modal" role="dialog" aria-modal="true" aria-labelledby="order-editor-title">
+    <header class="modal-header">
+      <div>
+        <span class="panel-label">{{
+          editingOrder() ? 'Edición de borrador' : 'Nuevo borrador'
+        }}</span>
+        <h2 id="order-editor-title">
+          {{ editingOrder() ? 'Editar pedido #' + editingOrder()?.number : 'Crear pedido' }}
+        </h2>
+        <p>Selecciona el alcance operativo y registra los productos antes de confirmar.</p>
+      </div>
+
+      <button
+        class="modal-close"
+        type="button"
+        aria-label="Cerrar formulario"
+        [disabled]="isSaving()"
+        (click)="requestClose()"
+      >
+        ×
+      </button>
+    </header>
+
+    <form class="order-form" [formGroup]="orderForm()" (ngSubmit)="submitted.emit()">
+      <div class="form-grid">
+        <div class="form-field">
+          <label for="order-branch">Sucursal <span>*</span></label>
+          <select id="order-branch" formControlName="branchId" (change)="onBranchChanged()">
+            <option [ngValue]="null">Selecciona una sucursal</option>
+            @for (branch of options().branches; track branch.id) {
+              <option [ngValue]="branch.id">{{ branch.code }} · {{ branch.name }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label for="order-warehouse">Bodega <span>*</span></label>
+          <select id="order-warehouse" formControlName="warehouseId">
+            <option [ngValue]="null">Selecciona una bodega</option>
+            @for (warehouse of availableWarehouses(); track warehouse.id) {
+              <option [ngValue]="warehouse.id">
+                {{ warehouse.code }} · {{ warehouse.name }}
+                {{ warehouse.branch === null ? '(general)' : '' }}
+              </option>
+            }
+          </select>
+        </div>
+
+        <div class="form-field form-field-wide">
+          <label for="order-customer">Cliente <span>*</span></label>
+          <select id="order-customer" formControlName="customerId">
+            <option [ngValue]="null">Selecciona un cliente</option>
+            @for (customer of options().customers; track customer.id) {
+              <option [ngValue]="customer.id">{{ customer.code }} · {{ customer.name }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="form-field form-field-wide">
+          <label for="order-notes">Notas</label>
+          <textarea
+            id="order-notes"
+            formControlName="notes"
+            rows="3"
+            maxlength="2000"
+            placeholder="Condiciones de entrega o información interna"
+          ></textarea>
+        </div>
+      </div>
+
+      <section class="items-section">
+        <div class="items-heading">
+          <div>
+            <span class="panel-label">Detalle</span>
+            <h3>Ítems del pedido</h3>
+          </div>
+
+          <button type="button" class="secondary-button" (click)="addItem()">
+            Agregar producto
+          </button>
+        </div>
+
+        <div class="items-list" formArrayName="items">
+          @for (itemForm of orderForm().controls.items.controls; track $index; let index = $index) {
+            <div class="item-row" [formGroupName]="index">
+              <div class="form-field item-product">
+                <label [for]="'order-variant-' + index">Producto <span>*</span></label>
+                <select
+                  [id]="'order-variant-' + index"
+                  formControlName="variantId"
+                  (change)="onVariantChanged(index)"
+                >
+                  <option [ngValue]="null">Selecciona una variante</option>
+                  @for (variant of options().variants; track variant.id) {
+                    <option [ngValue]="variant.id">
+                      {{ variant.product_name }} · {{ variant.sku }}
+                    </option>
+                  }
+                </select>
+              </div>
+
+              <div class="form-field item-number">
+                <label [for]="'order-quantity-' + index">Cantidad <span>*</span></label>
+                <input
+                  [id]="'order-quantity-' + index"
+                  type="number"
+                  min="0.001"
+                  step="0.001"
+                  formControlName="quantity"
+                />
+              </div>
+
+              <div class="form-field item-number">
+                <label [for]="'order-price-' + index">Precio unitario <span>*</span></label>
+                <input
+                  [id]="'order-price-' + index"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  formControlName="unitPrice"
+                />
+              </div>
+
+              <button
+                type="button"
+                class="remove-item"
+                [disabled]="orderForm().controls.items.length === 1"
+                [attr.aria-label]="'Eliminar ítem ' + (index + 1)"
+                (click)="removeItem(index)"
+              >
+                Eliminar
+              </button>
+            </div>
+          }
+        </div>
+      </section>
+
+      @if (saveErrorMessage()) {
+        <div class="form-alert" role="alert">{{ saveErrorMessage() }}</div>
+      }
+
+      <footer class="modal-actions">
+        <button
+          type="button"
+          class="secondary-button"
+          [disabled]="isSaving()"
+          (click)="requestClose()"
+        >
+          Cancelar
+        </button>
+        <button type="submit" class="primary-button" [disabled]="isSaving()">
+          {{ isSaving() ? 'Guardando...' : editingOrder() ? 'Guardar cambios' : 'Crear borrador' }}
+        </button>
+      </footer>
+    </form>
+  </section>
+</div>

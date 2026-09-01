@@ -9,6 +9,7 @@ import { Customers } from './pages/customers/customers';
 import { Dashboard } from './pages/dashboard/dashboard';
 import { Inventory } from './pages/inventory/inventory';
 import { Login } from './pages/login/login';
+import { Orders } from './pages/orders/orders';
 import { Products } from './pages/products/products';
 import { Suppliers } from './pages/suppliers/suppliers';
 import { Warehouses } from './pages/warehouses/warehouses';
@@ -56,6 +57,7 @@ describe('application routes', () => {
       ['warehouses', Warehouses],
       ['customers', Customers],
       ['inventory', Inventory],
+      ['orders', Orders],
     ]);
 
     expect(featureRoutes.map((route) => route.path)).toEqual([...expectedComponents.keys()]);

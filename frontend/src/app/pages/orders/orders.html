@@ -1,0 +1,359 @@
+<section class="orders-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Operación comercial</span>
+      <h1>Pedidos</h1>
+      <p>Crea borradores, confirma la salida de inventario y conserva la trazabilidad por ítem.</p>
+      @if (selectedMembership(); as membership) {
+        <span class="company-context">Empresa activa: {{ membership.company.name }}</span>
+      }
+    </div>
+
+    <button
+      type="button"
+      class="primary-button"
+      [disabled]="!canManageOrders() || isLoading()"
+      (click)="openCreateEditor()"
+    >
+      Nuevo pedido
+    </button>
+  </header>
+
+  <div class="summary-grid" aria-label="Resumen de pedidos visibles">
+    <article class="summary-card">
+      <span>Total</span>
+      <strong>{{ pagination().count }}</strong>
+      <small>Pedidos en el alcance autorizado</small>
+    </article>
+    <article class="summary-card accent-draft">
+      <span>Borradores</span>
+      <strong>{{ draftCount() }}</strong>
+      <small>En la página actual</small>
+    </article>
+    <article class="summary-card accent-confirmed">
+      <span>Confirmados</span>
+      <strong>{{ confirmedCount() }}</strong>
+      <small>Con inventario descontado</small>
+    </article>
+  </div>
+
+  @if (successMessage()) {
+    <div class="alert alert-success" role="status">{{ successMessage() }}</div>
+  }
+
+  @if (actionErrorMessage()) {
+    <div class="alert alert-error" role="alert">{{ actionErrorMessage() }}</div>
+  }
+
+  <section class="content-card">
+    <form class="filters" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+      <div class="filter-field filter-search">
+        <label for="orders-search">Buscar</label>
+        <input
+          id="orders-search"
+          type="search"
+          formControlName="search"
+          placeholder="Número, cliente o notas"
+        />
+      </div>
+
+      <div class="filter-field">
+        <label for="orders-status">Estado</label>
+        <select id="orders-status" formControlName="status">
+          <option value="">Todos</option>
+          <option value="DRAFT">Borrador</option>
+          <option value="CONFIRMED">Confirmado</option>
+          <option value="PREPARED">Preparado</option>
+          <option value="DELIVERED">Entregado</option>
+          <option value="CANCELLED">Anulado</option>
+        </select>
+      </div>
+
+      <div class="filter-field">
+        <label for="orders-branch">Sucursal</label>
+        <select id="orders-branch" formControlName="branchId">
+          <option [ngValue]="0">Todas</option>
+          @for (branch of options()?.branches ?? []; track branch.id) {
+            <option [ngValue]="branch.id">{{ branch.code }} · {{ branch.name }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="filter-field">
+        <label for="orders-customer">Cliente</label>
+        <select id="orders-customer" formControlName="customerId">
+          <option [ngValue]="0">Todos</option>
+          @for (customer of options()?.customers ?? []; track customer.id) {
+            <option [ngValue]="customer.id">{{ customer.code }} · {{ customer.name }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="filter-field">
+        <label for="orders-ordering">Orden</label>
+        <select id="orders-ordering" formControlName="ordering">
+          <option value="-number">Más recientes</option>
+          <option value="number">Número ascendente</option>
+          <option value="-created_at">Última creación</option>
+          <option value="updated_at">Actualización ascendente</option>
+          <option value="-updated_at">Última actualización</option>
+        </select>
+      </div>
+
+      <div class="filter-actions">
+        <button type="submit" class="secondary-button" [disabled]="isLoading()">Aplicar</button>
+        <button type="button" class="text-button" [disabled]="isLoading()" (click)="clearFilters()">
+          Limpiar
+        </button>
+      </div>
+    </form>
+
+    @if (listErrorMessage()) {
+      <div class="alert alert-error list-alert" role="alert">{{ listErrorMessage() }}</div>
+    }
+
+    @if (isLoading()) {
+      <div class="state-panel" aria-live="polite">
+        <span class="spinner"></span>
+        <p>Cargando pedidos...</p>
+      </div>
+    } @else if (orders().length === 0) {
+      <div class="state-panel empty-state">
+        <strong>No hay pedidos para mostrar</strong>
+        <p>Ajusta los filtros o crea el primer borrador de la empresa seleccionada.</p>
+      </div>
+    } @else {
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Pedido</th>
+              <th>Cliente</th>
+              <th>Sucursal y bodega</th>
+              <th>Estado</th>
+              <th>Total</th>
+              <th>Actualizado</th>
+              <th class="actions-column">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (order of orders(); track order.id) {
+              <tr>
+                <td>
+                  <strong class="order-number">#{{ order.number }}</strong>
+                  <span class="item-count">{{ order.items.length }} ítem(s)</span>
+                </td>
+                <td>{{ customerLabel(order.customer) }}</td>
+                <td>
+                  <span>{{ branchLabel(order.branch) }}</span>
+                  <small>{{ warehouseLabel(order.warehouse) }}</small>
+                </td>
+                <td>
+                  <span
+                    class="status-pill"
+                    [class]="'status-pill status-' + order.status.toLowerCase()"
+                  >
+                    {{ statusLabel(order.status) }}
+                  </span>
+                </td>
+                <td class="money-cell">{{ formatMoney(order.total) }}</td>
+                <td>{{ formatDate(order.updated_at) }}</td>
+                <td>
+                  <div class="row-actions">
+                    <button type="button" class="text-button" (click)="openDetail(order)">
+                      Detalle
+                    </button>
+                    @if (order.status === 'DRAFT' && canManageOrders()) {
+                      <button type="button" class="text-button" (click)="openEditEditor(order)">
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        class="confirm-button"
+                        [disabled]="actionOrderId() !== null"
+                        (click)="confirmOrder(order)"
+                      >
+                        Confirmar
+                      </button>
+                    }
+                    @if (canCancel(order)) {
+                      <button
+                        type="button"
+                        class="danger-button"
+                        [disabled]="actionOrderId() !== null"
+                        (click)="cancelOrder(order)"
+                      >
+                        Anular
+                      </button>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <footer class="pagination-bar">
+        <span>
+          Página {{ pagination().page }} de {{ pagination().total_pages || 1 }} ·
+          {{ pagination().count }} registro(s)
+        </span>
+        <div>
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="!pagination().previous_page || isLoading()"
+            (click)="goToPage(pagination().previous_page)"
+          >
+            Anterior
+          </button>
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="!pagination().next_page || isLoading()"
+            (click)="goToPage(pagination().next_page)"
+          >
+            Siguiente
+          </button>
+        </div>
+      </footer>
+    }
+  </section>
+</section>
+
+@if (isEditorOpen() && options(); as orderOptions) {
+  <app-order-editor
+    [editingOrder]="editingOrder()"
+    [options]="orderOptions"
+    [orderForm]="orderForm"
+    [isSaving]="isSaving()"
+    [saveErrorMessage]="saveErrorMessage()"
+    (closed)="closeEditor()"
+    (submitted)="saveOrder()"
+  />
+}
+
+@if (isDetailOpen() && detailOrder(); as order) {
+  <div class="detail-backdrop" (click)="closeDetail()">
+    <section
+      class="detail-panel"
+      role="dialog"
+      aria-modal="true"
+      (click)="$event.stopPropagation()"
+    >
+      <header class="detail-header">
+        <div>
+          <span class="eyebrow">Detalle del pedido</span>
+          <h2>Pedido #{{ order.number }}</h2>
+          <span class="status-pill" [class]="'status-pill status-' + order.status.toLowerCase()">
+            {{ statusLabel(order.status) }}
+          </span>
+        </div>
+        <button
+          type="button"
+          class="detail-close"
+          aria-label="Cerrar detalle"
+          (click)="closeDetail()"
+        >
+          ×
+        </button>
+      </header>
+
+      @if (isDetailLoading()) {
+        <div class="detail-loading">Actualizando información...</div>
+      }
+
+      @if (detailErrorMessage()) {
+        <div class="alert alert-error" role="alert">{{ detailErrorMessage() }}</div>
+      }
+
+      <div class="detail-meta">
+        <div>
+          <span>Cliente</span><strong>{{ customerLabel(order.customer) }}</strong>
+        </div>
+        <div>
+          <span>Sucursal</span><strong>{{ branchLabel(order.branch) }}</strong>
+        </div>
+        <div>
+          <span>Bodega</span><strong>{{ warehouseLabel(order.warehouse) }}</strong>
+        </div>
+        <div>
+          <span>Actualizado</span><strong>{{ formatDate(order.updated_at) }}</strong>
+        </div>
+      </div>
+
+      @if (order.notes) {
+        <div class="notes-box">
+          <span>Notas</span>
+          <p>{{ order.notes }}</p>
+        </div>
+      }
+
+      <div class="detail-items">
+        @for (item of order.items; track item.id) {
+          <article class="detail-item">
+            <div class="item-main">
+              <div>
+                <strong>{{ item.product_name }}</strong>
+                <span>SKU {{ item.variant_sku }}</span>
+              </div>
+              <div class="item-calculation">
+                <span>{{ item.quantity }} × {{ formatMoney(item.unit_price) }}</span>
+                <strong>{{ formatMoney(item.line_total) }}</strong>
+              </div>
+            </div>
+
+            @if (item.stock_movements.length > 0) {
+              <div class="movement-list">
+                @for (movement of item.stock_movements; track movement.id) {
+                  <span>
+                    {{ movementLabel(movement.kind) }} · {{ movement.quantity_delta }} ·
+                    {{ formatDate(movement.created_at) }}
+                  </span>
+                }
+              </div>
+            }
+          </article>
+        } @empty {
+          <div class="empty-items">Este borrador todavía no contiene ítems.</div>
+        }
+      </div>
+
+      <footer class="detail-footer">
+        <strong>Total: {{ formatMoney(order.total) }}</strong>
+        <div>
+          @if (order.status === 'DRAFT' && canManageOrders()) {
+            <button type="button" class="secondary-button" (click)="openEditEditor(order)">
+              Editar borrador
+            </button>
+          }
+          @if (canConfirm(order)) {
+            <button
+              type="button"
+              class="confirm-button"
+              [disabled]="actionOrderId() !== null"
+              (click)="confirmOrder(order)"
+            >
+              {{ actionOrderId() === order.id ? 'Confirmando...' : 'Confirmar pedido' }}
+            </button>
+          }
+          @if (canCancel(order)) {
+            <button
+              type="button"
+              class="danger-button"
+              [disabled]="actionOrderId() !== null"
+              (click)="cancelOrder(order)"
+            >
+              {{ actionOrderId() === order.id ? 'Procesando...' : 'Anular pedido' }}
+            </button>
+          }
+        </div>
+      </footer>
+
+      @if (actionErrorMessage()) {
+        <div class="alert alert-error" role="alert">{{ actionErrorMessage() }}</div>
+      }
+    </section>
+  </div>
+}
