@@ -76,4 +76,11 @@ describe('AppShell', () => {
     expect(ordersLink).toBeTruthy();
     expect(ordersLink.textContent).toContain('Pedidos');
   });
+
+  it('shows the sales navigation link', () => {
+    const salesLink = fixture.nativeElement.querySelector('a[href="/app/sales"]');
+
+    expect(salesLink).toBeTruthy();
+    expect(salesLink.textContent).toContain('Ventas');
+  });
 });

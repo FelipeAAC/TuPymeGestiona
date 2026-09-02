@@ -1,0 +1,531 @@
+<section class="sales-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Cierre comercial interno</span>
+      <h1>Ventas y pagos</h1>
+      <p>Convierte pedidos entregados en ventas y controla abonos, saldo y auditoría.</p>
+      @if (selectedMembership(); as membership) {
+        <span class="company-context">Empresa activa: {{ membership.company.name }}</span>
+      }
+    </div>
+
+    <button
+      type="button"
+      class="primary-button"
+      [disabled]="
+        !canManageSales() || isLoading() || (options()?.delivered_orders?.length ?? 0) === 0
+      "
+      (click)="openCreate()"
+    >
+      Nueva venta
+    </button>
+  </header>
+
+  <div class="summary-grid" aria-label="Resumen de ventas visibles">
+    <article class="summary-card">
+      <span>Total</span>
+      <strong>{{ pagination().count }}</strong>
+      <small>Ventas en el alcance autorizado</small>
+    </article>
+    <article class="summary-card accent-pending">
+      <span>Pendientes</span>
+      <strong>{{ pendingCount() }}</strong>
+      <small>En la página actual</small>
+    </article>
+    <article class="summary-card accent-partial">
+      <span>Pago parcial</span>
+      <strong>{{ partialCount() }}</strong>
+      <small>Con saldo por cobrar</small>
+    </article>
+    <article class="summary-card accent-paid">
+      <span>Pagadas</span>
+      <strong>{{ paidCount() }}</strong>
+      <small>Saldo completamente cubierto</small>
+    </article>
+    <article class="summary-card balance-card">
+      <span>Saldo visible</span>
+      <strong>{{ formatMoney(visibleBalance()) }}</strong>
+      <small>Suma de esta página</small>
+    </article>
+  </div>
+
+  @if (successMessage()) {
+    <div class="alert alert-success" role="status">{{ successMessage() }}</div>
+  }
+
+  @if (actionErrorMessage()) {
+    <div class="alert alert-error" role="alert">{{ actionErrorMessage() }}</div>
+  }
+
+  <section class="content-card">
+    <form class="filters" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+      <div class="filter-field filter-search">
+        <label for="sales-search">Buscar</label>
+        <input
+          id="sales-search"
+          type="search"
+          formControlName="search"
+          placeholder="Venta, pedido, cliente o referencia"
+        />
+      </div>
+
+      <div class="filter-field">
+        <label for="sales-status">Estado</label>
+        <select id="sales-status" formControlName="status">
+          <option value="">Todos</option>
+          <option value="PENDING">Pendiente</option>
+          <option value="PARTIAL">Pago parcial</option>
+          <option value="PAID">Pagada</option>
+          <option value="CANCELLED">Anulada</option>
+        </select>
+      </div>
+
+      <div class="filter-field">
+        <label for="sales-branch">Sucursal</label>
+        <select id="sales-branch" formControlName="branchId">
+          <option [ngValue]="0">Todas</option>
+          @for (branch of options()?.branches ?? []; track branch.id) {
+            <option [ngValue]="branch.id">{{ branch.code }} · {{ branch.name }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="filter-field">
+        <label for="sales-ordering">Orden</label>
+        <select id="sales-ordering" formControlName="ordering">
+          <option value="-number">Número más reciente</option>
+          <option value="number">Número ascendente</option>
+          <option value="-created_at">Última creación</option>
+          <option value="created_at">Creación ascendente</option>
+          <option value="-updated_at">Última actualización</option>
+        </select>
+      </div>
+
+      <div class="filter-actions">
+        <button type="submit" class="secondary-button" [disabled]="isLoading()">Aplicar</button>
+        <button type="button" class="text-button" [disabled]="isLoading()" (click)="clearFilters()">
+          Limpiar
+        </button>
+      </div>
+    </form>
+
+    @if (listErrorMessage()) {
+      <div class="alert alert-error list-alert" role="alert">{{ listErrorMessage() }}</div>
+    }
+
+    @if (isLoading()) {
+      <div class="state-panel" aria-live="polite">
+        <span class="spinner"></span>
+        <p>Cargando ventas...</p>
+      </div>
+    } @else if (sales().length === 0) {
+      <div class="state-panel empty-state">
+        <strong>No hay ventas para mostrar</strong>
+        @if ((options()?.delivered_orders?.length ?? 0) > 0 && canManageSales()) {
+          <p>Hay pedidos entregados disponibles para crear una venta.</p>
+        } @else {
+          <p>Ajusta los filtros o espera a que exista un pedido entregado sin venta.</p>
+        }
+      </div>
+    } @else {
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Venta</th>
+              <th>Pedido y cliente</th>
+              <th>Sucursal</th>
+              <th>Estado</th>
+              <th>Total</th>
+              <th>Abonado</th>
+              <th>Saldo</th>
+              <th class="actions-column">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (sale of sales(); track sale.id) {
+              <tr>
+                <td>
+                  <strong class="sale-number">#{{ sale.number }}</strong>
+                  <small>{{ formatDate(sale.created_at) }}</small>
+                </td>
+                <td>
+                  <strong>Pedido #{{ sale.order_number }}</strong>
+                  <small>{{ sale.customer_code }} · {{ sale.customer_name }}</small>
+                </td>
+                <td>{{ branchLabel(sale.branch) }}</td>
+                <td>
+                  <span
+                    class="status-pill"
+                    [class]="'status-pill status-' + sale.status.toLowerCase()"
+                  >
+                    {{ statusLabel(sale.status) }}
+                  </span>
+                </td>
+                <td class="money-cell">{{ formatMoney(sale.total_amount) }}</td>
+                <td class="money-cell paid-cell">{{ formatMoney(sale.paid_amount) }}</td>
+                <td class="money-cell balance-cell">{{ formatMoney(sale.balance) }}</td>
+                <td>
+                  <div class="row-actions">
+                    <button type="button" class="text-button" (click)="openDetail(sale)">
+                      Detalle
+                    </button>
+                    @if (canPay(sale)) {
+                      <button type="button" class="confirm-button" (click)="openPayment(sale)">
+                        Registrar pago
+                      </button>
+                    }
+                    @if (canCancel(sale)) {
+                      <button type="button" class="danger-button" (click)="requestCancel(sale)">
+                        Anular
+                      </button>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <footer class="pagination-bar">
+        <span>
+          Página {{ pagination().page }} de {{ pagination().total_pages || 1 }} ·
+          {{ pagination().count }} registro(s)
+        </span>
+        <div>
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="!pagination().previous_page || isLoading()"
+            (click)="goToPage(pagination().previous_page)"
+          >
+            Anterior
+          </button>
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="!pagination().next_page || isLoading()"
+            (click)="goToPage(pagination().next_page)"
+          >
+            Siguiente
+          </button>
+        </div>
+      </footer>
+    }
+  </section>
+</section>
+
+@if (isCreateOpen() && options(); as saleOptions) {
+  <div class="modal-backdrop" (click)="closeCreate()">
+    <section
+      class="modal-card compact-modal"
+      role="dialog"
+      aria-modal="true"
+      (click)="$event.stopPropagation()"
+    >
+      <header class="modal-header">
+        <div>
+          <span class="eyebrow">Pedido entregado</span>
+          <h2>Crear venta</h2>
+          <p>El total comercial se copiará desde el pedido seleccionado.</p>
+        </div>
+        <button
+          type="button"
+          class="modal-close"
+          aria-label="Cerrar"
+          [disabled]="isCreating()"
+          (click)="closeCreate()"
+        >
+          ×
+        </button>
+      </header>
+
+      <form class="action-form" [formGroup]="createForm" (ngSubmit)="createSale()">
+        <label for="sale-order">Pedido disponible</label>
+        <select id="sale-order" formControlName="orderId">
+          <option [ngValue]="null">Selecciona un pedido</option>
+          @for (order of saleOptions.delivered_orders; track order.id) {
+            <option [ngValue]="order.id">
+              Pedido #{{ order.number }} · {{ order.customer_name }} ·
+              {{ formatMoney(order.total) }}
+            </option>
+          }
+        </select>
+
+        @if (selectedDeliveredOrder(); as order) {
+          <div class="selection-preview">
+            <div>
+              <span>Cliente</span
+              ><strong>{{ order.customer_code }} · {{ order.customer_name }}</strong>
+            </div>
+            <div>
+              <span>Sucursal</span><strong>{{ branchLabel(order.branch) }}</strong>
+            </div>
+            <div>
+              <span>Total</span><strong>{{ formatMoney(order.total) }}</strong>
+            </div>
+          </div>
+        }
+
+        @if (createErrorMessage()) {
+          <div class="alert alert-error" role="alert">{{ createErrorMessage() }}</div>
+        }
+
+        <footer class="modal-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="isCreating()"
+            (click)="closeCreate()"
+          >
+            Cancelar
+          </button>
+          <button type="submit" class="primary-button" [disabled]="isCreating()">
+            {{ isCreating() ? 'Creando...' : 'Crear venta' }}
+          </button>
+        </footer>
+      </form>
+    </section>
+  </div>
+}
+
+@if (isPaymentOpen() && paymentSale(); as sale) {
+  <div class="modal-backdrop action-layer" (click)="closePayment()">
+    <section
+      class="modal-card compact-modal"
+      role="dialog"
+      aria-modal="true"
+      (click)="$event.stopPropagation()"
+    >
+      <header class="modal-header">
+        <div>
+          <span class="eyebrow">Cobro interno</span>
+          <h2>Pago de venta #{{ sale.number }}</h2>
+          <p>
+            Saldo disponible: <strong>{{ formatMoney(sale.balance) }}</strong>
+          </p>
+        </div>
+        <button
+          type="button"
+          class="modal-close"
+          aria-label="Cerrar"
+          [disabled]="isPaymentSaving()"
+          (click)="closePayment()"
+        >
+          ×
+        </button>
+      </header>
+
+      <form class="action-form" [formGroup]="paymentForm" (ngSubmit)="recordPayment()">
+        <div class="form-grid">
+          <div>
+            <label for="payment-amount">Monto</label>
+            <input
+              id="payment-amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              formControlName="amount"
+            />
+          </div>
+          <div>
+            <label for="payment-reference">Referencia</label>
+            <input
+              id="payment-reference"
+              type="text"
+              maxlength="150"
+              formControlName="reference"
+              placeholder="Transferencia, comprobante o caja"
+            />
+          </div>
+        </div>
+
+        <p class="form-note">
+          Un abono menor mantendrá la venta en pago parcial; cubrir el saldo la marcará como pagada.
+        </p>
+
+        @if (paymentErrorMessage()) {
+          <div class="alert alert-error" role="alert">{{ paymentErrorMessage() }}</div>
+        }
+
+        <footer class="modal-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="isPaymentSaving()"
+            (click)="closePayment()"
+          >
+            Cancelar
+          </button>
+          <button type="submit" class="primary-button" [disabled]="isPaymentSaving()">
+            {{ isPaymentSaving() ? 'Registrando...' : 'Registrar pago' }}
+          </button>
+        </footer>
+      </form>
+    </section>
+  </div>
+}
+
+@if (isDetailOpen() && detailSale(); as sale) {
+  <div class="modal-backdrop" (click)="closeDetail()">
+    <section
+      class="modal-card detail-panel"
+      role="dialog"
+      aria-modal="true"
+      (click)="$event.stopPropagation()"
+    >
+      <header class="modal-header">
+        <div>
+          <span class="eyebrow">Detalle comercial</span>
+          <h2>Venta #{{ sale.number }}</h2>
+          <span class="status-pill" [class]="'status-pill status-' + sale.status.toLowerCase()">
+            {{ statusLabel(sale.status) }}
+          </span>
+        </div>
+        <button
+          type="button"
+          class="modal-close"
+          aria-label="Cerrar detalle"
+          (click)="closeDetail()"
+        >
+          ×
+        </button>
+      </header>
+
+      @if (isDetailLoading()) {
+        <div class="detail-loading">Actualizando información...</div>
+      }
+      @if (detailErrorMessage()) {
+        <div class="alert alert-error" role="alert">{{ detailErrorMessage() }}</div>
+      }
+
+      <div class="amount-grid">
+        <article>
+          <span>Total</span><strong>{{ formatMoney(sale.total_amount) }}</strong>
+        </article>
+        <article>
+          <span>Abonado</span><strong>{{ formatMoney(sale.paid_amount) }}</strong>
+        </article>
+        <article class="outstanding">
+          <span>Saldo</span><strong>{{ formatMoney(sale.balance) }}</strong>
+        </article>
+      </div>
+
+      <div class="detail-meta">
+        <div>
+          <span>Pedido origen</span><strong>#{{ sale.order_number }}</strong>
+        </div>
+        <div>
+          <span>Cliente</span><strong>{{ sale.customer_code }} · {{ sale.customer_name }}</strong>
+        </div>
+        <div>
+          <span>Sucursal</span><strong>{{ branchLabel(sale.branch) }}</strong>
+        </div>
+        <div>
+          <span>Creada</span><strong>{{ formatDate(sale.created_at) }}</strong>
+        </div>
+      </div>
+
+      <div class="detail-columns">
+        <section class="detail-section">
+          <div class="section-heading">
+            <span class="eyebrow">Cobros</span>
+            <h3>Pagos registrados</h3>
+          </div>
+          <div class="entry-list">
+            @for (payment of sale.payments; track payment.id) {
+              <article class="entry-card">
+                <div>
+                  <strong>{{ formatMoney(payment.amount) }}</strong
+                  ><span>{{ payment.reference }}</span>
+                </div>
+                <time [attr.datetime]="payment.created_at">{{
+                  formatDate(payment.created_at)
+                }}</time>
+              </article>
+            } @empty {
+              <div class="empty-entry">Todavía no hay pagos registrados.</div>
+            }
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <div class="section-heading">
+            <span class="eyebrow">Auditoría</span>
+            <h3>Cronología de la venta</h3>
+          </div>
+          <div class="timeline">
+            @for (event of sale.events; track event.id) {
+              <article class="timeline-entry">
+                <span class="timeline-dot"></span>
+                <div>
+                  <strong>{{ eventLabel(event.event_type) }}</strong>
+                  <p>{{ eventDescription(event) }}</p>
+                  <time [attr.datetime]="event.created_at">{{ formatDate(event.created_at) }}</time>
+                </div>
+              </article>
+            } @empty {
+              <div class="empty-entry">No hay eventos de auditoría disponibles.</div>
+            }
+          </div>
+        </section>
+      </div>
+
+      <footer class="detail-actions">
+        <span>Última actualización: {{ formatDate(sale.updated_at) }}</span>
+        <div>
+          @if (canPay(sale)) {
+            <button type="button" class="confirm-button" (click)="openPayment(sale)">
+              Registrar pago
+            </button>
+          }
+          @if (canCancel(sale)) {
+            <button type="button" class="danger-button" (click)="requestCancel(sale)">
+              Anular venta
+            </button>
+          }
+        </div>
+      </footer>
+    </section>
+  </div>
+}
+
+@if (cancelCandidate(); as sale) {
+  <div class="modal-backdrop confirmation-layer" (click)="closeCancelConfirmation()">
+    <section
+      class="modal-card confirmation-card"
+      role="alertdialog"
+      aria-modal="true"
+      (click)="$event.stopPropagation()"
+    >
+      <span class="warning-mark">!</span>
+      <h2>Anular venta #{{ sale.number }}</h2>
+      <p>
+        La venta quedará cerrada y no admitirá pagos. El pedido entregado seguirá disponible como
+        antecedente.
+      </p>
+      @if (actionErrorMessage()) {
+        <div class="alert alert-error" role="alert">{{ actionErrorMessage() }}</div>
+      }
+      <footer class="modal-actions">
+        <button
+          type="button"
+          class="secondary-button"
+          [disabled]="cancellingSaleId() !== null"
+          (click)="closeCancelConfirmation()"
+        >
+          Volver
+        </button>
+        <button
+          type="button"
+          class="danger-button"
+          [disabled]="cancellingSaleId() !== null"
+          (click)="confirmCancel()"
+        >
+          {{ cancellingSaleId() === sale.id ? 'Anulando...' : 'Confirmar anulación' }}
+        </button>
+      </footer>
+    </section>
+  </div>
+}
