@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, OnDestroy, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { finalize, forkJoin, Subscription } from 'rxjs';
+import { finalize, forkJoin, Observable, Subscription } from 'rxjs';
 
 import { OrganizationContextService } from '../../core/organization/organization-context.service';
 import {
@@ -24,6 +24,16 @@ const EMPTY_PAGINATION: OrderPagination = {
   next_page: null,
   previous_page: null,
 };
+
+type OrderTransition = 'confirm' | 'prepare' | 'deliver' | 'cancel';
+
+interface OrderHistoryEntry {
+  id: string;
+  label: string;
+  description: string;
+  timestamp: string | null;
+  tone: 'draft' | 'confirmed' | 'prepared' | 'delivered' | 'cancelled';
+}
 
 @Component({
   selector: 'app-orders',
@@ -52,6 +62,7 @@ export class Orders implements OnDestroy {
   readonly isSaving = signal(false);
   readonly isDetailLoading = signal(false);
   readonly actionOrderId = signal<number | null>(null);
+  readonly actionTransition = signal<OrderTransition | null>(null);
   readonly isEditorOpen = signal(false);
   readonly isDetailOpen = signal(false);
   readonly editingOrder = signal<Order | null>(null);
@@ -69,6 +80,12 @@ export class Orders implements OnDestroy {
   );
   readonly confirmedCount = computed(
     () => this.orders().filter((order) => order.status === 'CONFIRMED').length,
+  );
+  readonly preparedCount = computed(
+    () => this.orders().filter((order) => order.status === 'PREPARED').length,
+  );
+  readonly deliveredCount = computed(
+    () => this.orders().filter((order) => order.status === 'DELIVERED').length,
   );
 
   readonly filterForm = this.formBuilder.group({
@@ -345,8 +362,20 @@ export class Orders implements OnDestroy {
     }
   }
 
+  prepareOrder(order: Order): void {
+    if (order.status === 'CONFIRMED') {
+      this.runTransition(order, 'prepare');
+    }
+  }
+
+  deliverOrder(order: Order): void {
+    if (order.status === 'PREPARED') {
+      this.runTransition(order, 'deliver');
+    }
+  }
+
   cancelOrder(order: Order): void {
-    if (order.status === 'DRAFT' || order.status === 'CONFIRMED') {
+    if (order.status === 'DRAFT' || order.status === 'CONFIRMED' || order.status === 'PREPARED') {
       this.runTransition(order, 'cancel');
     }
   }
@@ -355,8 +384,23 @@ export class Orders implements OnDestroy {
     return this.canManageOrders() && order.status === 'DRAFT';
   }
 
+  canPrepare(order: Order): boolean {
+    return this.canManageOrders() && order.status === 'CONFIRMED';
+  }
+
+  canDeliver(order: Order): boolean {
+    return this.canManageOrders() && order.status === 'PREPARED';
+  }
+
   canCancel(order: Order): boolean {
-    return this.canManageOrders() && (order.status === 'DRAFT' || order.status === 'CONFIRMED');
+    return (
+      this.canManageOrders() &&
+      (order.status === 'DRAFT' || order.status === 'CONFIRMED' || order.status === 'PREPARED')
+    );
+  }
+
+  isTransitioning(order: Order, transition: OrderTransition): boolean {
+    return this.actionOrderId() === order.id && this.actionTransition() === transition;
   }
 
   statusLabel(status: OrderStatus): string {
@@ -409,6 +453,80 @@ export class Orders implements OnDestroy {
 
   movementLabel(kind: string): string {
     return kind === 'CONFIRMATION' ? 'Salida por confirmación' : 'Reposición por anulación';
+  }
+
+  operationalHistory(order: Order): OrderHistoryEntry[] {
+    const movements = order.items.flatMap((item) => item.stock_movements);
+    const confirmationAt = movements
+      .filter((movement) => movement.kind === 'CONFIRMATION')
+      .map((movement) => movement.created_at)
+      .sort()[0];
+    const cancellationAt = movements
+      .filter((movement) => movement.kind === 'CANCELLATION')
+      .map((movement) => movement.created_at)
+      .sort()
+      .at(-1);
+    const history: OrderHistoryEntry[] = [
+      {
+        id: 'created',
+        label: 'Borrador creado',
+        description: 'Pedido registrado para revisión y edición.',
+        timestamp: order.created_at,
+        tone: 'draft',
+      },
+    ];
+
+    if (
+      confirmationAt ||
+      order.status === 'CONFIRMED' ||
+      order.status === 'PREPARED' ||
+      order.status === 'DELIVERED'
+    ) {
+      history.push({
+        id: 'confirmed',
+        label: 'Pedido confirmado',
+        description: 'Inventario descontado y trazabilidad registrada por ítem.',
+        timestamp: confirmationAt ?? order.updated_at,
+        tone: 'confirmed',
+      });
+    }
+
+    if (order.status === 'PREPARED' || order.status === 'DELIVERED') {
+      history.push({
+        id: 'prepared',
+        label: 'Pedido preparado',
+        description:
+          order.status === 'PREPARED'
+            ? 'Preparación completada; el pedido está listo para entrega.'
+            : 'Paso completado antes de la entrega; la API no conserva una hora independiente.',
+        timestamp: order.status === 'PREPARED' ? order.updated_at : null,
+        tone: 'prepared',
+      });
+    }
+
+    if (order.status === 'DELIVERED') {
+      history.push({
+        id: 'delivered',
+        label: 'Pedido entregado',
+        description: 'Entrega final registrada; el flujo operativo quedó cerrado.',
+        timestamp: order.updated_at,
+        tone: 'delivered',
+      });
+    }
+
+    if (order.status === 'CANCELLED') {
+      history.push({
+        id: 'cancelled',
+        label: 'Pedido anulado',
+        description: cancellationAt
+          ? 'Inventario repuesto y anulación registrada.'
+          : 'Borrador anulado sin movimiento de inventario.',
+        timestamp: cancellationAt ?? order.updated_at,
+        tone: 'cancelled',
+      });
+    }
+
+    return history;
   }
 
   private loadWorkspace(companyId: number): void {
@@ -492,7 +610,7 @@ export class Orders implements OnDestroy {
       });
   }
 
-  private runTransition(order: Order, transition: 'confirm' | 'cancel'): void {
+  private runTransition(order: Order, transition: OrderTransition): void {
     const membership = this.selectedMembership();
 
     if (!membership || !this.canManageOrders() || this.actionOrderId() !== null) {
@@ -500,13 +618,26 @@ export class Orders implements OnDestroy {
     }
 
     const companyId = membership.company.id;
-    const request =
-      transition === 'confirm'
-        ? this.ordersService.confirmOrder(companyId, order.id)
-        : this.ordersService.cancelOrder(companyId, order.id);
+    let request: Observable<Order>;
+
+    switch (transition) {
+      case 'confirm':
+        request = this.ordersService.confirmOrder(companyId, order.id);
+        break;
+      case 'prepare':
+        request = this.ordersService.prepareOrder(companyId, order.id);
+        break;
+      case 'deliver':
+        request = this.ordersService.deliverOrder(companyId, order.id);
+        break;
+      case 'cancel':
+        request = this.ordersService.cancelOrder(companyId, order.id);
+        break;
+    }
 
     this.actionSubscription?.unsubscribe();
     this.actionOrderId.set(order.id);
+    this.actionTransition.set(transition);
     this.actionErrorMessage.set('');
     this.successMessage.set('');
 
@@ -515,6 +646,7 @@ export class Orders implements OnDestroy {
         finalize(() => {
           if (this.selectedMembership()?.company.id === companyId) {
             this.actionOrderId.set(null);
+            this.actionTransition.set(null);
           }
         }),
       )
@@ -527,21 +659,27 @@ export class Orders implements OnDestroy {
           this.detailOrder.set(
             this.detailOrder()?.id === updatedOrder.id ? updatedOrder : this.detailOrder(),
           );
-          this.successMessage.set(
-            transition === 'confirm'
-              ? `Pedido #${updatedOrder.number} confirmado y descontado de inventario.`
-              : `Pedido #${updatedOrder.number} anulado correctamente.`,
-          );
+          const successMessages: Record<OrderTransition, string> = {
+            confirm: `Pedido #${updatedOrder.number} confirmado y descontado de inventario.`,
+            prepare: `Pedido #${updatedOrder.number} preparado y listo para entrega.`,
+            deliver: `Pedido #${updatedOrder.number} entregado correctamente.`,
+            cancel:
+              order.status === 'DRAFT'
+                ? `Pedido #${updatedOrder.number} anulado correctamente.`
+                : `Pedido #${updatedOrder.number} anulado y con inventario repuesto.`,
+          };
+          this.successMessage.set(successMessages[transition]);
           this.loadOrders(companyId, this.pagination().page);
         },
         error: (error: HttpErrorResponse) => {
           if (this.selectedMembership()?.company.id === companyId) {
-            this.actionErrorMessage.set(
-              this.messageForError(
-                error,
-                transition === 'confirm' ? 'confirmar el pedido' : 'anular el pedido',
-              ),
-            );
+            const actionLabels: Record<OrderTransition, string> = {
+              confirm: 'confirmar el pedido',
+              prepare: 'preparar el pedido',
+              deliver: 'entregar el pedido',
+              cancel: 'anular el pedido',
+            };
+            this.actionErrorMessage.set(this.messageForError(error, actionLabels[transition]));
           }
         },
       });
@@ -572,6 +710,7 @@ export class Orders implements OnDestroy {
     this.isSaving.set(false);
     this.isDetailLoading.set(false);
     this.actionOrderId.set(null);
+    this.actionTransition.set(null);
     this.isEditorOpen.set(false);
     this.isDetailOpen.set(false);
     this.editingOrder.set(null);

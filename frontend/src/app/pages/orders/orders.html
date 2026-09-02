@@ -3,7 +3,10 @@
     <div>
       <span class="eyebrow">Operación comercial</span>
       <h1>Pedidos</h1>
-      <p>Crea borradores, confirma la salida de inventario y conserva la trazabilidad por ítem.</p>
+      <p>
+        Gestiona el pedido desde el borrador hasta su preparación y entrega, con trazabilidad por
+        ítem.
+      </p>
       @if (selectedMembership(); as membership) {
         <span class="company-context">Empresa activa: {{ membership.company.name }}</span>
       }
@@ -34,6 +37,16 @@
       <span>Confirmados</span>
       <strong>{{ confirmedCount() }}</strong>
       <small>Con inventario descontado</small>
+    </article>
+    <article class="summary-card status-prepared">
+      <span>Preparados</span>
+      <strong>{{ preparedCount() }}</strong>
+      <small>Listos para entregar</small>
+    </article>
+    <article class="summary-card status-delivered">
+      <span>Entregados</span>
+      <strong>{{ deliveredCount() }}</strong>
+      <small>Flujo operativo cerrado</small>
     </article>
   </div>
 
@@ -167,13 +180,35 @@
                       <button type="button" class="text-button" (click)="openEditEditor(order)">
                         Editar
                       </button>
+                    }
+                    @if (canConfirm(order)) {
                       <button
                         type="button"
                         class="confirm-button"
                         [disabled]="actionOrderId() !== null"
                         (click)="confirmOrder(order)"
                       >
-                        Confirmar
+                        {{ isTransitioning(order, 'confirm') ? 'Confirmando...' : 'Confirmar' }}
+                      </button>
+                    }
+                    @if (canPrepare(order)) {
+                      <button
+                        type="button"
+                        class="confirm-button"
+                        [disabled]="actionOrderId() !== null"
+                        (click)="prepareOrder(order)"
+                      >
+                        {{ isTransitioning(order, 'prepare') ? 'Preparando...' : 'Preparar' }}
+                      </button>
+                    }
+                    @if (canDeliver(order)) {
+                      <button
+                        type="button"
+                        class="confirm-button"
+                        [disabled]="actionOrderId() !== null"
+                        (click)="deliverOrder(order)"
+                      >
+                        {{ isTransitioning(order, 'deliver') ? 'Entregando...' : 'Entregar' }}
                       </button>
                     }
                     @if (canCancel(order)) {
@@ -183,7 +218,7 @@
                         [disabled]="actionOrderId() !== null"
                         (click)="cancelOrder(order)"
                       >
-                        Anular
+                        {{ isTransitioning(order, 'cancel') ? 'Anulando...' : 'Anular' }}
                       </button>
                     }
                   </div>
@@ -254,6 +289,7 @@
           type="button"
           class="detail-close"
           aria-label="Cerrar detalle"
+          [disabled]="actionOrderId() !== null"
           (click)="closeDetail()"
         >
           ×
@@ -282,6 +318,31 @@
           <span>Actualizado</span><strong>{{ formatDate(order.updated_at) }}</strong>
         </div>
       </div>
+
+      <section
+        class="detail-items operational-history"
+        aria-label="Cronología operativa del pedido"
+      >
+        <div>
+          <span class="eyebrow">Cronología operativa</span>
+          <h3>Avance del pedido</h3>
+        </div>
+        @for (entry of operationalHistory(order); track entry.id) {
+          <article class="detail-item">
+            <span class="status-pill" [class]="'status-pill status-' + entry.tone">
+              {{ entry.label }}
+            </span>
+            <div class="movement-list">
+              <strong>{{ entry.description }}</strong>
+              @if (entry.timestamp) {
+                <time [attr.datetime]="entry.timestamp">{{ formatDate(entry.timestamp) }}</time>
+              } @else {
+                <span>Hora individual no disponible</span>
+              }
+            </div>
+          </article>
+        }
+      </section>
 
       @if (order.notes) {
         <div class="notes-box">
@@ -338,6 +399,26 @@
               {{ actionOrderId() === order.id ? 'Confirmando...' : 'Confirmar pedido' }}
             </button>
           }
+          @if (canPrepare(order)) {
+            <button
+              type="button"
+              class="confirm-button"
+              [disabled]="actionOrderId() !== null"
+              (click)="prepareOrder(order)"
+            >
+              {{ isTransitioning(order, 'prepare') ? 'Preparando...' : 'Preparar pedido' }}
+            </button>
+          }
+          @if (canDeliver(order)) {
+            <button
+              type="button"
+              class="confirm-button"
+              [disabled]="actionOrderId() !== null"
+              (click)="deliverOrder(order)"
+            >
+              {{ isTransitioning(order, 'deliver') ? 'Entregando...' : 'Registrar entrega' }}
+            </button>
+          }
           @if (canCancel(order)) {
             <button
               type="button"
@@ -345,7 +426,7 @@
               [disabled]="actionOrderId() !== null"
               (click)="cancelOrder(order)"
             >
-              {{ actionOrderId() === order.id ? 'Procesando...' : 'Anular pedido' }}
+              {{ isTransitioning(order, 'cancel') ? 'Anulando...' : 'Anular pedido' }}
             </button>
           }
         </div>

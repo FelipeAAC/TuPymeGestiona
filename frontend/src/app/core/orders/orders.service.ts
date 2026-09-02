@@ -76,6 +76,18 @@ export class OrdersService {
       .pipe(map((response) => response.order));
   }
 
+  prepareOrder(companyId: number, orderId: number): Observable<Order> {
+    return this.http
+      .post<OrderResponse>(`/api/orders/${orderId}/prepare/`, { company: companyId })
+      .pipe(map((response) => response.order));
+  }
+
+  deliverOrder(companyId: number, orderId: number): Observable<Order> {
+    return this.http
+      .post<OrderResponse>(`/api/orders/${orderId}/deliver/`, { company: companyId })
+      .pipe(map((response) => response.order));
+  }
+
   cancelOrder(companyId: number, orderId: number): Observable<Order> {
     return this.http
       .post<OrderResponse>(`/api/orders/${orderId}/cancel/`, { company: companyId })

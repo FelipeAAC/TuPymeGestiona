@@ -132,13 +132,27 @@ describe('OrdersService', () => {
     updateRequest.flush({ order });
   });
 
-  it('confirms and cancels through explicit transition endpoints', () => {
+  it('runs every order state change through its explicit transition endpoint', () => {
     service.confirmOrder(7, 15).subscribe((result) => expect(result).toEqual(order));
 
     const confirmRequest = httpTesting.expectOne('/api/orders/15/confirm/');
     expect(confirmRequest.request.method).toBe('POST');
     expect(confirmRequest.request.body).toEqual({ company: 7 });
     confirmRequest.flush({ order });
+
+    service.prepareOrder(7, 15).subscribe((result) => expect(result).toEqual(order));
+
+    const prepareRequest = httpTesting.expectOne('/api/orders/15/prepare/');
+    expect(prepareRequest.request.method).toBe('POST');
+    expect(prepareRequest.request.body).toEqual({ company: 7 });
+    prepareRequest.flush({ order });
+
+    service.deliverOrder(7, 15).subscribe((result) => expect(result).toEqual(order));
+
+    const deliverRequest = httpTesting.expectOne('/api/orders/15/deliver/');
+    expect(deliverRequest.request.method).toBe('POST');
+    expect(deliverRequest.request.body).toEqual({ company: 7 });
+    deliverRequest.flush({ order });
 
     service.cancelOrder(7, 15).subscribe((result) => expect(result).toEqual(order));
 
