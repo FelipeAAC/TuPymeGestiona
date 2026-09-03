@@ -736,3 +736,110 @@ class ElectronicTaxExchange(models.Model):
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
+
+
+class ElectronicTaxOperationalAlert(models.Model):
+    class Severity(models.TextChoices):
+        INFO = "INFO", "Informacion"
+        WARNING = "WARNING", "Advertencia"
+        CRITICAL = "CRITICAL", "Critico"
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Abierta"
+        RESOLVED = "RESOLVED", "Resuelta"
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        related_name="electronic_tax_operational_alerts",
+    )
+    code = models.CharField(max_length=64)
+    severity = models.CharField(max_length=16, choices=Severity.choices)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    dedupe_key = models.CharField(max_length=160)
+    resource_kind = models.CharField(max_length=40, blank=True, default="")
+    resource_id = models.CharField(max_length=64, blank=True, default="")
+    message = models.CharField(max_length=500)
+    details = models.JSONField(default=dict, blank=True)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["company_id", "-severity", "code", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "dedupe_key"],
+                name="uniq_dte_operational_alert_dedupe",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.company_id}:{self.code}:{self.status}"
+
+
+class ElectronicTaxStatusCheckTask(models.Model):
+    class State(models.TextChoices):
+        PENDING = "PENDING", "Pendiente"
+        RUNNING = "RUNNING", "Ejecutando"
+        SUCCEEDED = "SUCCEEDED", "Completada"
+        FAILED = "FAILED", "Fallida"
+        CANCELLED = "CANCELLED", "Cancelada"
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        related_name="electronic_tax_status_check_tasks",
+    )
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="electronic_tax_status_check_tasks",
+    )
+    document = models.ForeignKey(
+        ElectronicTaxDocument,
+        on_delete=models.PROTECT,
+        related_name="status_check_tasks",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="electronic_tax_status_check_tasks",
+    )
+    state = models.CharField(max_length=16, choices=State.choices, default=State.PENDING)
+    reason = models.CharField(max_length=80)
+    due_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    max_attempts = models.PositiveSmallIntegerField(default=8)
+    last_error = models.CharField(max_length=500, blank=True, default="")
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["due_at", "id"]
+        indexes = [
+            models.Index(fields=["state", "due_at"], name="dte_status_task_due_idx"),
+            models.Index(fields=["company", "state"], name="dte_status_task_cmp_idx"),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.document_id:
+            if self.document.company_id != self.company_id:
+                errors["company"] = "La tarea debe pertenecer a la empresa del DTE."
+            if self.document.branch_id != self.branch_id:
+                errors["branch"] = "La tarea debe pertenecer a la sucursal del DTE."
+        if self.max_attempts < 1:
+            errors["max_attempts"] = "max_attempts debe ser al menos 1."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"DTE {self.document_id} status-check {self.state}"
