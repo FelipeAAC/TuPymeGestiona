@@ -1,4 +1,5 @@
 from django.core.paginator import EmptyPage, Paginator
+from django.http import HttpResponse
 
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -18,6 +19,8 @@ from .serializers import (
     ElectronicTaxNoteCreateSerializer,
 )
 from .sii_adapter import import_caf
+from .ride import get_or_create_ride
+from .exchange import deliver_to_receiver, ingest_receiver_response
 from .services import (
     DTEAlreadyExistsError,
     DTECommercialAdjustmentRequiredError,
@@ -584,4 +587,99 @@ def folio_import_view(request):
             "idempotent_replay": not created,
         },
         status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def document_ride_view(request, document_id):
+    membership, error = _resolve_membership(request=request, source=request.query_params)
+    if error:
+        return error
+    document, error = _get_document_for_action(
+        request=request,
+        company=membership.company,
+        document_id=document_id,
+        permission_code=VIEW_PERMISSION,
+    )
+    if error:
+        return error
+    try:
+        payload, _ = get_or_create_ride(document=document, actor=request.user)
+    except DTEError as service_error:
+        return _handle_service_error(error=service_error, document=document, actor=request.user)
+    response = HttpResponse(payload, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="RIDE_{document.type_code}_{document.folio}.pdf"'
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def document_deliver_receiver_view(request, document_id):
+    membership, key, document, error = _mutation_context(request, document_id, ISSUE_PERMISSION)
+    if error:
+        return error
+    serializer = ElectronicTaxMutationSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    expected_version = serializer.validated_data["version"]
+    try:
+        exchange, changed = deliver_to_receiver(
+            document=document,
+            expected_version=expected_version,
+            idempotency_key=key,
+            actor=request.user,
+        )
+    except DTEError as service_error:
+        return _handle_service_error(
+            error=service_error,
+            document=document,
+            actor=request.user,
+            expected_version=expected_version,
+        )
+    refreshed = ElectronicTaxDocument.objects.prefetch_related(
+        "lines", "references", "events"
+    ).select_related("exchange").get(pk=document.pk)
+    http_status = status.HTTP_202_ACCEPTED if exchange.delivery_state == "SEND_UNCERTAIN" else status.HTTP_200_OK
+    return Response(
+        {"document": ElectronicTaxDocumentSerializer(refreshed).data, "idempotent_replay": not changed},
+        status=http_status,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def document_receiver_response_view(request, document_id):
+    membership, key, document, error = _mutation_context(request, document_id, ISSUE_PERMISSION)
+    if error:
+        return error
+    serializer = ElectronicTaxMutationSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    uploaded = request.FILES.get("response_file")
+    if uploaded is None:
+        return Response(
+            {"code": "DTE_VALIDATION_ERROR", "detail": "response_file es obligatorio (multipart/form-data)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    expected_version = serializer.validated_data["version"]
+    try:
+        exchange, changed = ingest_receiver_response(
+            document=document,
+            payload=uploaded.read(),
+            expected_version=expected_version,
+            idempotency_key=key,
+            actor=request.user,
+        )
+    except DTEError as service_error:
+        return _handle_service_error(
+            error=service_error,
+            document=document,
+            actor=request.user,
+            expected_version=expected_version,
+        )
+    refreshed = ElectronicTaxDocument.objects.prefetch_related(
+        "lines", "references", "events"
+    ).select_related("exchange").get(pk=document.pk)
+    return Response(
+        {"document": ElectronicTaxDocumentSerializer(refreshed).data, "idempotent_replay": not changed}
     )

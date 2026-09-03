@@ -186,3 +186,8 @@ SII_SECRET_KEY = os.getenv("SII_SECRET_KEY", "").strip()
 SII_XSD_DIR = os.getenv("SII_XSD_DIR", "").strip()
 SII_CAF_TRUSTED_PUBLIC_KEYS_DIR = os.getenv("SII_CAF_TRUSTED_PUBLIC_KEYS_DIR", "").strip()
 SII_HTTP_TIMEOUT = float(os.getenv("SII_HTTP_TIMEOUT", "20"))
+
+# Receiver exchange / RIDE. Disabled by default; no real email is sent during automated validation.
+SII_EXCHANGE_ENABLED = os.getenv("SII_EXCHANGE_ENABLED", "false").strip().lower() == "true"
+SII_EXCHANGE_FROM_EMAIL = os.getenv("SII_EXCHANGE_FROM_EMAIL", "").strip()
+SII_EXCHANGE_XSD_DIR = os.getenv("SII_EXCHANGE_XSD_DIR", SII_XSD_DIR).strip()

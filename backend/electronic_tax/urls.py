@@ -12,4 +12,7 @@ urlpatterns = [
     path("<int:document_id>/debit-notes/", views.document_debit_note_view, name="electronic-tax-document-debit-note"),
     path("<int:document_id>/issue/", views.document_issue_view, name="electronic-tax-document-issue"),
     path("<int:document_id>/refresh-status/", views.document_refresh_status_view, name="electronic-tax-document-refresh-status"),
+    path("<int:document_id>/ride/", views.document_ride_view, name="electronic-tax-document-ride"),
+    path("<int:document_id>/deliver-receiver/", views.document_deliver_receiver_view, name="electronic-tax-document-deliver-receiver"),
+    path("<int:document_id>/receiver-responses/", views.document_receiver_response_view, name="electronic-tax-document-receiver-response"),
 ]

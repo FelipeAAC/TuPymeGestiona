@@ -5,6 +5,7 @@ from .models import (
     ElectronicTaxEvent,
     ElectronicTaxLine,
     ElectronicTaxReference,
+    ElectronicTaxExchange,
 )
 
 
@@ -61,10 +62,33 @@ class ElectronicTaxEventSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+
+
+class ElectronicTaxExchangeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ElectronicTaxExchange
+        fields = (
+            "delivery_state",
+            "recipient_email",
+            "envelope_hash",
+            "ride_hash",
+            "send_attempts",
+            "last_send_error",
+            "sent_at",
+            "receiver_response_state",
+            "receiver_response_code",
+            "receiver_response_message",
+            "receiver_response_hash",
+            "receiver_response_at",
+        )
+        read_only_fields = fields
+
+
 class ElectronicTaxDocumentSerializer(serializers.ModelSerializer):
     lines = ElectronicTaxLineSerializer(many=True, read_only=True)
     references = ElectronicTaxReferenceSerializer(many=True, read_only=True)
     events = ElectronicTaxEventSerializer(many=True, read_only=True)
+    exchange = ElectronicTaxExchangeSerializer(read_only=True)
 
     class Meta:
         model = ElectronicTaxDocument
@@ -112,6 +136,7 @@ class ElectronicTaxDocumentSerializer(serializers.ModelSerializer):
             "lines",
             "references",
             "events",
+            "exchange",
         )
         read_only_fields = fields
 

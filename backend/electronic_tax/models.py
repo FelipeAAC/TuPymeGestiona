@@ -28,6 +28,7 @@ class TaxCompanyProfile(models.Model):
     economic_activity_code = models.PositiveIntegerField(null=True, blank=True)
     sii_resolution_number = models.PositiveIntegerField(null=True, blank=True)
     sii_resolution_date = models.DateField(null=True, blank=True)
+    sii_regional_office = models.CharField(max_length=120, blank=True, default="")
     sii_branch_code = models.CharField(max_length=20, blank=True, default="")
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -567,6 +568,10 @@ class ElectronicTaxEvent(models.Model):
         SECRET_OPERATION = "SECRET_OPERATION", "Operacion sensible"
         CREDIT_NOTE_CREATED = "CREDIT_NOTE_CREATED", "Nota de credito creada"
         DEBIT_NOTE_CREATED = "DEBIT_NOTE_CREATED", "Nota de debito creada"
+        RIDE_GENERATED = "RIDE_GENERATED", "RIDE generado"
+        RECEIVER_EXCHANGE_SENT = "RECEIVER_EXCHANGE_SENT", "DTE enviado al receptor"
+        RECEIVER_EXCHANGE_UNCERTAIN = "RECEIVER_EXCHANGE_UNCERTAIN", "Envio al receptor incierto"
+        RECEIVER_RESPONSE_RECEIVED = "RECEIVER_RESPONSE_RECEIVED", "Respuesta del receptor recibida"
 
     document = models.ForeignKey(
         ElectronicTaxDocument,
@@ -643,6 +648,9 @@ class FolioAuthorizationSecret(models.Model):
 class ElectronicTaxArtifact(models.Model):
     class Kind(models.TextChoices):
         SIGNED_ENVELOPE = "SIGNED_ENVELOPE", "EnvioDTE firmado"
+        RIDE_PDF = "RIDE_PDF", "Representacion impresa PDF"
+        RECEIVER_ENVELOPE = "RECEIVER_ENVELOPE", "EnvioDTE para receptor"
+        RECEIVER_RESPONSE = "RECEIVER_RESPONSE", "Respuesta XML del receptor"
 
     document = models.ForeignKey(
         ElectronicTaxDocument, on_delete=models.PROTECT, related_name="artifacts"
@@ -677,3 +685,54 @@ class FolioAuthorizationEvent(models.Model):
 
     class Meta:
         ordering = ["authorization_id", "created_at", "id"]
+
+
+class ElectronicTaxExchange(models.Model):
+    class DeliveryState(models.TextChoices):
+        NONE = "NONE", "Sin envio"
+        PENDING = "PENDING", "Preparando envio"
+        SENT = "SENT", "Enviado"
+        SEND_UNCERTAIN = "SEND_UNCERTAIN", "Envio incierto"
+
+    class ReceiverResponseState(models.TextChoices):
+        NONE = "NONE", "Sin respuesta"
+        RECEIVED = "RECEIVED", "Respuesta recibida"
+        ACCEPTED = "ACCEPTED", "Aceptado"
+        ACCEPTED_WITH_DISCREPANCY = "ACCEPTED_WITH_DISCREPANCY", "Aceptado con discrepancia"
+        REJECTED = "REJECTED", "Rechazado"
+
+    document = models.OneToOneField(
+        ElectronicTaxDocument, on_delete=models.PROTECT, related_name="exchange"
+    )
+    delivery_state = models.CharField(
+        max_length=24, choices=DeliveryState.choices, default=DeliveryState.NONE
+    )
+    recipient_email = models.EmailField(blank=True, default="")
+    envelope_hash = models.CharField(max_length=64, blank=True, default="")
+    ride_hash = models.CharField(max_length=64, blank=True, default="")
+    send_attempts = models.PositiveIntegerField(default=0)
+    last_send_error = models.CharField(max_length=500, blank=True, default="")
+    sent_at = models.DateTimeField(null=True, blank=True)
+    receiver_response_state = models.CharField(
+        max_length=32,
+        choices=ReceiverResponseState.choices,
+        default=ReceiverResponseState.NONE,
+    )
+    receiver_response_code = models.CharField(max_length=40, blank=True, default="")
+    receiver_response_message = models.CharField(max_length=500, blank=True, default="")
+    receiver_response_hash = models.CharField(max_length=64, blank=True, default="")
+    receiver_response_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        super().clean()
+        if self.document_id and self.recipient_email:
+            if self.recipient_email.strip().lower() != self.document.receiver_tax_email.strip().lower():
+                raise ValidationError(
+                    {"recipient_email": "El intercambio solo puede usar el correo tributario congelado del receptor."}
+                )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
