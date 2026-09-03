@@ -7,6 +7,7 @@ import { Brands } from './pages/brands/brands';
 import { Categories } from './pages/categories/categories';
 import { Customers } from './pages/customers/customers';
 import { Dashboard } from './pages/dashboard/dashboard';
+import { ElectronicTax } from './pages/electronic-tax/electronic-tax';
 import { Inventory } from './pages/inventory/inventory';
 import { Login } from './pages/login/login';
 import { Orders } from './pages/orders/orders';
@@ -60,6 +61,7 @@ describe('application routes', () => {
       ['inventory', Inventory],
       ['orders', Orders],
       ['sales', Sales],
+      ['electronic-tax', ElectronicTax],
     ]);
 
     expect(featureRoutes.map((route) => route.path)).toEqual([...expectedComponents.keys()]);

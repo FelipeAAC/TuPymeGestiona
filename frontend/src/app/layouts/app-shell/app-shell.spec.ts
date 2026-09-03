@@ -83,4 +83,11 @@ describe('AppShell', () => {
     expect(salesLink).toBeTruthy();
     expect(salesLink.textContent).toContain('Ventas');
   });
+
+  it('shows the electronic tax navigation link', () => {
+    const taxLink = fixture.nativeElement.querySelector('a[href="/app/electronic-tax"]');
+
+    expect(taxLink).toBeTruthy();
+    expect(taxLink.textContent).toContain('Facturación electrónica');
+  });
 });

@@ -1,0 +1,673 @@
+<section class="tax-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Documentos tributarios electrónicos</span>
+      <h1>Facturación electrónica</h1>
+      <p>
+        Gestiona borradores fiscales, validación, referencias, estados SII y trazabilidad sin
+        alterar la venta comercial.
+      </p>
+      @if (selectedMembership(); as membership) {
+        <span class="company-context">Empresa activa: {{ membership.company.name }}</span>
+      }
+    </div>
+
+    <button
+      type="button"
+      class="primary-button"
+      [disabled]="isLoading() || isMutating()"
+      (click)="openCreate()"
+    >
+      Nueva factura
+    </button>
+  </header>
+
+  <div class="summary-grid" aria-label="Resumen DTE visible">
+    <article class="summary-card">
+      <span>Total</span>
+      <strong>{{ pagination().count }}</strong>
+      <small>DTE en el alcance autorizado</small>
+    </article>
+    <article class="summary-card accent-draft">
+      <span>Borradores</span>
+      <strong>{{ draftCount() }}</strong>
+      <small>En la página actual</small>
+    </article>
+    <article class="summary-card accent-ready">
+      <span>Listos</span>
+      <strong>{{ readyCount() }}</strong>
+      <small>Validados para emisión</small>
+    </article>
+    <article class="summary-card accent-accepted">
+      <span>Aceptados</span>
+      <strong>{{ acceptedCount() }}</strong>
+      <small>Incluye aceptados con reparo</small>
+    </article>
+    <article class="summary-card accent-rejected">
+      <span>Rechazados</span>
+      <strong>{{ rejectedCount() }}</strong>
+      <small>Con evidencia preservada</small>
+    </article>
+  </div>
+
+  <section class="folio-strip" aria-label="Disponibilidad de folios">
+    <div class="folio-heading">
+      <strong>Folios disponibles</strong>
+      <span>Resumen informativo; la administración de CAF queda fuera de esta interfaz.</span>
+    </div>
+    @if (isFolioLoading()) {
+      <span class="muted">Consultando...</span>
+    } @else if (folioErrorMessage()) {
+      <span class="muted">{{ folioErrorMessage() }}</span>
+    } @else {
+      @for (typeCode of typeCodes; track typeCode) {
+        <div class="folio-chip">
+          <span>DTE {{ typeCode }}</span>
+          <strong>{{ folioAvailable(typeCode) ?? '—' }}</strong>
+        </div>
+      }
+    }
+  </section>
+
+  @if (successMessage()) {
+    <div class="alert alert-success" role="status">{{ successMessage() }}</div>
+  }
+  @if (actionErrorMessage()) {
+    <div class="alert alert-error" role="alert">{{ actionErrorMessage() }}</div>
+  }
+
+  <section class="content-card">
+    <form class="filters" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+      <div class="filter-field">
+        <label for="tax-branch">Sucursal</label>
+        <select id="tax-branch" formControlName="branchId">
+          <option [ngValue]="0">Todas</option>
+          @for (branch of selectedMembership()?.branches ?? []; track branch.id) {
+            <option [ngValue]="branch.id">{{ branch.code }} · {{ branch.name }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="filter-field">
+        <label for="tax-type">Tipo DTE</label>
+        <select id="tax-type" formControlName="typeCode">
+          <option value="">Todos</option>
+          <option [ngValue]="33">33 · Factura electrónica</option>
+          <option [ngValue]="34">34 · Factura exenta</option>
+          <option [ngValue]="56">56 · Nota de débito</option>
+          <option [ngValue]="61">61 · Nota de crédito</option>
+        </select>
+      </div>
+
+      <div class="filter-field">
+        <label for="tax-state">Estado</label>
+        <select id="tax-state" formControlName="state">
+          <option value="">Todos</option>
+          <option value="DRAFT">Borrador</option>
+          <option value="READY">Lista</option>
+          <option value="FOLIO_RESERVED">Folio reservado</option>
+          <option value="SIGNED">Firmada</option>
+          <option value="SUBMITTED">Enviada</option>
+          <option value="PROCESSING">Procesando</option>
+          <option value="ACCEPTED">Aceptada</option>
+          <option value="ACCEPTED_WITH_REPAIR">Aceptada con reparo</option>
+          <option value="REJECTED">Rechazada</option>
+          <option value="SEND_UNCERTAIN">Envío incierto</option>
+          <option value="CANCELLED_BY_REFERENCE">Anulada por referencia</option>
+          <option value="DISCARDED">Descartada</option>
+        </select>
+      </div>
+
+      <div class="filter-field compact-field">
+        <label for="tax-folio">Folio</label>
+        <input id="tax-folio" type="number" min="1" formControlName="folio" placeholder="Ej. 128" />
+      </div>
+
+      <div class="filter-field">
+        <label for="tax-rut">RUT receptor</label>
+        <input
+          id="tax-rut"
+          type="search"
+          formControlName="receiverRut"
+          placeholder="76.123.456-7"
+        />
+      </div>
+
+      <div class="filter-field date-field">
+        <label for="tax-from">Emisión desde</label>
+        <input id="tax-from" type="date" formControlName="issueDateFrom" />
+      </div>
+      <div class="filter-field date-field">
+        <label for="tax-to">Emisión hasta</label>
+        <input id="tax-to" type="date" formControlName="issueDateTo" />
+      </div>
+
+      <div class="filter-actions">
+        <button type="submit" class="secondary-button" [disabled]="isLoading()">Aplicar</button>
+        <button type="button" class="text-button" [disabled]="isLoading()" (click)="clearFilters()">
+          Limpiar
+        </button>
+      </div>
+    </form>
+
+    @if (listErrorMessage()) {
+      <div class="alert alert-error list-alert" role="alert">{{ listErrorMessage() }}</div>
+    }
+
+    @if (isLoading()) {
+      <div class="state-panel">
+        <span class="spinner"></span>
+        <p>Cargando documentos tributarios...</p>
+      </div>
+    } @else if (documents().length === 0) {
+      <div class="state-panel empty-state">
+        <strong>No hay DTE para mostrar</strong>
+        <p>Crea una factura desde una venta elegible o ajusta los filtros.</p>
+      </div>
+    } @else {
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Documento</th>
+              <th>Venta</th>
+              <th>Receptor</th>
+              <th>Sucursal</th>
+              <th>Estado</th>
+              <th>Total</th>
+              <th>SII</th>
+              <th class="actions-column">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (document of documents(); track document.id) {
+              <tr>
+                <td>
+                  <strong>{{ typeLabel(document.type_code) }}</strong>
+                  <small
+                    >DTE {{ document.type_code }} ·
+                    {{
+                      document.folio ? 'Folio ' + document.folio : 'Borrador #' + document.id
+                    }}</small
+                  >
+                </td>
+                <td>{{ document.sale ? '#' + document.sale : 'Referencia' }}</td>
+                <td>
+                  <strong>{{ document.receiver_legal_name }}</strong>
+                  <small>{{ document.receiver_rut }}</small>
+                </td>
+                <td>{{ branchLabel(document.branch) }}</td>
+                <td>
+                  <span
+                    class="status-pill"
+                    [class]="'status-pill state-' + document.state.toLowerCase()"
+                  >
+                    {{ stateLabel(document.state) }}
+                  </span>
+                </td>
+                <td class="money-cell">{{ formatMoney(document.total_amount) }}</td>
+                <td>
+                  <strong>{{ document.provider_status_code || '—' }}</strong>
+                  <small>{{ document.provider_track_id || 'Sin track id' }}</small>
+                </td>
+                <td>
+                  <div class="row-actions">
+                    <button type="button" class="text-button" (click)="openDetail(document)">
+                      Detalle
+                    </button>
+                    @if (canValidate(document)) {
+                      <button
+                        type="button"
+                        class="confirm-button"
+                        [disabled]="isMutating()"
+                        (click)="validateDocument(document)"
+                      >
+                        Validar
+                      </button>
+                    }
+                    @if (canDiscard(document)) {
+                      <button
+                        type="button"
+                        class="danger-button"
+                        [disabled]="isMutating()"
+                        (click)="requestDiscard(document)"
+                      >
+                        Descartar
+                      </button>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <footer class="pagination-bar">
+        <span
+          >Página {{ pagination().page }} de {{ pagination().total_pages || 1 }} ·
+          {{ pagination().count }} registro(s)</span
+        >
+        <div>
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="!previousPage() || isLoading()"
+            (click)="goToPage(previousPage() ?? 1)"
+          >
+            Anterior
+          </button>
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="!nextPage() || isLoading()"
+            (click)="goToPage(nextPage() ?? 1)"
+          >
+            Siguiente
+          </button>
+        </div>
+      </footer>
+    }
+  </section>
+
+  <div class="operational-note">
+    <strong>Emisión real SII separada del flujo de preparación.</strong>
+    <span
+      >Este módulo Angular cubre creación, validación, consulta, trazabilidad y NC/ND. La activación
+      de CAF, certificados, envío real, intercambio y secretos se cierra al final en la etapa
+      operativa.</span
+    >
+  </div>
+</section>
+
+@if (isCreateOpen()) {
+  <div class="modal-backdrop" (click)="closeCreate()">
+    <section
+      class="modal-card compact-modal"
+      role="dialog"
+      aria-modal="true"
+      (click)="$event.stopPropagation()"
+    >
+      <header class="modal-header">
+        <div>
+          <span class="eyebrow">Snapshot fiscal</span>
+          <h2>Nueva factura</h2>
+          <p>La venta permanece como verdad comercial; el DTE toma una instantánea tributaria.</p>
+        </div>
+        <button type="button" class="modal-close" [disabled]="isMutating()" (click)="closeCreate()">
+          ×
+        </button>
+      </header>
+
+      <form class="action-form" [formGroup]="createForm" (ngSubmit)="createDocument()">
+        <label for="tax-sale">Venta elegible</label>
+        <select id="tax-sale" formControlName="saleId">
+          <option [ngValue]="null">Selecciona una venta</option>
+          @for (sale of eligibleSales(); track sale.id) {
+            <option [ngValue]="sale.id">
+              Venta #{{ sale.number }} · {{ sale.customer_name }} ·
+              {{ formatMoney(sale.total_amount) }} · {{ sale.status }}
+            </option>
+          }
+        </select>
+        @if (isSalesLoading()) {
+          <small class="muted">Buscando ventas elegibles...</small>
+        }
+
+        <label for="tax-create-type">Tipo de factura</label>
+        <select id="tax-create-type" formControlName="typeCode">
+          <option [ngValue]="33">33 · Factura electrónica afecta/exenta</option>
+          <option [ngValue]="34">34 · Factura no afecta o exenta</option>
+        </select>
+        <small class="muted"
+          >El backend verificará que las líneas sean compatibles con el tipo seleccionado.</small
+        >
+
+        @if (createErrorMessage()) {
+          <div class="alert alert-error" role="alert">{{ createErrorMessage() }}</div>
+        }
+        <footer class="modal-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="isMutating()"
+            (click)="closeCreate()"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            class="primary-button"
+            [disabled]="isMutating() || isSalesLoading()"
+          >
+            {{ isMutating() ? 'Creando...' : 'Crear borrador fiscal' }}
+          </button>
+        </footer>
+      </form>
+    </section>
+  </div>
+}
+
+@if (isDetailOpen() && detailDocument(); as document) {
+  <div class="modal-backdrop" (click)="closeDetail()">
+    <section
+      class="modal-card detail-modal"
+      role="dialog"
+      aria-modal="true"
+      (click)="$event.stopPropagation()"
+    >
+      <header class="modal-header">
+        <div>
+          <span class="eyebrow">DTE {{ document.type_code }}</span>
+          <h2>
+            {{ typeLabel(document.type_code) }}
+            {{ document.folio ? '· Folio ' + document.folio : '· Borrador #' + document.id }}
+          </h2>
+          <p>
+            Versión {{ document.version }} · {{ stateLabel(document.state) }} ·
+            {{ formatDate(document.updated_at) }}
+          </p>
+        </div>
+        <button type="button" class="modal-close" [disabled]="isMutating()" (click)="closeDetail()">
+          ×
+        </button>
+      </header>
+
+      @if (isDetailLoading()) {
+        <div class="state-panel detail-loading">
+          <span class="spinner"></span>
+          <p>Cargando detalle...</p>
+        </div>
+      } @else {
+        @if (detailErrorMessage()) {
+          <div class="alert alert-error">{{ detailErrorMessage() }}</div>
+        }
+
+        <div class="detail-actions">
+          <div>
+            @if (canValidate(document)) {
+              <button
+                type="button"
+                class="confirm-button"
+                [disabled]="isMutating()"
+                (click)="validateDocument(document)"
+              >
+                Validar y congelar
+              </button>
+            }
+            @if (canCreditNote(document)) {
+              <button
+                type="button"
+                class="secondary-button"
+                [disabled]="isMutating()"
+                (click)="openCreditNote(document)"
+              >
+                Crear nota de crédito
+              </button>
+            }
+            @if (canDebitNote(document)) {
+              <button
+                type="button"
+                class="secondary-button"
+                [disabled]="isMutating()"
+                (click)="openDebitNote(document)"
+              >
+                Crear nota de débito
+              </button>
+            }
+            @if (canDownloadRide(document)) {
+              <button type="button" class="secondary-button" (click)="downloadRide(document)">
+                Descargar RIDE
+              </button>
+            }
+            @if (canDiscard(document)) {
+              <button
+                type="button"
+                class="danger-button"
+                [disabled]="isMutating()"
+                (click)="requestDiscard(document)"
+              >
+                Descartar
+              </button>
+            }
+          </div>
+        </div>
+
+        <div class="detail-grid">
+          <article class="detail-section">
+            <h3>Emisor</h3>
+            <strong>{{ document.issuer_legal_name }}</strong>
+            <span>{{ document.issuer_rut }} · {{ document.issuer_business_activity }}</span>
+            <span
+              >{{ document.issuer_address }}, {{ document.issuer_commune }},
+              {{ document.issuer_city }}</span
+            >
+          </article>
+          <article class="detail-section">
+            <h3>Receptor</h3>
+            <strong>{{ document.receiver_legal_name }}</strong>
+            <span>{{ document.receiver_rut }} · {{ document.receiver_business_activity }}</span>
+            <span
+              >{{ document.receiver_address }}, {{ document.receiver_commune }},
+              {{ document.receiver_city }}</span
+            >
+            <span>{{ document.receiver_tax_email || 'Sin correo tributario' }}</span>
+          </article>
+          <article class="detail-section totals-section">
+            <h3>Totales fiscales</h3>
+            <div>
+              <span>Neto</span><strong>{{ formatMoney(document.net_amount) }}</strong>
+            </div>
+            <div>
+              <span>Exento</span><strong>{{ formatMoney(document.exempt_amount) }}</strong>
+            </div>
+            <div>
+              <span>IVA {{ document.vat_rate }}%</span
+              ><strong>{{ formatMoney(document.vat_amount) }}</strong>
+            </div>
+            <div class="grand-total">
+              <span>Total</span><strong>{{ formatMoney(document.total_amount) }}</strong>
+            </div>
+          </article>
+          <article class="detail-section">
+            <h3>Integración</h3>
+            <span
+              >Track ID: <strong>{{ document.provider_track_id || '—' }}</strong></span
+            >
+            <span
+              >Estado externo: <strong>{{ document.provider_status_code || '—' }}</strong></span
+            >
+            <span>{{ document.provider_status_message || 'Sin glosa remota registrada.' }}</span>
+          </article>
+        </div>
+
+        <section class="detail-block">
+          <h3>Líneas del documento</h3>
+          <div class="table-wrap nested-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>SKU / descripción</th>
+                  <th>Cantidad</th>
+                  <th>Clasificación</th>
+                  <th>Neto</th>
+                  <th>Exento</th>
+                  <th>IVA</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (line of document.lines; track line.id) {
+                  <tr>
+                    <td>{{ line.line_number }}</td>
+                    <td>
+                      <strong>{{ line.sku }}</strong
+                      ><small>{{ line.description }}</small>
+                    </td>
+                    <td>{{ line.quantity }}</td>
+                    <td>{{ line.tax_category }}</td>
+                    <td>{{ formatMoney(line.net_amount) }}</td>
+                    <td>{{ formatMoney(line.exempt_amount) }}</td>
+                    <td>{{ formatMoney(line.vat_amount) }}</td>
+                    <td class="money-cell">{{ formatMoney(line.total_amount) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        @if (document.references.length > 0) {
+          <section class="detail-block">
+            <h3>Referencias tributarias</h3>
+            <div class="entry-list">
+              @for (reference of document.references; track reference.id) {
+                <article class="entry-card">
+                  <div>
+                    <strong>{{ reasonLabel(reference.reason) }}</strong
+                    ><span
+                      >DTE {{ reference.referenced_type_code }} · Folio
+                      {{ reference.referenced_folio ?? '—' }}</span
+                    >
+                  </div>
+                  <p>{{ reference.description }}</p>
+                </article>
+              }
+            </div>
+          </section>
+        }
+
+        <section class="detail-block">
+          <h3>Cronología fiscal</h3>
+          <div class="timeline">
+            @for (event of document.events; track event.id) {
+              <article class="timeline-entry">
+                <span class="timeline-dot"></span>
+                <div>
+                  <strong>{{ eventLabel(event.event_type) }}</strong
+                  ><small
+                    >{{ formatDate(event.created_at) }} · Código
+                    {{ event.normalized_code || '—' }}</small
+                  >
+                </div>
+              </article>
+            }
+          </div>
+        </section>
+      }
+    </section>
+  </div>
+}
+
+@if (isNoteOpen() && noteSource(); as source) {
+  <div class="modal-backdrop" (click)="closeNote()">
+    <section
+      class="modal-card compact-modal"
+      role="dialog"
+      aria-modal="true"
+      (click)="$event.stopPropagation()"
+    >
+      <header class="modal-header">
+        <div>
+          <span class="eyebrow">Ajuste por referencia</span>
+          <h2>{{ noteKind() === 'credit' ? 'Nueva nota de crédito' : 'Nueva nota de débito' }}</h2>
+          <p>
+            Documento origen: {{ typeLabel(source.type_code) }} ·
+            {{ source.folio ?? '#' + source.id }}
+          </p>
+        </div>
+        <button type="button" class="modal-close" [disabled]="isMutating()" (click)="closeNote()">
+          ×
+        </button>
+      </header>
+
+      <form class="action-form" [formGroup]="noteForm" (ngSubmit)="submitNote()">
+        <label for="note-reason">Motivo</label>
+        <select id="note-reason" formControlName="reason">
+          @for (reason of noteReasons(); track reason) {
+            <option [value]="reason">{{ reasonLabel(reason) }}</option>
+          }
+        </select>
+
+        <label for="note-description">Descripción / razón</label>
+        <textarea
+          id="note-description"
+          rows="3"
+          formControlName="description"
+          placeholder="Describe el ajuste tributario"
+        ></textarea>
+
+        @if (noteForm.controls.reason.value === 'CORRECT_TEXT') {
+          <div class="correction-grid">
+            <div>
+              <label for="correction-field">Campo permitido</label
+              ><select id="correction-field" formControlName="correctionField">
+                <option value="">Selecciona</option>
+                <option value="receiver_business_activity">Giro receptor</option>
+                <option value="receiver_address">Dirección receptor</option>
+                <option value="receiver_commune">Comuna receptor</option>
+                <option value="receiver_city">Ciudad receptor</option>
+              </select>
+            </div>
+            <div>
+              <label for="correction-value">Nuevo texto</label
+              ><input id="correction-value" formControlName="correctionValue" maxlength="200" />
+            </div>
+          </div>
+        }
+
+        @if (noteErrorMessage()) {
+          <div class="alert alert-error">{{ noteErrorMessage() }}</div>
+        }
+        <footer class="modal-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="isMutating()"
+            (click)="closeNote()"
+          >
+            Cancelar</button
+          ><button type="submit" class="primary-button" [disabled]="isMutating()">
+            {{ isMutating() ? 'Guardando...' : 'Crear nota' }}
+          </button>
+        </footer>
+      </form>
+    </section>
+  </div>
+}
+
+@if (discardCandidate(); as document) {
+  <div class="modal-backdrop" (click)="closeDiscard()">
+    <section
+      class="modal-card confirm-modal"
+      role="alertdialog"
+      aria-modal="true"
+      (click)="$event.stopPropagation()"
+    >
+      <span class="eyebrow danger-eyebrow">Acción explícita</span>
+      <h2>¿Descartar este DTE?</h2>
+      <p>
+        {{ typeLabel(document.type_code) }} #{{ document.id }} está en estado
+        {{ stateLabel(document.state) }}. El descarte conservará evidencia de auditoría.
+      </p>
+      <footer class="modal-actions">
+        <button
+          type="button"
+          class="secondary-button"
+          [disabled]="isMutating()"
+          (click)="closeDiscard()"
+        >
+          Volver</button
+        ><button
+          type="button"
+          class="danger-button"
+          [disabled]="isMutating()"
+          (click)="confirmDiscard()"
+        >
+          Confirmar descarte
+        </button>
+      </footer>
+    </section>
+  </div>
+}

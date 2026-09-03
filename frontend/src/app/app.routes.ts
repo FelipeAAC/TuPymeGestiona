@@ -68,6 +68,11 @@ export const routes: Routes = [
         path: 'sales',
         loadComponent: () => import('./pages/sales/sales').then((module) => module.Sales),
       },
+      {
+        path: 'electronic-tax',
+        loadComponent: () =>
+          import('./pages/electronic-tax/electronic-tax').then((module) => module.ElectronicTax),
+      },
     ],
   },
   {
