@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "electronic_tax",
     "administration",
     "portal",
+    "external_payments",
 ]
 
 MIDDLEWARE = [
@@ -200,3 +201,14 @@ ELECTRONIC_TAX_CERTIFICATE_WARNING_DAYS = int(os.getenv("ELECTRONIC_TAX_CERTIFIC
 ELECTRONIC_TAX_STALE_MINUTES = int(os.getenv("ELECTRONIC_TAX_STALE_MINUTES", "30"))
 ELECTRONIC_TAX_STATUS_RETRY_MINUTES = int(os.getenv("ELECTRONIC_TAX_STATUS_RETRY_MINUTES", "5"))
 ELECTRONIC_TAX_STATUS_RETRY_MAX_ATTEMPTS = int(os.getenv("ELECTRONIC_TAX_STATUS_RETRY_MAX_ATTEMPTS", "8"))
+
+# Mercado Pago Checkout Pro - entorno de pruebas. Las credenciales se resuelven desde variables de entorno.
+MERCADO_PAGO_ENABLED = os.getenv("MERCADO_PAGO_ENABLED", "false").strip().lower() == "true"
+MERCADO_PAGO_ACCESS_TOKEN_ENV = os.getenv("MERCADO_PAGO_ACCESS_TOKEN_ENV", "MERCADO_PAGO_ACCESS_TOKEN").strip()
+MERCADO_PAGO_WEBHOOK_SECRET_ENV = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET_ENV", "MERCADO_PAGO_WEBHOOK_SECRET").strip()
+MERCADO_PAGO_API_BASE_URL = os.getenv("MERCADO_PAGO_API_BASE_URL", "https://api.mercadopago.com").strip()
+MERCADO_PAGO_RETURN_BASE_URL = os.getenv("MERCADO_PAGO_RETURN_BASE_URL", "").strip()
+MERCADO_PAGO_WEBHOOK_URL = os.getenv("MERCADO_PAGO_WEBHOOK_URL", "").strip()
+MERCADO_PAGO_HTTP_TIMEOUT = float(os.getenv("MERCADO_PAGO_HTTP_TIMEOUT", "15"))
+MERCADO_PAGO_USE_SANDBOX_INIT_POINT = os.getenv("MERCADO_PAGO_USE_SANDBOX_INIT_POINT", "false").strip().lower() == "true"
+MERCADO_PAGO_ACCEPT_LIVE_MODE = os.getenv("MERCADO_PAGO_ACCEPT_LIVE_MODE", "false").strip().lower() == "true"

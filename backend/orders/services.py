@@ -214,17 +214,37 @@ def deliver_order(*, order, performed_by):
             "Solo se pueden entregar pedidos preparados."
         )
 
+    # Un checkout de Mercado Pago iniciado obliga a confirmar el pago antes
+    # de entregar. Los pedidos sin checkout conservan el flujo existente.
+    from external_payments.services import (
+        has_incomplete_external_checkout,
+        reconcile_delivered_order,
+    )
+
+    if has_incomplete_external_checkout(order=locked_order):
+        raise OrderTransitionError(
+            "El pedido tiene un pago Mercado Pago pendiente o no confirmado."
+        )
+
     _set_order_status(
         order=locked_order,
         new_status=Order.Status.DELIVERED,
     )
 
+    reconcile_delivered_order(order=locked_order)
     return locked_order
 
 
 @transaction.atomic
 def cancel_order(*, order, performed_by):
     locked_order = _lock_order(order)
+
+    from external_payments.services import has_approved_external_payment
+
+    if has_approved_external_payment(order=locked_order):
+        raise OrderTransitionError(
+            "El pedido tiene un pago Mercado Pago aprobado; requiere devolución antes de anular."
+        )
 
     if locked_order.status == Order.Status.DRAFT:
         _set_order_status(

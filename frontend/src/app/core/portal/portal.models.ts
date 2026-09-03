@@ -109,3 +109,28 @@ export interface PortalOrderInput {
   notes: string;
   items: { variant: number; quantity: string }[];
 }
+
+export type MercadoPagoStatus =
+  | 'CREATING'
+  | 'READY'
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'CANCELLED'
+  | 'REFUNDED'
+  | 'UNCERTAIN';
+
+export interface PortalMercadoPagoPayment {
+  id: number;
+  order: number;
+  status: MercadoPagoStatus;
+  amount: string;
+  currency: string;
+  preference_id: string;
+  checkout_url: string;
+  provider_status: string;
+  provider_status_detail: string;
+  last_payment_id: string;
+  updated_at: string;
+  sale: number | null;
+}

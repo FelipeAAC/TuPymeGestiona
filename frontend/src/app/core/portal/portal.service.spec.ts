@@ -44,4 +44,20 @@ describe('PortalService', () => {
     expect(order.request.headers.get('Idempotency-Key')).toBe('order-key');
     order.flush({ order: { id: 9 } });
   });
+  it('creates and refreshes Mercado Pago checkouts through the backend', () => {
+    service.createMercadoPagoPreference(9, 'mp-key').subscribe((payment) =>
+      expect(payment.status).toBe('READY'),
+    );
+    const preference = http.expectOne('/api/portal/payments/orders/9/mercado-pago/preference/');
+    expect(preference.request.headers.get('Idempotency-Key')).toBe('mp-key');
+    preference.flush({ payment: { id: 1, order: 9, status: 'READY', amount: '1000.00', currency: 'CLP', preference_id: 'PREF', checkout_url: 'https://mp.test', provider_status: '', provider_status_detail: '', last_payment_id: '', updated_at: '', sale: null } });
+
+    service.refreshMercadoPagoPayment(9, 'PAY-1').subscribe((payment) =>
+      expect(payment.status).toBe('APPROVED'),
+    );
+    const refresh = http.expectOne('/api/portal/payments/orders/9/mercado-pago/refresh/');
+    expect(refresh.request.body).toEqual({ payment_id: 'PAY-1' });
+    refresh.flush({ payment: { id: 1, order: 9, status: 'APPROVED', amount: '1000.00', currency: 'CLP', preference_id: 'PREF', checkout_url: 'https://mp.test', provider_status: 'approved', provider_status_detail: 'accredited', last_payment_id: 'PAY-1', updated_at: '', sale: null } });
+  });
+
 });

@@ -1,14 +1,20 @@
 <div class="account-page">
   <header><a routerLink="/portal"><span>TG</span> TuPymeGestiona</a><nav><a routerLink="/portal">Catálogo</a><a routerLink="/app/dashboard">Panel empresa</a></nav></header>
   <main>
-    <section class="heading"><span class="eyebrow">Mi cuenta</span><h1>Mis pedidos</h1><p>Consulta tus compras y el estado actual de cada pedido.</p></section>
+    <section class="heading"><span class="eyebrow">Mi cuenta</span><h1>Mis pedidos</h1><p>Consulta tus compras, su estado y el pago en línea asociado.</p></section>
     @if(errorMessage()){<div class="error" role="alert">{{ errorMessage() }}</div>}
+    @if(paymentMessage()){<div class="payment-alert" role="status">{{ paymentMessage() }}</div>}
     @if(accounts().length){<section class="profile">@for(account of accounts(); track account.company){<article><strong>{{ account.company_name }}</strong><span>{{ account.customer_name }}</span><small>{{ account.address }}, {{ account.commune }}, {{ account.city }}</small></article>}</section>}
     @if(isLoading()){<div class="empty">Cargando historial...</div>} @else if(orders().length===0){<div class="empty"><strong>Aún no has realizado pedidos.</strong><a routerLink="/portal">Explorar catálogo</a></div>} @else {
       <section class="orders">
-        @for(order of orders(); track order.id){<article class="order-card"><div><span>Pedido #{{ order.number }}</span><strong>${{ (+order.total).toLocaleString('es-CL') }}</strong></div><div><span class="badge" [attr.data-status]="order.status">{{ statusLabel(order.status) }}</span><small>{{ order.created_at | date:'dd/MM/yyyy HH:mm' }}</small><button type="button" (click)="showDetail(order)">Ver detalle</button></div></article>}
+        @for(order of orders(); track order.id){
+          <article class="order-card">
+            <div><span>Pedido #{{ order.number }}</span><strong>${{ (+order.total).toLocaleString('es-CL') }}</strong><small class="payment-state" [attr.data-payment]="paymentFor(order.id)?.status ?? 'NONE'">{{ paymentLabel(paymentFor(order.id)) }}</small></div>
+            <div><span class="badge" [attr.data-status]="order.status">{{ statusLabel(order.status) }}</span><small>{{ order.created_at | date:'dd/MM/yyyy HH:mm' }}</small><button type="button" (click)="showDetail(order)">Ver detalle</button>@if(canPay(order)){<button class="pay-button" type="button" [disabled]="payingOrderId()===order.id" (click)="pay(order)">{{ payingOrderId()===order.id ? 'Procesando...' : (paymentFor(order.id)?.status==='UNCERTAIN' ? 'Verificar pago' : 'Pagar con Mercado Pago') }}</button>}</div>
+          </article>
+        }
       </section>
     }
   </main>
-  @if(selectedOrder(); as order){<div class="backdrop" (click)="closeDetail()"><article class="detail" (click)="$event.stopPropagation()"><button class="close" type="button" (click)="closeDetail()">×</button><span class="eyebrow">Pedido #{{ order.number }}</span><h2>{{ statusLabel(order.status) }}</h2><p>Despacho: {{ order.delivery_address }}, {{ order.delivery_commune }}, {{ order.delivery_city }}</p>@for(item of order.items; track item.id){<div class="item"><div><strong>{{ item.product_name }}</strong><small>{{ item.variant_sku }} · {{ item.quantity }}</small></div><span>${{ (+item.line_total).toLocaleString('es-CL') }}</span></div>}<div class="total"><span>Total</span><strong>${{ (+order.total).toLocaleString('es-CL') }}</strong></div></article></div>}
+  @if(selectedOrder(); as order){<div class="backdrop" (click)="closeDetail()"><article class="detail" (click)="$event.stopPropagation()"><button class="close" type="button" (click)="closeDetail()">×</button><span class="eyebrow">Pedido #{{ order.number }}</span><h2>{{ statusLabel(order.status) }}</h2><p>Despacho: {{ order.delivery_address }}, {{ order.delivery_commune }}, {{ order.delivery_city }}</p>@if(paymentFor(order.id); as payment){<div class="payment-summary"><strong>Mercado Pago</strong><span>{{ paymentLabel(payment) }}</span>@if(payment.last_payment_id){<small>Pago {{ payment.last_payment_id }}</small>}</div>}@for(item of order.items; track item.id){<div class="item"><div><strong>{{ item.product_name }}</strong><small>{{ item.variant_sku }} · {{ item.quantity }}</small></div><span>${{ (+item.line_total).toLocaleString('es-CL') }}</span></div>}<div class="total"><span>Total</span><strong>${{ (+order.total).toLocaleString('es-CL') }}</strong></div></article></div>}
 </div>

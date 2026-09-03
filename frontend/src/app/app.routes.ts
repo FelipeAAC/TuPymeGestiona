@@ -25,6 +25,12 @@ export const routes: Routes = [
       import('./pages/portal-account/portal-account').then((module) => module.PortalAccountPage),
   },
   {
+    path: 'portal/payment-result',
+    canActivate: [portalAuthGuard],
+    loadComponent: () =>
+      import('./pages/payment-result/payment-result').then((module) => module.PaymentResult),
+  },
+  {
     path: 'login',
     loadComponent: () => import('./pages/login/login').then((module) => module.Login),
   },

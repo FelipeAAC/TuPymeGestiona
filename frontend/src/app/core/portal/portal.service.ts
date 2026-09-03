@@ -8,6 +8,7 @@ import {
   PortalOrder,
   PortalOrderInput,
   PortalProduct,
+  PortalMercadoPagoPayment,
   PortalRegistrationInput,
   PortalStore,
 } from './portal.models';
@@ -65,6 +66,55 @@ export class PortalService {
     return this.http
       .get<{ order: PortalOrder }>(`/api/portal/orders/${orderId}/`)
       .pipe(map((response) => response.order));
+  }
+
+  getMercadoPagoPayments(): Observable<PortalMercadoPagoPayment[]> {
+    return this.http
+      .get<{ payments: PortalMercadoPagoPayment[] }>('/api/portal/payments/mercado-pago/')
+      .pipe(map((response) => response.payments));
+  }
+
+  getMercadoPagoPayment(orderId: number): Observable<PortalMercadoPagoPayment | null> {
+    return this.http
+      .get<{ payment: PortalMercadoPagoPayment | null }>(
+        `/api/portal/payments/orders/${orderId}/mercado-pago/`,
+      )
+      .pipe(map((response) => response.payment));
+  }
+
+  createMercadoPagoPreference(
+    orderId: number,
+    idempotencyKey: string,
+  ): Observable<PortalMercadoPagoPayment> {
+    const headers = new HttpHeaders().set('Idempotency-Key', idempotencyKey);
+    return this.http
+      .post<{ payment: PortalMercadoPagoPayment }>(
+        `/api/portal/payments/orders/${orderId}/mercado-pago/preference/`,
+        {},
+        { headers },
+      )
+      .pipe(map((response) => response.payment));
+  }
+
+  refreshMercadoPagoPayment(
+    orderId: number,
+    paymentId: string,
+  ): Observable<PortalMercadoPagoPayment> {
+    return this.http
+      .post<{ payment: PortalMercadoPagoPayment }>(
+        `/api/portal/payments/orders/${orderId}/mercado-pago/refresh/`,
+        { payment_id: paymentId },
+      )
+      .pipe(map((response) => response.payment));
+  }
+
+  resolveMercadoPagoPreference(orderId: number): Observable<PortalMercadoPagoPayment> {
+    return this.http
+      .post<{ payment: PortalMercadoPagoPayment }>(
+        `/api/portal/payments/orders/${orderId}/mercado-pago/resolve-preference/`,
+        {},
+      )
+      .pipe(map((response) => response.payment));
   }
 
   createOrder(input: PortalOrderInput, idempotencyKey: string): Observable<PortalOrder> {
