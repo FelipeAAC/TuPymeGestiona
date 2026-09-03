@@ -174,3 +174,15 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
 ]
+
+# SII DTE adapter. Secrets are supplied through environment variables or files,
+# never versioned in settings or persisted in plain text.
+SII_ADAPTER_ENABLED = os.getenv("SII_ADAPTER_ENABLED", "false").strip().lower() == "true"
+SII_ENVIRONMENT = os.getenv("SII_ENVIRONMENT", "certification").strip().lower()
+SII_CERTIFICATE_PFX_PATH = os.getenv("SII_CERTIFICATE_PFX_PATH", "").strip()
+SII_CERTIFICATE_PASSWORD_ENV = os.getenv("SII_CERTIFICATE_PASSWORD_ENV", "SII_CERTIFICATE_PASSWORD").strip()
+SII_SENDER_RUT = os.getenv("SII_SENDER_RUT", "").strip()
+SII_SECRET_KEY = os.getenv("SII_SECRET_KEY", "").strip()
+SII_XSD_DIR = os.getenv("SII_XSD_DIR", "").strip()
+SII_CAF_TRUSTED_PUBLIC_KEYS_DIR = os.getenv("SII_CAF_TRUSTED_PUBLIC_KEYS_DIR", "").strip()
+SII_HTTP_TIMEOUT = float(os.getenv("SII_HTTP_TIMEOUT", "20"))

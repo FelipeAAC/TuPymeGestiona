@@ -6,6 +6,7 @@ from .models import (
     ElectronicTaxLine,
     ElectronicTaxReference,
     FolioAuthorization,
+    FolioAuthorizationEvent,
     FolioReservation,
     IdempotencyRecord,
     TaxCompanyProfile,
@@ -24,3 +25,5 @@ admin.site.register(FolioAuthorization)
 admin.site.register(FolioReservation)
 admin.site.register(ElectronicTaxEvent)
 admin.site.register(IdempotencyRecord)
+
+admin.site.register(FolioAuthorizationEvent)

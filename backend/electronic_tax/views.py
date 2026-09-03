@@ -17,6 +17,7 @@ from .serializers import (
     ElectronicTaxMutationSerializer,
     ElectronicTaxNoteCreateSerializer,
 )
+from .sii_adapter import import_caf
 from .services import (
     DTEAlreadyExistsError,
     DTECommercialAdjustmentRequiredError,
@@ -553,10 +554,34 @@ def folio_import_view(request):
             {"code": "DTE_PERMISSION_DENIED", "detail": "No tienes permiso para administrar folios."},
             status=status.HTTP_403_FORBIDDEN,
         )
+    uploaded = request.FILES.get("caf_file")
+    if uploaded is None:
+        return Response(
+            {"code": "DTE_VALIDATION_ERROR", "detail": "caf_file es obligatorio (multipart/form-data)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        authorization, created = import_caf(
+            company=membership.company,
+            caf_bytes=uploaded.read(),
+            idempotency_key=key,
+            actor=request.user,
+            source_label=uploaded.name,
+        )
+    except DTEError as service_error:
+        return _handle_service_error(error=service_error, document=None, actor=request.user)
     return Response(
         {
-            "code": "PROVIDER_NOT_CONFIGURED",
-            "detail": "La importacion de CAF real pertenece al adaptador SII posterior; el backend base no acepta material criptografico.",
+            "authorization": {
+                "id": authorization.id,
+                "type_code": authorization.type_code,
+                "status": authorization.status,
+                "start_folio": authorization.start_folio,
+                "end_folio": authorization.end_folio,
+                "next_folio": authorization.next_folio,
+                "caf_hash": authorization.caf_hash,
+            },
+            "idempotent_replay": not created,
         },
-        status=status.HTTP_409_CONFLICT,
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
     )

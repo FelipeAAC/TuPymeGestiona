@@ -922,7 +922,7 @@ def models_f(field_name):
 
 
 @transaction.atomic
-def issue_document(*, document, expected_version, idempotency_key, actor, provider=DEFAULT_PROVIDER):
+def issue_document(*, document, expected_version, idempotency_key, actor, provider=None):
     locked = ElectronicTaxDocument.objects.select_for_update().get(pk=document.pk)
     request_hash = _canonical_hash({"document_id": locked.id, "version": expected_version})
     key, replay = _replay_or_conflict(
@@ -934,9 +934,15 @@ def issue_document(*, document, expected_version, idempotency_key, actor, provid
     if replay is not None:
         return replay.document, False
     _check_version(locked, expected_version)
+    if provider is None:
+        try:
+            from .sii_adapter import get_sii_provider
+            provider = get_sii_provider()
+        except DTEProviderNotConfiguredError:
+            raise
     if not getattr(provider, "configured", False):
         raise DTEProviderNotConfiguredError(
-            "El adaptador SII no esta configurado en el backend base; no se reservo folio ni se cambio el estado."
+            "El adaptador SII no esta configurado; no se reservo folio ni se cambio el estado."
         )
     if locked.state != ElectronicTaxDocument.State.READY:
         raise DTEInvalidStateError("Solo un DTE READY puede iniciar emision.")
@@ -996,6 +1002,15 @@ def issue_document(*, document, expected_version, idempotency_key, actor, provid
     locked.state = ElectronicTaxDocument.State.SUBMITTED
     locked.version += 1
     locked.save(update_fields=("provider_track_id", "state", "version", "updated_at"))
+    reservation.status = FolioReservation.Status.CONSUMED
+    reservation.consumed_at = timezone.now()
+    reservation.save(update_fields=("status", "consumed_at"))
+    record_event(
+        document=locked,
+        event_type=ElectronicTaxEvent.EventType.FOLIO_CONSUMED,
+        actor=actor,
+        metadata={"folio": reservation.folio},
+    )
     record_event(
         document=locked,
         event_type=ElectronicTaxEvent.EventType.SUBMITTED,
@@ -1048,7 +1063,7 @@ def _apply_reference_effect_if_accepted(*, document, actor):
 
 
 @transaction.atomic
-def refresh_document_status(*, document, expected_version, idempotency_key, actor, provider=DEFAULT_PROVIDER):
+def refresh_document_status(*, document, expected_version, idempotency_key, actor, provider=None):
     locked = ElectronicTaxDocument.objects.select_for_update().get(pk=document.pk)
     request_hash = _canonical_hash({"document_id": locked.id, "version": expected_version})
     key, replay = _replay_or_conflict(
@@ -1060,6 +1075,12 @@ def refresh_document_status(*, document, expected_version, idempotency_key, acto
     if replay is not None:
         return replay.document, False
     _check_version(locked, expected_version)
+    if provider is None:
+        try:
+            from .sii_adapter import get_sii_provider
+            provider = get_sii_provider()
+        except DTEProviderNotConfiguredError:
+            raise
     if not getattr(provider, "configured", False):
         raise DTEProviderNotConfiguredError("El adaptador SII no esta configurado para consultar estado.")
     if locked.state not in {

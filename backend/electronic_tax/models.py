@@ -25,6 +25,10 @@ class TaxCompanyProfile(models.Model):
     commune = models.CharField(max_length=100)
     city = models.CharField(max_length=100, blank=True, default="")
     tax_email = models.EmailField(blank=True, default="")
+    economic_activity_code = models.PositiveIntegerField(null=True, blank=True)
+    sii_resolution_number = models.PositiveIntegerField(null=True, blank=True)
+    sii_resolution_date = models.DateField(null=True, blank=True)
+    sii_branch_code = models.CharField(max_length=20, blank=True, default="")
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -624,3 +628,52 @@ class IdempotencyRecord(models.Model):
 
     def __str__(self):
         return f"{self.company_id}:{self.operation}:{self.key}"
+
+
+class FolioAuthorizationSecret(models.Model):
+    authorization = models.OneToOneField(
+        FolioAuthorization, on_delete=models.CASCADE, related_name="secret_material"
+    )
+    nonce = models.BinaryField()
+    encrypted_caf = models.BinaryField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class ElectronicTaxArtifact(models.Model):
+    class Kind(models.TextChoices):
+        SIGNED_ENVELOPE = "SIGNED_ENVELOPE", "EnvioDTE firmado"
+
+    document = models.ForeignKey(
+        ElectronicTaxDocument, on_delete=models.PROTECT, related_name="artifacts"
+    )
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    content_hash = models.CharField(max_length=64)
+    nonce = models.BinaryField()
+    encrypted_payload = models.BinaryField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["document", "kind"], name="uniq_dte_artifact_kind")
+        ]
+
+
+class FolioAuthorizationEvent(models.Model):
+    class EventType(models.TextChoices):
+        CAF_IMPORTED = "CAF_IMPORTED", "CAF importado"
+        CAF_DISABLED = "CAF_DISABLED", "CAF deshabilitado"
+
+    authorization = models.ForeignKey(
+        FolioAuthorization, on_delete=models.PROTECT, related_name="audit_events"
+    )
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="folio_authorization_events")
+    event_type = models.CharField(max_length=32, choices=EventType.choices)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    correlation_id = models.UUIDField(default=uuid.uuid4)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["authorization_id", "created_at", "id"]
