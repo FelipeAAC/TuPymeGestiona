@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "customers",
     "orders",
     "sales",
+    "electronic_tax",
 ]
 
 MIDDLEWARE = [

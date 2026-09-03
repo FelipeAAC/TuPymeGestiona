@@ -14,4 +14,6 @@ urlpatterns = [
     path("api/customers/", include("customers.urls")),
     path("api/orders/", include("orders.urls")),
     path("api/sales/", include("sales.urls")),
+    path("api/v1/electronic-tax-documents/", include("electronic_tax.urls")),
+    path("api/v1/folio-authorizations/", include("electronic_tax.folio_urls")),
 ]
