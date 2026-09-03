@@ -114,6 +114,8 @@ class Product(models.Model):
         blank=True,
     )
     name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    image_url = models.URLField(max_length=500, blank=True, default="")
     status = models.CharField(
         max_length=20,
         choices=Status.choices,

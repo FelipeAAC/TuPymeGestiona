@@ -216,6 +216,8 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "name",
+            "description",
+            "image_url",
             "status",
             "category",
             "brand",
@@ -290,6 +292,8 @@ class ProductCreateSerializer(serializers.Serializer):
     name = serializers.CharField(
         max_length=200,
     )
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    image_url = serializers.URLField(required=False, allow_blank=True, default="", max_length=500)
     category = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.none(),
     )
@@ -348,6 +352,8 @@ class ProductUpdateSerializer(serializers.Serializer):
         max_length=200,
         required=False,
     )
+    description = serializers.CharField(required=False, allow_blank=True)
+    image_url = serializers.URLField(required=False, allow_blank=True, max_length=500)
     category = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.none(),
         required=False,

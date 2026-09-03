@@ -1,0 +1,17 @@
+<div class="register-page">
+  <header><a routerLink="/portal"><span>TG</span> TuPymeGestiona</a><a routerLink="/login" [queryParams]="{returnUrl:'/portal/account'}">Ya tengo cuenta</a></header>
+  <main>
+    <section class="intro"><span class="eyebrow">Portal cliente</span><h1>Crea tu cuenta</h1><p>Registra tus datos para realizar pedidos y consultar su seguimiento.</p></section>
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      @if (errorMessage()) { <div class="error" role="alert">{{ errorMessage() }}</div> }
+      <label>Tienda<select formControlName="company"><option [ngValue]="0">Selecciona una tienda</option>@for(store of stores(); track store.id){<option [ngValue]="store.id">{{ store.name }}</option>}</select></label>
+      <div class="grid"><label>Nombre<input formControlName="firstName" /></label><label>Apellido<input formControlName="lastName" /></label></div>
+      <label>Correo electrónico<input type="email" formControlName="email" /></label>
+      <label>Contraseña<input type="password" formControlName="password" autocomplete="new-password" /><small>Mínimo 8 caracteres; se aplican las reglas de seguridad del sistema.</small></label>
+      <label>Teléfono<input formControlName="phone" /></label>
+      <label>Dirección<input formControlName="address" /></label>
+      <div class="grid"><label>Comuna<input formControlName="commune" /></label><label>Ciudad<input formControlName="city" /></label></div>
+      <button type="submit" [disabled]="isSubmitting() || isLoading()">{{ isSubmitting() ? 'Creando cuenta...' : 'Crear cuenta' }}</button>
+    </form>
+  </main>
+</div>

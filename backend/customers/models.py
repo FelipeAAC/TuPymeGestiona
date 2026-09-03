@@ -38,6 +38,10 @@ class Customer(models.Model):
         blank=True,
     )
 
+    address = models.CharField(max_length=220, blank=True, default="")
+    commune = models.CharField(max_length=120, blank=True, default="")
+    city = models.CharField(max_length=120, blank=True, default="")
+
     status = models.CharField(
         max_length=20,
         choices=Status.choices,

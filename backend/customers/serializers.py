@@ -67,6 +67,9 @@ class CustomerSerializer(serializers.ModelSerializer):
             "tax_id",
             "email",
             "phone",
+            "address",
+            "commune",
+            "city",
             "status",
             "created_at",
             "updated_at",
@@ -146,6 +149,9 @@ class CustomerCreateSerializer(serializers.Serializer):
         allow_blank=True,
         default="",
     )
+    address = serializers.CharField(max_length=220, required=False, allow_blank=True, default="")
+    commune = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    city = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
     status = serializers.ChoiceField(
         choices=Customer.Status.choices,
         required=False,
@@ -199,6 +205,9 @@ class CustomerUpdateSerializer(serializers.Serializer):
         required=False,
         allow_blank=True,
     )
+    address = serializers.CharField(max_length=220, required=False, allow_blank=True)
+    commune = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    city = serializers.CharField(max_length=120, required=False, allow_blank=True)
     status = serializers.ChoiceField(
         choices=Customer.Status.choices,
         required=False,

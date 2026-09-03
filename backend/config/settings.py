@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "sales",
     "electronic_tax",
     "administration",
+    "portal",
 ]
 
 MIDDLEWARE = [

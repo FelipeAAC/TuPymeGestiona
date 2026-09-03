@@ -82,6 +82,9 @@ class Order(models.Model):
         blank=True,
         default="",
     )
+    delivery_address = models.CharField(max_length=220, blank=True, default="")
+    delivery_commune = models.CharField(max_length=120, blank=True, default="")
+    delivery_city = models.CharField(max_length=120, blank=True, default="")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,

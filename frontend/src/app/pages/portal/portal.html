@@ -1,0 +1,180 @@
+<div class="portal-page">
+  <header class="portal-header">
+    <a class="portal-brand" routerLink="/portal"><span>TG</span> TuPymeGestiona</a>
+    <nav>
+      <a routerLink="/portal/account">Mis pedidos</a>
+      <a routerLink="/portal/register">Crear cuenta</a>
+      <a routerLink="/login" [queryParams]="{ returnUrl: '/portal/account' }">Iniciar sesión</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div>
+      <span class="eyebrow">Portal cliente</span>
+      <h1>Compra a tus PYMES favoritas desde un solo lugar.</h1>
+      <p>Explora tiendas, revisa disponibilidad y registra pedidos con seguimiento desde tu cuenta.</p>
+    </div>
+  </section>
+
+  @if (errorMessage()) {
+    <div class="alert alert-error" role="alert">{{ errorMessage() }}</div>
+  }
+
+  <main class="portal-content">
+    <aside class="stores-panel">
+      <h2>Tiendas</h2>
+      @if (isLoadingStores()) {
+        <p>Cargando tiendas...</p>
+      } @else if (stores().length === 0) {
+        <p>No hay tiendas publicadas.</p>
+      } @else {
+        @for (store of stores(); track store.id) {
+          <button
+            type="button"
+            class="store-card"
+            [class.active]="selectedStore()?.id === store.id"
+            (click)="selectStore(store)"
+          >
+            <strong>{{ store.name }}</strong>
+            <span>{{ store.business_activity || 'Comercio' }}</span>
+            <small>{{ store.commune }}{{ store.city ? ', ' + store.city : '' }}</small>
+          </button>
+        }
+      }
+    </aside>
+
+    <section class="catalog-panel">
+      @if (selectedStore(); as store) {
+        <div class="catalog-heading">
+          <div>
+            <span class="eyebrow">Catálogo</span>
+            <h2>{{ store.name }}</h2>
+          </div>
+        </div>
+
+        <form class="filters" [formGroup]="catalogForm" (ngSubmit)="applyFilters()">
+          <input type="search" formControlName="search" placeholder="Buscar producto, marca o SKU" />
+          <select formControlName="categoryId">
+            <option [ngValue]="0">Todas las categorías</option>
+            @for (category of categories(); track category.id) {
+              <option [ngValue]="category.id">{{ category.name }}</option>
+            }
+          </select>
+          <button type="submit">Buscar</button>
+          <button type="button" class="secondary" (click)="clearFilters()">Limpiar</button>
+        </form>
+
+        @if (isLoadingCatalog()) {
+          <div class="empty-state">Cargando catálogo...</div>
+        } @else if (products().length === 0) {
+          <div class="empty-state">
+            <strong>No se encontraron productos para tu búsqueda.</strong>
+            <span>Prueba otra categoría o limpia los filtros.</span>
+          </div>
+        } @else {
+          <div class="product-grid">
+            @for (product of products(); track product.id) {
+              <article class="product-card">
+                <button class="product-image" type="button" (click)="openProduct(product)">
+                  @if (product.image_url) {
+                    <img [src]="product.image_url" [alt]="product.name" />
+                  } @else {
+                    <span>{{ product.name.slice(0, 2).toUpperCase() }}</span>
+                  }
+                </button>
+                <div class="product-body">
+                  <small>{{ product.category.name }}</small>
+                  <h3>{{ product.name }}</h3>
+                  <p>{{ product.description || 'Producto disponible en el catálogo de esta tienda.' }}</p>
+                  @for (variant of product.variants; track variant.id) {
+                    <div class="variant-row">
+                      <div>
+                        <strong>${{ variant.base_price }}</strong>
+                        <span>{{ variant.sku }}</span>
+                      </div>
+                      <button type="button" [disabled]="!variant.available" (click)="addToCart(product, variant)">
+                        {{ variant.available ? 'Agregar' : 'Sin stock' }}
+                      </button>
+                    </div>
+                  }
+                  <button class="detail-link" type="button" (click)="openProduct(product)">Ver detalle</button>
+                </div>
+              </article>
+            }
+          </div>
+        }
+      }
+    </section>
+
+    <aside class="cart-panel">
+      <div class="cart-heading">
+        <h2>Tu pedido</h2>
+        <span>{{ cart().length }} productos</span>
+      </div>
+      @if (cart().length === 0) {
+        <div class="empty-state">Agrega productos para comenzar.</div>
+      } @else {
+        <div class="cart-lines">
+          @for (line of cart(); track line.variant.id) {
+            <div class="cart-line">
+              <div>
+                <strong>{{ line.productName }}</strong>
+                <small>{{ line.variant.sku }}</small>
+              </div>
+              <div class="quantity-control">
+                <button type="button" (click)="changeQuantity(line.variant.id, -1)">−</button>
+                <span>{{ line.quantity }}</span>
+                <button type="button" (click)="changeQuantity(line.variant.id, 1)">+</button>
+              </div>
+            </div>
+          }
+        </div>
+
+        <div class="cart-total"><span>Total</span><strong>${{ cartTotal().toLocaleString('es-CL') }}</strong></div>
+
+        <form class="checkout-form" [formGroup]="checkoutForm" (ngSubmit)="submitOrder()">
+          <label>Sucursal
+            <select formControlName="branchId">
+              @for (branch of selectedStore()?.branches ?? []; track branch.id) {
+                <option [ngValue]="branch.id">{{ branch.name }}</option>
+              }
+            </select>
+          </label>
+          <label>Dirección de despacho<input formControlName="address" /></label>
+          <div class="two-cols">
+            <label>Comuna<input formControlName="commune" /></label>
+            <label>Ciudad<input formControlName="city" /></label>
+          </div>
+          <label>Notas<textarea rows="2" formControlName="notes"></textarea></label>
+          <button class="checkout-button" type="submit" [disabled]="isSubmitting()">
+            {{ isSubmitting() ? 'Registrando...' : 'Registrar pedido' }}
+          </button>
+        </form>
+      }
+      @if (checkoutMessage()) {
+        <div class="alert" role="status">{{ checkoutMessage() }}</div>
+      }
+    </aside>
+  </main>
+
+  @if (selectedProduct(); as product) {
+    <div class="detail-backdrop" (click)="closeProduct()">
+      <article class="detail-panel" (click)="$event.stopPropagation()">
+        <button class="close-button" type="button" (click)="closeProduct()">×</button>
+        @if (product.image_url) {
+          <img [src]="product.image_url" [alt]="product.name" />
+        }
+        <span class="eyebrow">{{ product.category.name }}</span>
+        <h2>{{ product.name }}</h2>
+        <p>{{ product.description || 'Sin descripción adicional.' }}</p>
+        @for (variant of product.variants; track variant.id) {
+          <div class="detail-variant">
+            <div><strong>{{ variant.sku }}</strong><span>${{ variant.base_price }}</span></div>
+            <small>{{ variant.available ? variant.available_quantity + ' disponibles' : 'Sin disponibilidad' }}</small>
+            <button type="button" [disabled]="!variant.available" (click)="addToCart(product, variant)">Agregar</button>
+          </div>
+        }
+      </article>
+    </div>
+  }
+</div>

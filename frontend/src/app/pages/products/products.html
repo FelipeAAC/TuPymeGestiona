@@ -72,6 +72,16 @@
                   }
                 </div>
 
+                <div class="form-field form-field-wide">
+                  <label for="product-description">Descripción <span class="optional-label">Opcional</span></label>
+                  <textarea id="product-description" rows="3" formControlName="description" maxlength="2000" placeholder="Descripción visible para clientes"></textarea>
+                </div>
+
+                <div class="form-field form-field-wide">
+                  <label for="product-image-url">Imagen URL <span class="optional-label">Opcional</span></label>
+                  <input id="product-image-url" type="url" formControlName="imageUrl" maxlength="500" placeholder="https://..." />
+                </div>
+
                 <div class="form-field">
                   <label for="product-category">
                     Categoría
@@ -235,6 +245,10 @@
                     {{ product.status }}
                   </span>
                 </div>
+
+                @if (product.description) {
+                  <p class="product-description">{{ product.description }}</p>
+                }
 
                 <div class="product-metadata">
                   <span>

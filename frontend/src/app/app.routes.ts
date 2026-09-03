@@ -1,12 +1,28 @@
 import { Routes } from '@angular/router';
 
 import { authGuard } from './core/auth/auth.guard';
+import { portalAuthGuard } from './core/portal/portal-auth.guard';
 
 export const routes: Routes = [
   {
     path: '',
     redirectTo: 'login',
     pathMatch: 'full',
+  },
+  {
+    path: 'portal',
+    loadComponent: () => import('./pages/portal/portal').then((module) => module.Portal),
+  },
+  {
+    path: 'portal/register',
+    loadComponent: () =>
+      import('./pages/portal-register/portal-register').then((module) => module.PortalRegister),
+  },
+  {
+    path: 'portal/account',
+    canActivate: [portalAuthGuard],
+    loadComponent: () =>
+      import('./pages/portal-account/portal-account').then((module) => module.PortalAccountPage),
   },
   {
     path: 'login',

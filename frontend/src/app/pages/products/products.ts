@@ -42,6 +42,8 @@ export class Products {
 
   readonly createForm = this.formBuilder.group({
     name: ['', [Validators.required, Validators.maxLength(200)]],
+    description: ['', [Validators.maxLength(2000)]],
+    imageUrl: ['', [Validators.maxLength(500)]],
     categoryId: [0, [Validators.required, Validators.min(1)]],
     brandId: [0],
     sku: ['', [Validators.required, Validators.maxLength(100)]],
@@ -109,6 +111,8 @@ export class Products {
 
     const input: CatalogProductCreateInput = {
       name: formValue.name.trim(),
+      description: formValue.description.trim(),
+      image_url: formValue.imageUrl.trim(),
       category: formValue.categoryId,
       brand: formValue.brandId > 0 ? formValue.brandId : null,
       variant: {
@@ -282,6 +286,8 @@ export class Products {
   private resetCreateForm(): void {
     this.createForm.reset({
       name: '',
+      description: '',
+      imageUrl: '',
       categoryId: 0,
       brandId: 0,
       sku: '',

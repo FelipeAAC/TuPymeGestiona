@@ -27,6 +27,8 @@ export interface CatalogProductVariant {
 export interface CatalogProduct {
   id: number;
   name: string;
+  description: string;
+  image_url: string;
   status: CatalogProductStatus;
   category: CatalogCategory;
   brand: CatalogBrand | null;
@@ -50,6 +52,8 @@ export interface CatalogProductVariantCreateInput {
 
 export interface CatalogProductCreateInput {
   name: string;
+  description: string;
+  image_url: string;
   category: number;
   brand: number | null;
   variant: CatalogProductVariantCreateInput;
