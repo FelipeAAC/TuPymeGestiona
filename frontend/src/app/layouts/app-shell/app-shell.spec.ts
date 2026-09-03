@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { OrganizationContextService } from '../../core/organization/organization-context.service';
+import { OrganizationMembership } from '../../core/organization/organization.models';
 import { AppShell } from './app-shell';
 
 describe('AppShell', () => {
@@ -12,10 +13,13 @@ describe('AppShell', () => {
   let fixture: ComponentFixture<AppShell>;
 
   const currentUser = signal(null);
-  const memberships = signal([]);
-  const selectedMembership = signal(null);
+  const memberships = signal<OrganizationMembership[]>([]);
+  const selectedMembership = signal<OrganizationMembership | null>(null);
 
   beforeEach(async () => {
+    memberships.set([]);
+    selectedMembership.set(null);
+
     await TestBed.configureTestingModule({
       imports: [AppShell],
       providers: [
@@ -89,5 +93,22 @@ describe('AppShell', () => {
 
     expect(taxLink).toBeTruthy();
     expect(taxLink.textContent).toContain('Facturación electrónica');
+  });
+
+  it('shows administration only when the selected membership has the permission', () => {
+    selectedMembership.set({
+      id: 1,
+      status: 'ACTIVE',
+      company: { id: 3, name: 'Empresa' },
+      branches: [],
+      permissions: ['administration.manage'],
+    });
+    fixture.detectChanges();
+
+    const administrationLink = fixture.nativeElement.querySelector('a[href="/app/administration"]');
+    expect(administrationLink).toBeTruthy();
+    expect(administrationLink.textContent).toContain('Administración');
+
+    selectedMembership.set(null);
   });
 });

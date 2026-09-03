@@ -17,4 +17,5 @@ urlpatterns = [
     path("api/v1/electronic-tax-documents/", include("electronic_tax.urls")),
     path("api/v1/folio-authorizations/", include("electronic_tax.folio_urls")),
     path("api/v1/electronic-tax-operations/", include("electronic_tax.operations_urls")),
+    path("api/administration/", include("administration.urls")),
 ]

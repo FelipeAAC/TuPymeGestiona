@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { finalize } from 'rxjs';
 
@@ -20,6 +20,9 @@ export class AppShell implements OnInit {
 
   readonly memberships = this.organizationContextService.memberships;
   readonly selectedMembership = this.organizationContextService.selectedMembership;
+  readonly canAdminister = computed(() =>
+    this.selectedMembership()?.permissions?.includes('administration.manage') ?? false,
+  );
 
   readonly isOrganizationContextLoading = signal(false);
   readonly organizationContextError = signal('');

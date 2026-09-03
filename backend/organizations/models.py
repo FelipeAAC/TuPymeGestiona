@@ -7,6 +7,15 @@ from django.db import models
 
 class Company(models.Model):
     name = models.CharField(max_length=150)
+    rut = models.CharField(max_length=20, blank=True, default="")
+    legal_name = models.CharField(max_length=180, blank=True, default="")
+    business_activity = models.CharField(max_length=180, blank=True, default="")
+    contact_email = models.EmailField(blank=True, default="")
+    phone = models.CharField(max_length=40, blank=True, default="")
+    address = models.CharField(max_length=220, blank=True, default="")
+    commune = models.CharField(max_length=120, blank=True, default="")
+    city = models.CharField(max_length=120, blank=True, default="")
+    is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -26,6 +35,11 @@ class Branch(models.Model):
     )
     code = models.CharField(max_length=50)
     name = models.CharField(max_length=150)
+    address = models.CharField(max_length=220, blank=True, default="")
+    commune = models.CharField(max_length=120, blank=True, default="")
+    city = models.CharField(max_length=120, blank=True, default="")
+    phone = models.CharField(max_length=40, blank=True, default="")
+    is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

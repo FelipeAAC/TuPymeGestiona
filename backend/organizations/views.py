@@ -31,8 +31,8 @@ def organization_context_view(request):
             user=request.user,
             status=CompanyMembership.Status.ACTIVE,
         )
-        .select_related("company")
-        .prefetch_related("branch_memberships__branch")
+        .select_related("company", "user")
+        .prefetch_related("branch_memberships__branch", "company__branches", "role_assignments__role__permission_links__permission")
     )
 
     return Response(

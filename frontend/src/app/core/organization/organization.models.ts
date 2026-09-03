@@ -16,6 +16,7 @@ export interface OrganizationMembership {
   status: CompanyMembershipStatus;
   company: OrganizationCompany;
   branches: OrganizationBranch[];
+  permissions?: string[];
 }
 
 export interface OrganizationContextResponse {

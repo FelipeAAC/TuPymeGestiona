@@ -18,6 +18,9 @@ def has_permission(
     if not getattr(user, "is_authenticated", False):
         return False
 
+    if getattr(user, "is_superuser", False):
+        return True
+
     if not company or not company.pk:
         return False
 

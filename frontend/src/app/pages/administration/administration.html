@@ -1,0 +1,227 @@
+<section class="administration-page">
+  <header class="page-heading">
+    <div>
+      <span class="eyebrow">SEGURIDAD Y AUTONOMÍA</span>
+      <h1>Administración</h1>
+      <p>Gestiona usuarios, roles, empresa, sucursales y parámetros sin mezclar secretos externos.</p>
+    </div>
+
+    @if (overview(); as data) {
+      <div class="company-state" [class.inactive]="!data.company.is_active">
+        <span>{{ data.company.is_active ? 'Empresa activa' : 'Empresa inactiva' }}</span>
+        <strong>{{ data.company.name }}</strong>
+      </div>
+    }
+  </header>
+
+  @if (!selectedMembership()) {
+    <div class="state-card">Selecciona una empresa para administrar su configuración.</div>
+  } @else if (!canAdminister()) {
+    <div class="state-card denied">
+      Tu perfil no tiene el permiso <strong>administration.manage</strong> en esta empresa.
+    </div>
+  } @else if (isLoading() && !overview()) {
+    <div class="state-card">Cargando administración...</div>
+  } @else if (errorMessage() && !overview()) {
+    <div class="state-card denied" role="alert">{{ errorMessage() }}</div>
+  } @else if (overview(); as data) {
+    <div class="summary-grid">
+      <article><span>Usuarios activos</span><strong>{{ activeUsers() }}</strong><small>{{ data.users.length }} registrados</small></article>
+      <article><span>Roles activos</span><strong>{{ activeRoles() }}</strong><small>{{ data.permissions.length }} permisos disponibles</small></article>
+      <article><span>Sucursales activas</span><strong>{{ activeBranches() }}</strong><small>{{ data.branches.length }} configuradas</small></article>
+      <article><span>Métodos de pago</span><strong>{{ activePaymentMethods() }}</strong><small>{{ data.payment_methods.length }} configurados</small></article>
+    </div>
+
+    @if (successMessage()) {
+      <div class="message success" role="status">{{ successMessage() }}</div>
+    }
+    @if (errorMessage()) {
+      <div class="message error" role="alert">{{ errorMessage() }}</div>
+    }
+
+    <nav class="tabs" aria-label="Secciones de administración">
+      <button [class.active]="activeTab() === 'users'" (click)="selectTab('users')">Usuarios</button>
+      <button [class.active]="activeTab() === 'roles'" (click)="selectTab('roles')">Roles y permisos</button>
+      <button [class.active]="activeTab() === 'company'" (click)="selectTab('company')">Empresa</button>
+      <button [class.active]="activeTab() === 'branches'" (click)="selectTab('branches')">Sucursales</button>
+      <button [class.active]="activeTab() === 'payments'" (click)="selectTab('payments')">Métodos de pago</button>
+      <button [class.active]="activeTab() === 'statuses'" (click)="selectTab('statuses')">Estados de pedido</button>
+      <button [class.active]="activeTab() === 'settings'" (click)="selectTab('settings')">Parámetros</button>
+      <button [class.active]="activeTab() === 'audit'" (click)="selectTab('audit')">Auditoría</button>
+    </nav>
+
+    <div class="workspace">
+      <div class="content-card">
+        @switch (activeTab()) {
+          @case ('users') {
+            <div class="section-toolbar">
+              <div><h2>Usuarios y alcances</h2><p>La deshabilitación se aplica a la membresía de esta empresa, no a otras empresas del usuario.</p></div>
+              <button class="primary" type="button" (click)="openUser()">Nuevo usuario</button>
+            </div>
+            <label class="search-field"><span>Buscar</span><input type="search" placeholder="Nombre, correo o rol" [value]="searchTerm()" (input)="updateSearch($event)" /></label>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Usuario</th><th>Rol</th><th>Alcance</th><th>Estado</th><th></th></tr></thead>
+                <tbody>
+                  @for (user of users(); track user.id) {
+                    <tr>
+                      <td><strong>{{ user.first_name || user.last_name ? (user.first_name + ' ' + user.last_name) : user.username }}</strong><span>{{ user.email }}</span></td>
+                      <td>{{ user.role_names.length ? user.role_names.join(', ') : 'Sin rol' }}</td>
+                      <td>{{ branchNames(user.branch_ids) }}</td>
+                      <td><span class="badge" [class.muted]="user.status !== 'ACTIVE'">{{ user.status }}</span></td>
+                      <td><button class="link-button" type="button" (click)="openUser(user)">Editar</button></td>
+                    </tr>
+                  } @empty {
+                    <tr><td colspan="5" class="empty">No hay usuarios para los filtros actuales.</td></tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+          @case ('roles') {
+            <div class="section-toolbar">
+              <div><h2>Roles y permisos</h2><p>Los permisos efectivos se asignan por código; el nombre del rol no autoriza por sí solo.</p></div>
+              <button class="primary" type="button" (click)="openRole()">Nuevo rol</button>
+            </div>
+            <div class="card-list">
+              @for (role of data.roles; track role.id) {
+                <article class="list-card">
+                  <div><strong>{{ role.name }}</strong><span>{{ role.permission_codes.length }} permisos · {{ role.status }}</span></div>
+                  <button class="link-button" type="button" (click)="openRole(role)">Editar permisos</button>
+                </article>
+              } @empty { <div class="empty">No hay roles configurados.</div> }
+            </div>
+          }
+          @case ('company') {
+            <div class="section-toolbar"><div><h2>Datos de la empresa</h2><p>Información comercial y legal del mantenedor CU003.</p></div><button class="primary" type="button" (click)="openCreateCompany()">Nueva empresa</button></div>
+            <form class="form-grid" [formGroup]="companyForm" (ngSubmit)="saveCompany()">
+              <label><span>Nombre comercial *</span><input formControlName="name" /></label>
+              <label><span>RUT</span><input formControlName="rut" placeholder="12.345.678-5" /></label>
+              <label class="wide"><span>Razón social</span><input formControlName="legalName" /></label>
+              <label class="wide"><span>Giro comercial</span><input formControlName="businessActivity" /></label>
+              <label><span>Correo de contacto</span><input formControlName="contactEmail" type="email" /></label>
+              <label><span>Teléfono</span><input formControlName="phone" /></label>
+              <label class="wide"><span>Dirección</span><input formControlName="address" /></label>
+              <label><span>Comuna</span><input formControlName="commune" /></label>
+              <label><span>Ciudad</span><input formControlName="city" /></label>
+              <label class="check"><input type="checkbox" formControlName="isActive" /><span>Empresa activa</span></label>
+              <div class="form-actions wide"><button class="primary" type="submit" [disabled]="isSaving()">Guardar empresa</button></div>
+            </form>
+          }
+          @case ('branches') {
+            <div class="section-toolbar">
+              <div><h2>Sucursales</h2><p>Dirección, contacto y estado de cada sucursal asociada a la empresa.</p></div>
+              <button class="primary" type="button" (click)="openBranch()">Nueva sucursal</button>
+            </div>
+            <div class="card-list">
+              @for (branch of data.branches; track branch.id) {
+                <article class="list-card">
+                  <div><strong>{{ branch.name }}</strong><span>{{ branch.code }} · {{ branch.commune || 'Sin comuna' }} · {{ branch.is_active ? 'Activa' : 'Inactiva' }}</span></div>
+                  <button class="link-button" type="button" (click)="openBranch(branch)">Editar</button>
+                </article>
+              } @empty { <div class="empty">No hay sucursales configuradas.</div> }
+            </div>
+          }
+          @case ('payments') {
+            <div class="section-toolbar">
+              <div><h2>Métodos de pago</h2><p>Catálogo administrativo; la conexión real con Mercado Pago se implementará en su slice propio.</p></div>
+              <button class="primary" type="button" (click)="openPayment()">Nuevo método</button>
+            </div>
+            <div class="card-list">
+              @for (method of data.payment_methods; track method.id) {
+                <article class="list-card">
+                  <div><strong>{{ method.name }}</strong><span>{{ method.code }} · {{ method.kind }} · orden {{ method.sort_order }} · {{ method.is_active ? 'Activo' : 'Inactivo' }}</span></div>
+                  <button class="link-button" type="button" (click)="openPayment(method)">Editar</button>
+                </article>
+              }
+            </div>
+          }
+          @case ('statuses') {
+            <div class="section-toolbar"><div><h2>Estados de pedido</h2><p>Se administran etiqueta, orden y disponibilidad sin alterar las transiciones operativas protegidas.</p></div></div>
+            <div class="card-list">
+              @for (item of data.order_statuses; track item.id) {
+                <article class="list-card">
+                  <div><strong>{{ item.display_name }}</strong><span>{{ item.code }} · orden {{ item.sort_order }} · {{ item.is_active ? 'Activo' : 'Inactivo' }}</span></div>
+                  <button class="link-button" type="button" (click)="openStatus(item)">Editar</button>
+                </article>
+              }
+            </div>
+          }
+          @case ('settings') {
+            <div class="section-toolbar"><div><h2>Parámetros generales</h2><p>Solo parámetros no secretos. Tokens, contraseñas, PFX y credenciales no se almacenan aquí.</p></div></div>
+            <form class="form-grid" [formGroup]="settingsForm" (ngSubmit)="saveSettings()">
+              <label><span>IVA (%)</span><input formControlName="vatRate" inputmode="decimal" /></label>
+              <label><span>Moneda</span><input formControlName="currency" maxlength="3" /></label>
+              <label><span>Zona horaria</span><input formControlName="timezone" /></label>
+              <label><span>Proveedor de pago</span><input formControlName="paymentProvider" /></label>
+              <label class="wide"><span>Correo remitente</span><input type="email" formControlName="notificationSenderEmail" /></label>
+              <label class="check wide"><input type="checkbox" formControlName="paymentSandboxEnabled" /><span>Proveedor de pago en modo Sandbox</span></label>
+              <div class="form-actions wide"><button class="primary" type="submit" [disabled]="isSaving()">Guardar parámetros</button></div>
+            </form>
+          }
+          @case ('audit') {
+            <div class="section-toolbar"><div><h2>Auditoría administrativa</h2><p>Últimos cambios de configuración, roles, usuarios y mantenedores.</p></div></div>
+            <div class="timeline">
+              @for (event of data.events; track event.id) {
+                <article><span class="timeline-dot"></span><div><strong>{{ event.event_type }}</strong><span>{{ event.resource_type }} #{{ event.resource_id || '—' }} · {{ event.actor_name }}</span><time>{{ event.created_at }}</time></div></article>
+              } @empty { <div class="empty">Todavía no hay eventos administrativos.</div> }
+            </div>
+          }
+        }
+      </div>
+
+      @if (editorKind(); as kind) {
+        <aside class="editor-card">
+          <div class="editor-heading"><div><span class="eyebrow">EDICIÓN</span><h2>{{ editingId() ? 'Actualizar' : 'Crear' }} {{ kind }}</h2></div><button type="button" class="close" (click)="closeEditor()" aria-label="Cerrar">×</button></div>
+
+          @if (editorError()) { <div class="message error" role="alert">{{ editorError() }}</div> }
+
+          @if (kind === 'company-create') {
+            <form class="editor-form" [formGroup]="newCompanyForm" (ngSubmit)="saveEditor()">
+              <label><span>Nombre comercial *</span><input formControlName="name" /></label>
+              <label><span>RUT</span><input formControlName="rut" placeholder="12.345.678-5" /></label>
+              <label><span>Razón social</span><input formControlName="legalName" /></label>
+              <label><span>Giro comercial</span><input formControlName="businessActivity" /></label>
+              <label><span>Correo de contacto</span><input type="email" formControlName="contactEmail" /></label>
+              <button class="primary full" type="submit" [disabled]="isSaving()">{{ isSaving() ? 'Creando...' : 'Crear empresa' }}</button>
+            </form>
+          } @else if (kind === 'user') {
+            <form class="editor-form" [formGroup]="userForm" (ngSubmit)="saveEditor()">
+              <label><span>Usuario</span><input formControlName="username" /></label>
+              <label><span>Correo *</span><input type="email" formControlName="email" /></label>
+              <label><span>Nombre</span><input formControlName="firstName" /></label>
+              <label><span>Apellido</span><input formControlName="lastName" /></label>
+              @if (!editingId()) { <label><span>Contraseña inicial *</span><input type="password" formControlName="password" autocomplete="new-password" /></label> }
+              <label><span>Estado</span><select formControlName="status"><option value="ACTIVE">Activo</option><option value="SUSPENDED">Suspendido</option><option value="LEFT">Desvinculado</option></select></label>
+              <fieldset><legend>Roles</legend>@for (role of data.roles; track role.id) { <label class="check"><input type="checkbox" [checked]="roleChecked(role.id)" (change)="toggleRole(role.id)" /><span>{{ role.name }}</span></label> }</fieldset>
+              <fieldset><legend>Sucursales</legend>@for (branch of data.branches; track branch.id) { <label class="check"><input type="checkbox" [checked]="branchChecked(branch.id)" (change)="toggleBranch(branch.id)" /><span>{{ branch.name }}</span></label> }</fieldset>
+              <button class="primary full" type="submit" [disabled]="isSaving()">{{ isSaving() ? 'Guardando...' : 'Guardar usuario' }}</button>
+            </form>
+          } @else if (kind === 'role') {
+            <form class="editor-form" [formGroup]="roleForm" (ngSubmit)="saveEditor()">
+              <label><span>Nombre del rol *</span><input formControlName="name" /></label>
+              <label><span>Estado</span><select formControlName="status"><option value="ACTIVE">Activo</option><option value="INACTIVE">Inactivo</option></select></label>
+              <fieldset><legend>Permisos</legend>@for (permission of data.permissions; track permission.id) { <label class="check permission"><input type="checkbox" [checked]="permissionChecked(permission.code)" (change)="togglePermission(permission.code)" /><span><strong>{{ permission.code }}</strong><small>{{ permission.scope_behavior }}</small></span></label> }</fieldset>
+              <button class="primary full" type="submit" [disabled]="isSaving()">Guardar rol</button>
+            </form>
+          } @else if (kind === 'branch') {
+            <form class="editor-form" [formGroup]="branchForm" (ngSubmit)="saveEditor()">
+              <label><span>Código *</span><input formControlName="code" /></label><label><span>Nombre *</span><input formControlName="name" /></label><label><span>Dirección</span><input formControlName="address" /></label><label><span>Comuna</span><input formControlName="commune" /></label><label><span>Ciudad</span><input formControlName="city" /></label><label><span>Teléfono</span><input formControlName="phone" /></label><label class="check"><input type="checkbox" formControlName="isActive" /><span>Sucursal activa</span></label>
+              <button class="primary full" type="submit" [disabled]="isSaving()">Guardar sucursal</button>
+            </form>
+          } @else if (kind === 'payment') {
+            <form class="editor-form" [formGroup]="paymentForm" (ngSubmit)="saveEditor()">
+              <label><span>Código *</span><input formControlName="code" /></label><label><span>Nombre *</span><input formControlName="name" /></label><label><span>Tipo</span><select formControlName="kind"><option value="CASH">Efectivo</option><option value="TRANSFER">Transferencia</option><option value="ONLINE">Pago en línea</option><option value="OTHER">Otro</option></select></label><label><span>Orden</span><input type="number" min="0" formControlName="sortOrder" /></label><label class="check"><input type="checkbox" formControlName="isActive" /><span>Método activo</span></label>
+              <button class="primary full" type="submit" [disabled]="isSaving()">Guardar método</button>
+            </form>
+          } @else if (kind === 'status') {
+            <form class="editor-form" [formGroup]="statusForm" (ngSubmit)="saveEditor()">
+              <label><span>Etiqueta visible *</span><input formControlName="displayName" /></label><label><span>Orden</span><input type="number" min="0" formControlName="sortOrder" /></label><label class="check"><input type="checkbox" formControlName="isActive" /><span>Estado habilitado</span></label>
+              <button class="primary full" type="submit" [disabled]="isSaving()">Guardar estado</button>
+            </form>
+          }
+        </aside>
+      }
+    </div>
+  }
+</section>
