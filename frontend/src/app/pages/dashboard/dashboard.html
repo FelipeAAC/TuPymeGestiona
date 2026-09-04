@@ -3,103 +3,171 @@
     <div>
       <span class="dashboard-eyebrow">Resumen general</span>
       <h1>Dashboard</h1>
-      <p>Vista general de la operación de TuPymeGestiona.</p>
+      <p>Indicadores operacionales calculados desde los datos reales de la empresa activa.</p>
     </div>
+
+    @if (selectedMembership(); as membership) {
+      <span class="company-context">{{ membership.company.name }}</span>
+    }
   </header>
 
-  <section class="summary-grid" aria-label="Resumen de indicadores">
-    <article class="summary-card">
-      <span class="summary-label">Ventas de hoy</span>
-      <strong class="summary-value">—</strong>
-      <span class="summary-status">Pendiente de conectar</span>
-    </article>
-
-    <article class="summary-card">
-      <span class="summary-label">Pedidos pendientes</span>
-      <strong class="summary-value">—</strong>
-      <span class="summary-status">Pendiente de conectar</span>
-    </article>
-
-    <article class="summary-card">
-      <span class="summary-label">Stock bajo</span>
-      <strong class="summary-value">—</strong>
-      <span class="summary-status">Pendiente de conectar</span>
-    </article>
-
-    <article class="summary-card">
-      <span class="summary-label">Mensajes sin leer</span>
-      <strong class="summary-value">—</strong>
-      <span class="summary-status">Pendiente de conectar</span>
-    </article>
-  </section>
-
-  <section class="dashboard-grid">
-    <article class="dashboard-panel">
-      <header class="panel-header">
-        <div>
-          <span class="panel-eyebrow">Actividad</span>
-          <h2>Actividad reciente</h2>
-        </div>
-      </header>
-
-      <div class="empty-state">
-        <div class="empty-state-icon" aria-hidden="true">◎</div>
-
-        <div>
-          <strong>Aún no hay actividad para mostrar</strong>
-          <p>
-            Los movimientos recientes aparecerán aquí cuando conectemos los primeros módulos de
-            negocio.
-          </p>
-        </div>
+  @if (!selectedMembership()) {
+    <section class="state-panel" role="status">
+      <strong>Selecciona una empresa</strong>
+      <p>El Dashboard necesita una empresa activa para cargar sus indicadores.</p>
+    </section>
+  } @else if (isLoading()) {
+    <section class="state-panel" role="status">
+      <span class="spinner" aria-hidden="true"></span>
+      <div>
+        <strong>Cargando Dashboard</strong>
+        <p>Consultando ventas, pedidos, inventario y actividad reciente.</p>
       </div>
-    </article>
+    </section>
+  } @else if (errorMessage()) {
+    <section class="state-panel state-panel-error" role="alert">
+      <strong>No se pudo cargar el Dashboard</strong>
+      <p>{{ errorMessage() }}</p>
+    </section>
+  } @else if (overview(); as data) {
+    <section class="summary-grid" aria-label="Resumen de indicadores">
+      <article class="summary-card">
+        <span class="summary-label">Ventas de hoy</span>
+        <strong class="summary-value">{{ formatMoney(data.metrics.sales_today_amount) }}</strong>
+        <span class="summary-status connected">
+          @if (data.metrics.sales_today_count !== null) {
+            {{ formatNumber(data.metrics.sales_today_count) }} venta(s) vigente(s)
+          } @else {
+            Sin permiso para ventas
+          }
+        </span>
+      </article>
 
-    <article class="dashboard-panel">
+      <article class="summary-card">
+        <span class="summary-label">Pedidos pendientes</span>
+        <strong class="summary-value">{{ formatNumber(data.metrics.pending_orders) }}</strong>
+        <span class="summary-status connected">
+          {{ data.metrics.pending_orders === null ? 'Sin permiso para pedidos' : 'Borrador, confirmado o preparado' }}
+        </span>
+      </article>
+
+      <article class="summary-card">
+        <span class="summary-label">Stock bajo</span>
+        <strong class="summary-value">{{ formatNumber(data.metrics.low_stock) }}</strong>
+        <span class="summary-status connected">
+          @if (data.metrics.low_stock !== null) {
+            {{ formatNumber(data.metrics.critical_stock) }} crítico(s) · {{ formatNumber(data.metrics.out_of_stock) }} sin stock
+          } @else {
+            Sin permiso para inventario
+          }
+        </span>
+      </article>
+
+      <article class="summary-card">
+        <span class="summary-label">Clientes activos</span>
+        <strong class="summary-value">{{ formatNumber(data.metrics.active_customers) }}</strong>
+        <span class="summary-status connected">
+          {{ data.metrics.active_customers === null ? 'Sin permiso para clientes' : 'Clientes activos de la empresa' }}
+        </span>
+      </article>
+    </section>
+
+    <section class="dashboard-grid">
+      <article class="dashboard-panel">
+        <header class="panel-header">
+          <div>
+            <span class="panel-eyebrow">Actividad</span>
+            <h2>Actividad reciente</h2>
+          </div>
+        </header>
+
+        @if (data.activity.length) {
+          <div class="activity-list">
+            @for (item of data.activity; track item.kind + item.occurred_at + item.detail) {
+              <a class="activity-item" [routerLink]="item.route">
+                <span class="activity-kind">{{ item.kind === 'sale' ? 'Venta' : item.kind === 'inventory' ? 'Inventario' : 'Pedido' }}</span>
+                <span class="activity-copy">
+                  <strong>{{ item.title }}</strong>
+                  <span>{{ item.detail }}</span>
+                </span>
+                <time class="activity-meta">{{ formatDate(item.occurred_at) }}</time>
+              </a>
+            }
+          </div>
+        } @else {
+          <div class="empty-state">
+            <div class="empty-state-icon" aria-hidden="true">◎</div>
+            <div>
+              <strong>Sin actividad reciente</strong>
+              <p>No hay eventos autorizados para mostrar en este momento.</p>
+            </div>
+          </div>
+        }
+      </article>
+
+      <article class="dashboard-panel">
+        <header class="panel-header">
+          <div>
+            <span class="panel-eyebrow">Atención</span>
+            <h2>Alertas operacionales</h2>
+          </div>
+        </header>
+
+        @if (data.alerts.length) {
+          <div class="alert-list">
+            @for (alert of data.alerts; track alert.code) {
+              <a
+                class="alert-item"
+                [class.info]="alert.severity === 'info'"
+                [class.warning]="alert.severity === 'warning'"
+                [class.danger]="alert.severity === 'danger'"
+                [routerLink]="alert.route"
+              >
+                <span class="alert-count">{{ alert.count }}</span>
+                <span>
+                  <strong>{{ alert.title }}</strong>
+                  <small>{{ alert.detail }}</small>
+                </span>
+              </a>
+            }
+          </div>
+        } @else {
+          <div class="empty-state compact">
+            <div class="empty-state-icon" aria-hidden="true">✓</div>
+            <div>
+              <strong>Sin alertas operacionales</strong>
+              <p>No hay alertas derivadas de los datos autorizados actuales.</p>
+            </div>
+          </div>
+        }
+      </article>
+    </section>
+
+    <article class="dashboard-panel module-section">
       <header class="panel-header">
         <div>
           <span class="panel-eyebrow">Sistema</span>
           <h2>Estado de módulos</h2>
         </div>
+        <span class="generated-at">Actualizado {{ formatDate(data.generated_at) }}</span>
       </header>
 
       <div class="module-list">
-        <div class="module-item">
-          <div>
-            <strong>Autenticación</strong>
-            <span>Sesión y acceso protegido</span>
+        @for (module of data.modules; track module.code) {
+          <div class="module-item">
+            <div>
+              <strong>{{ module.label }}</strong>
+              <span>{{ module.available ? 'Disponible dentro de tu alcance' : 'Acceso restringido por permisos' }}</span>
+            </div>
+            @if (module.available) {
+              <a class="module-link" [routerLink]="module.route">Abrir</a>
+              <span class="module-status ready">Operativo</span>
+            } @else {
+              <span class="module-status restricted">Restringido</span>
+            }
           </div>
-
-          <span class="module-status ready">Operativo</span>
-        </div>
-
-        <div class="module-item">
-          <div>
-            <strong>Organización</strong>
-            <span>Empresas, sucursales y bodegas</span>
-          </div>
-
-          <span class="module-status pending">Pendiente</span>
-        </div>
-
-        <div class="module-item">
-          <div>
-            <strong>Catálogo</strong>
-            <span>Productos y variantes</span>
-          </div>
-
-          <span class="module-status pending">Pendiente</span>
-        </div>
-
-        <div class="module-item">
-          <div>
-            <strong>Inventario</strong>
-            <span>Stock y movimientos</span>
-          </div>
-
-          <span class="module-status pending">Pendiente</span>
-        </div>
+        }
       </div>
     </article>
-  </section>
+  }
 </section>
