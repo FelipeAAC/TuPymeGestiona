@@ -1,0 +1,269 @@
+<div class="app-shell">
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">TUPYMEGESTIONA</p>
+      <h1>Administración y Mantenedores</h1>
+      <p>Aplicación secundaria conectada al mismo backend.</p>
+    </div>
+
+    <div class="topbar-actions" *ngIf="user() as currentUser">
+      <label>
+        Empresa
+        <select
+          [ngModel]="selectedMembership()?.id ?? ''"
+          (ngModelChange)="selectMembership($event)"
+          aria-label="Empresa activa"
+        >
+          <option *ngFor="let membership of memberships()" [value]="membership.id">
+            {{ membership.company.name }}
+          </option>
+        </select>
+      </label>
+      <div class="identity">
+        <strong>{{ currentUser.first_name || currentUser.username }}</strong>
+        <span>{{ currentUser.email }}</span>
+      </div>
+      <button class="secondary" type="button" (click)="logout()">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main *ngIf="user(); else loginScreen" class="workspace">
+    <aside class="sidebar">
+      <p class="sidebar-label">Empresa activa</p>
+      <strong>{{ activeCompanyName() || 'Sin empresa' }}</strong>
+      <nav>
+        <button [class.active]="section() === 'summary'" (click)="setSection('summary')">Resumen</button>
+        <button [class.active]="section() === 'organization'" (click)="setSection('organization')">Empresa y sucursales</button>
+        <button [class.active]="section() === 'users'" (click)="setSection('users')">Usuarios</button>
+        <button [class.active]="section() === 'roles'" (click)="setSection('roles')">Roles y permisos</button>
+        <button [class.active]="section() === 'catalog'" (click)="setSection('catalog')">Catálogo</button>
+        <button [class.active]="section() === 'suppliers'" (click)="setSection('suppliers')">Proveedores</button>
+        <button [class.active]="section() === 'warehouses'" (click)="setSection('warehouses')">Bodegas</button>
+        <button [class.active]="section() === 'payments'" (click)="setSection('payments')">Pagos y estados</button>
+        <button [class.active]="section() === 'settings'" (click)="setSection('settings')">Parámetros</button>
+      </nav>
+      <button class="refresh" type="button" (click)="refresh()">Actualizar datos</button>
+    </aside>
+
+    <section class="content">
+      <div class="status error" *ngIf="error()">{{ error() }}</div>
+      <div class="status success" *ngIf="notice()">{{ notice() }}</div>
+      <div class="status loading" *ngIf="loading()">Procesando…</div>
+
+      <ng-container *ngIf="overview() as data">
+        <section *ngIf="section() === 'summary'">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">RF24 · SEGUNDA APLICACIÓN</p>
+              <h2>Resumen administrativo</h2>
+              <p>Autorización, tenant y reglas continúan en Django.</p>
+            </div>
+          </div>
+          <div class="metrics">
+            <article><span>Usuarios</span><strong>{{ data.users.length }}</strong></article>
+            <article><span>Roles</span><strong>{{ data.roles.length }}</strong></article>
+            <article><span>Sucursales</span><strong>{{ data.branches.length }}</strong></article>
+            <article><span>Productos</span><strong>{{ catalog().products.length }}</strong></article>
+            <article><span>Proveedores</span><strong>{{ directories().suppliers.length }}</strong></article>
+            <article><span>Bodegas</span><strong>{{ directories().warehouses.length }}</strong></article>
+          </div>
+          <div class="panel">
+            <h3>Actividad administrativa reciente</h3>
+            <div class="empty" *ngIf="!data.events.length">Sin eventos administrativos recientes.</div>
+            <div class="event" *ngFor="let event of data.events.slice(0, 8)">
+              <div>
+                <strong>{{ event.event_type }}</strong>
+                <span>{{ event.resource_type }} · {{ event.resource_id }}</span>
+              </div>
+              <time>{{ event.created_at | date: 'short' }}</time>
+            </div>
+          </div>
+        </section>
+
+        <section *ngIf="section() === 'organization'">
+          <div class="page-heading">
+            <div><h2>Empresa y sucursales</h2><p>Datos maestros de la PYME.</p></div>
+            <div class="actions">
+              <button (click)="createCompany()">Nueva empresa</button>
+              <button (click)="editCompany()">Editar empresa</button>
+              <button (click)="createBranch()">Nueva sucursal</button>
+            </div>
+          </div>
+          <div class="detail-card">
+            <strong>{{ data.company.name }}</strong>
+            <span>{{ data.company.rut || 'RUT no informado' }}</span>
+            <span>{{ data.company.contact_email || 'Correo no informado' }}</span>
+            <span>{{ data.company.is_active ? 'Activa' : 'Inactiva' }}</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Código</th><th>Sucursal</th><th>Ciudad</th><th>Estado</th><th></th></tr></thead>
+              <tbody>
+                <tr *ngFor="let branch of data.branches">
+                  <td>{{ branch.code }}</td><td>{{ branch.name }}</td><td>{{ branch.city || '—' }}</td>
+                  <td>{{ branch.is_active ? 'Activa' : 'Inactiva' }}</td>
+                  <td><button class="link" (click)="editBranch(branch.id)">Editar</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section *ngIf="section() === 'users'">
+          <div class="page-heading">
+            <div><h2>Usuarios</h2><p>Membresías y acceso dentro de la empresa.</p></div>
+            <button (click)="createUser()">Nuevo usuario</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Usuario</th><th>Correo</th><th>Roles</th><th>Estado</th><th></th></tr></thead>
+              <tbody>
+                <tr *ngFor="let item of data.users">
+                  <td>{{ item.username }}</td><td>{{ item.email }}</td><td>{{ item.role_names.join(', ') || 'Sin rol' }}</td>
+                  <td>{{ item.status }}</td>
+                  <td><button class="link" (click)="toggleUser(item.id)">{{ item.status === 'ACTIVE' ? 'Suspender' : 'Activar' }}</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section *ngIf="section() === 'roles'">
+          <div class="page-heading">
+            <div><h2>Roles y permisos</h2><p>RBAC administrado por la API.</p></div>
+            <button (click)="createRole()">Nuevo rol</button>
+          </div>
+          <div class="cards">
+            <article class="list-card" *ngFor="let role of data.roles">
+              <div><strong>{{ role.name }}</strong><span>{{ role.permission_codes.length }} permisos</span></div>
+              <span class="pill">{{ role.status }}</span>
+              <button class="link" (click)="toggleRole(role.id)">{{ role.status === 'ACTIVE' ? 'Desactivar' : 'Activar' }}</button>
+            </article>
+          </div>
+        </section>
+
+        <section *ngIf="section() === 'catalog'">
+          <div class="page-heading">
+            <div><h2>Catálogo</h2><p>Categorías, marcas y productos.</p></div>
+            <div class="actions">
+              <button (click)="createCategory()">Nueva categoría</button>
+              <button (click)="createBrand()">Nueva marca</button>
+              <button (click)="createProduct()">Nuevo producto</button>
+            </div>
+          </div>
+          <div class="split">
+            <div class="panel">
+              <h3>Categorías</h3>
+              <div class="row-item" *ngFor="let item of catalog().categories">
+                <div><strong>{{ item.name }}</strong><span>{{ item.status }}</span></div>
+                <button class="link" (click)="toggleCategory(item.id)">{{ item.status === 'ACTIVE' ? 'Desactivar' : 'Activar' }}</button>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>Productos</h3>
+              <div class="row-item" *ngFor="let item of catalog().products">
+                <div><strong>{{ item.name }}</strong><span>{{ item.category.name }} · {{ item.status }}</span></div>
+                <button class="link" (click)="toggleProduct(item)">{{ item.status === 'ACTIVE' ? 'Desactivar' : 'Activar' }}</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section *ngIf="section() === 'suppliers'">
+          <div class="page-heading">
+            <div><h2>Proveedores</h2><p>Directorio comercial de la empresa.</p></div>
+            <button (click)="createSupplier()">Nuevo proveedor</button>
+          </div>
+          <div class="cards">
+            <article class="list-card" *ngFor="let supplier of directories().suppliers">
+              <div><strong>{{ supplier.name }}</strong><span>{{ supplier.email || 'Sin correo' }}</span></div>
+              <span class="pill">{{ supplier.status }}</span>
+              <button class="link" (click)="toggleSupplier(supplier.id)">{{ supplier.status === 'ACTIVE' ? 'Desactivar' : 'Activar' }}</button>
+            </article>
+          </div>
+        </section>
+
+        <section *ngIf="section() === 'warehouses'">
+          <div class="page-heading">
+            <div><h2>Bodegas</h2><p>Compartidas con Inventario y operación principal.</p></div>
+            <button (click)="createWarehouse()">Nueva bodega</button>
+          </div>
+          <div class="cards">
+            <article class="list-card" *ngFor="let warehouse of directories().warehouses">
+              <div><strong>{{ warehouse.code }} · {{ warehouse.name }}</strong><span>Sucursal: {{ warehouse.branch || 'general' }}</span></div>
+              <button class="link" (click)="editWarehouse(warehouse.id)">Editar</button>
+            </article>
+          </div>
+        </section>
+
+        <section *ngIf="section() === 'payments'">
+          <div class="page-heading">
+            <div><h2>Métodos de pago y estados</h2><p>Parámetros operativos no secretos.</p></div>
+            <button (click)="createPaymentMethod()">Nuevo método de pago</button>
+          </div>
+          <div class="split">
+            <div class="panel">
+              <h3>Métodos de pago</h3>
+              <div class="row-item" *ngFor="let method of data.payment_methods">
+                <div><strong>{{ method.name }}</strong><span>{{ method.code }} · {{ method.kind }}</span></div>
+                <button class="link" (click)="togglePaymentMethod(method.id)">{{ method.is_active ? 'Desactivar' : 'Activar' }}</button>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>Estados de pedido</h3>
+              <div class="row-item" *ngFor="let status of data.order_statuses">
+                <div><strong>{{ status.display_name }}</strong><span>{{ status.code }} {{ status.is_system ? '· sistema' : '' }}</span></div>
+                <button class="link" [disabled]="status.is_system" (click)="toggleOrderStatus(status.id)">
+                  {{ status.is_system ? 'Protegido' : (status.is_active ? 'Desactivar' : 'Activar') }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section *ngIf="section() === 'settings'">
+          <div class="page-heading">
+            <div><h2>Parámetros generales</h2><p>Configuración no secreta.</p></div>
+            <button (click)="editSettings()">Editar parámetros</button>
+          </div>
+          <div class="settings-grid">
+            <div><span>IVA</span><strong>{{ data.settings.vat_rate }}</strong></div>
+            <div><span>Moneda</span><strong>{{ data.settings.currency }}</strong></div>
+            <div><span>Zona horaria</span><strong>{{ data.settings.timezone }}</strong></div>
+            <div><span>Proveedor de pago</span><strong>{{ data.settings.payment_provider || 'No definido' }}</strong></div>
+            <div><span>Sandbox</span><strong>{{ data.settings.payment_sandbox_enabled ? 'Activo' : 'Inactivo' }}</strong></div>
+            <div><span>Correo remitente</span><strong>{{ data.settings.notification_sender_email || 'No definido' }}</strong></div>
+          </div>
+          <p class="security-note">Tokens, contraseñas, CAF, PFX y otros secretos no se muestran ni se versionan.</p>
+        </section>
+      </ng-container>
+    </section>
+  </main>
+
+  <ng-template #loginScreen>
+    <main class="login-layout">
+      <section class="login-card">
+        <p class="eyebrow">APLICACIÓN SECUNDARIA</p>
+        <h2>Administración de mantenedores</h2>
+        <p>Usa las mismas credenciales del sistema. Los permisos se validan en el backend.</p>
+        <label>Usuario o correo<input [(ngModel)]="identifier" autocomplete="username" /></label>
+        <label>Contraseña<input [(ngModel)]="password" type="password" autocomplete="current-password" (keyup.enter)="login()" /></label>
+        <label class="check"><input [(ngModel)]="rememberMe" type="checkbox" /> Mantener sesión</label>
+        <button class="full" (click)="login()" [disabled]="loading()">Ingresar</button>
+        <div class="status error" *ngIf="error()">{{ error() }}</div>
+        <div class="status loading" *ngIf="loading()">Validando sesión…</div>
+      </section>
+      <aside class="login-copy">
+        <span class="badge">RF24</span>
+        <h3>Segunda aplicación conectada</h3>
+        <p>Bundle, sourceRoot y servidor propios; mismo backend Django y mismo aislamiento por empresa.</p>
+        <ul>
+          <li>Usuarios, roles y sucursales</li>
+          <li>Categorías, marcas y productos</li>
+          <li>Proveedores y bodegas</li>
+          <li>Métodos de pago y parámetros</li>
+        </ul>
+      </aside>
+    </main>
+  </ng-template>
+</div>
