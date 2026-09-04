@@ -280,6 +280,10 @@ def apply_payment_payload(*, payload, correlation_id=""):
         MercadoPagoCheckout.Status.REJECTED: MercadoPagoEvent.EventType.PAYMENT_REJECTED,
     }.get(checkout.status, MercadoPagoEvent.EventType.PAYMENT_PENDING)
     _create_event(checkout, event_type, payment=payment, correlation_id=correlation_id)
+
+    from transactional_notifications.services import enqueue_payment_status_notification
+
+    enqueue_payment_status_notification(checkout=checkout, payment=payment)
     if checkout.status == MercadoPagoCheckout.Status.APPROVED and checkout.order.status == Order.Status.DELIVERED:
         reconcile_delivered_order(order=checkout.order)
     return checkout, payment, True

@@ -1,0 +1,7 @@
+Hola {{ customer_name }},
+
+Tu pedido #{{ order_number }} en {{ company_name }} cambió a: {{ status_label }}.
+Total: ${{ total }} {{ currency }}.
+{% if delivery_address %}Entrega: {{ delivery_address }}{% if delivery_commune %}, {{ delivery_commune }}{% endif %}{% if delivery_city %}, {{ delivery_city }}{% endif %}.{% endif %}
+
+Este mensaje fue generado automáticamente por TuPymeGestiona.

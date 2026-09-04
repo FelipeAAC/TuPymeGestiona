@@ -136,6 +136,12 @@ def _set_order_status(*, order, new_status):
     order.status = new_status
     order.save(update_fields=("status", "updated_at"))
 
+    # Outbox transaccional: se registra dentro de la misma transacción de
+    # negocio, pero el SMTP real se procesa de forma asíncrona/separada.
+    from transactional_notifications.services import enqueue_order_status_notification
+
+    enqueue_order_status_notification(order=order)
+
 
 @transaction.atomic
 def confirm_order(*, order, performed_by):

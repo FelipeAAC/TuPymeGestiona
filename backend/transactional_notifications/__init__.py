@@ -1,0 +1,1 @@
+"""Notificaciones transaccionales de TuPymeGestiona."""

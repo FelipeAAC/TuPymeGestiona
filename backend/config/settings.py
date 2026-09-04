@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "administration",
     "portal",
     "external_payments",
+    "transactional_notifications",
 ]
 
 MIDDLEWARE = [
@@ -201,6 +202,31 @@ ELECTRONIC_TAX_CERTIFICATE_WARNING_DAYS = int(os.getenv("ELECTRONIC_TAX_CERTIFIC
 ELECTRONIC_TAX_STALE_MINUTES = int(os.getenv("ELECTRONIC_TAX_STALE_MINUTES", "30"))
 ELECTRONIC_TAX_STATUS_RETRY_MINUTES = int(os.getenv("ELECTRONIC_TAX_STATUS_RETRY_MINUTES", "5"))
 ELECTRONIC_TAX_STATUS_RETRY_MAX_ATTEMPTS = int(os.getenv("ELECTRONIC_TAX_STATUS_RETRY_MAX_ATTEMPTS", "8"))
+
+# Notificaciones transaccionales SMTP. El outbox se persiste siempre; el envío real está deshabilitado por defecto.
+TRANSACTIONAL_EMAIL_ENABLED = os.getenv("TRANSACTIONAL_EMAIL_ENABLED", "false").strip().lower() == "true"
+TRANSACTIONAL_EMAIL_BACKEND = os.getenv(
+    "TRANSACTIONAL_EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+).strip()
+TRANSACTIONAL_EMAIL_HOST = os.getenv("TRANSACTIONAL_EMAIL_HOST", "").strip()
+TRANSACTIONAL_EMAIL_PORT = int(os.getenv("TRANSACTIONAL_EMAIL_PORT", "587"))
+TRANSACTIONAL_EMAIL_USE_TLS = os.getenv("TRANSACTIONAL_EMAIL_USE_TLS", "true").strip().lower() == "true"
+TRANSACTIONAL_EMAIL_USE_SSL = os.getenv("TRANSACTIONAL_EMAIL_USE_SSL", "false").strip().lower() == "true"
+TRANSACTIONAL_EMAIL_REQUIRE_AUTH = os.getenv("TRANSACTIONAL_EMAIL_REQUIRE_AUTH", "true").strip().lower() == "true"
+TRANSACTIONAL_EMAIL_USERNAME_ENV = os.getenv(
+    "TRANSACTIONAL_EMAIL_USERNAME_ENV", "TRANSACTIONAL_EMAIL_USERNAME"
+).strip()
+TRANSACTIONAL_EMAIL_PASSWORD_ENV = os.getenv(
+    "TRANSACTIONAL_EMAIL_PASSWORD_ENV", "TRANSACTIONAL_EMAIL_PASSWORD"
+).strip()
+TRANSACTIONAL_EMAIL_FROM = os.getenv(
+    "TRANSACTIONAL_EMAIL_FROM", "no-reply@localhost"
+).strip().lower()
+TRANSACTIONAL_EMAIL_TIMEOUT = float(os.getenv("TRANSACTIONAL_EMAIL_TIMEOUT", "15"))
+TRANSACTIONAL_EMAIL_MAX_ATTEMPTS = int(os.getenv("TRANSACTIONAL_EMAIL_MAX_ATTEMPTS", "5"))
+TRANSACTIONAL_EMAIL_RETRY_MINUTES = int(os.getenv("TRANSACTIONAL_EMAIL_RETRY_MINUTES", "5"))
+TRANSACTIONAL_EMAIL_SENDING_STALE_MINUTES = int(os.getenv("TRANSACTIONAL_EMAIL_SENDING_STALE_MINUTES", "30"))
 
 # Mercado Pago Checkout Pro - entorno de pruebas. Las credenciales se resuelven desde variables de entorno.
 MERCADO_PAGO_ENABLED = os.getenv("MERCADO_PAGO_ENABLED", "false").strip().lower() == "true"

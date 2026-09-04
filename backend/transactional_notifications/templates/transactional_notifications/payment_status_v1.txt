@@ -1,0 +1,7 @@
+Hola {{ customer_name }},
+
+El pago de tu pedido #{{ order_number }} en {{ company_name }} quedó: {{ payment_status_label }}.
+Monto: ${{ amount }} {{ currency }}.
+{% if provider_status_detail %}Detalle informado por el proveedor: {{ provider_status_detail }}.{% endif %}
+
+TuPymeGestiona valida el resultado del pago en el servidor y no confía únicamente en el retorno del navegador.
