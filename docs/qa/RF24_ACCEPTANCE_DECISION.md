@@ -1,20 +1,13 @@
-# RF24 — decisión de aceptación pendiente
+# RF24 — decisión cerrada por evidencia ejecutable
 
 ## Estado
+`CUMPLE`
 
-`PARCIAL_TRAZABILIDAD`
+La brecha anterior existía porque mantenedores estaban dentro del mismo frontend `/app`.
+El slice publicado en `8869bed986735485a8c61f9b89ee91e2e661a642` creó `maintainers` como segundo proyecto Angular ejecutable.
 
-La auditoría RF01-RF26 identificó que la evidencia actual concentra Administración y mantenedores dentro del mismo frontend Angular bajo `/app/administration`, mientras que la ERS/Acta utilizada por QA hace referencia a una aplicación secundaria dedicada y a “dos aplicaciones conectadas”.
+La separación incluye sourceRoot propio, `main.ts`, `index.html`, puerto 4300, tests y bundle propios.
+Ambas aplicaciones comparten Django, sesión, contexto organizacional y MySQL. No se duplican permisos
+ni base de datos y los secretos siguen fuera de los mantenedores.
 
-## Decisión de este slice
-
-Este paquete **no crea artificialmente una segunda aplicación** sin una confirmación de aceptación que justifique ese cambio arquitectónico. Hacerlo aumentaría el alcance, duplicaría autenticación/contexto organizacional y podría introducir una arquitectura que no sea exigida por la evaluación final.
-
-Por lo tanto:
-
-- RF05, RF06, RF16 y RF17 se corrigen con evidencia ejecutable.
-- RF24 conserva `PARCIAL_TRAZABILIDAD`.
-- Documentación v2 debe reconciliar explícitamente la frase “segunda aplicación”.
-- Si la comisión exige dos ejecutables/frontend separados, debe abrirse un slice funcional específico antes del cierre académico.
-
-Esta decisión evita declarar `CUMPLE` sin evidencia.
+RF24 puede declararse `CUMPLE` únicamente si esta revalidación completa sus gates y se publica.

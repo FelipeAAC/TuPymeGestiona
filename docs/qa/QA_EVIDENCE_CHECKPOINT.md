@@ -1,44 +1,25 @@
 # Evidencia del checkpoint QA RF01-RF26
 
 ## Base
-
 - Rama: `develop-v2`
-- HEAD de entrada del QA base: `33fa009027159ab8ada6baa26a826861e070a01a`
-- HEAD de entrada de Correcciones QA: `41306f3c826f17e87e4a8bec19ed4a6562597f38`
-- Último cierre previo: `chore(quality): harden technical gates`
+- HEAD de entrada: `8869bed986735485a8c61f9b89ee91e2e661a642`
+- Commit anterior: `feat(maintainers): add secondary administration application`
 
-## Evidencia heredada del cierre de Calidad Técnica
+## Evidencia heredada
+La publicación de la segunda aplicación informó: backend **535/535**, npm audit **0 vulnerabilidades**,
+maintainers **2 specs / 6 tests**, aplicación principal **29 specs**, build principal aprobado,
+build secundario aprobado y HEAD local/remoto coincidentes.
 
-El cierre inmediatamente anterior reportó y publicó correctamente:
-
-- Django system check: sin incidencias.
-- Migraciones: sin cambios pendientes.
-- Suite backend: **529/529** aprobadas.
-- `npm ci`: reproducible con `allowScripts` estricto.
-- `npm audit --audit-level=high`: **0 vulnerabilidades**.
-- Angular: **26 specs** ejecutadas en procesos independientes, todas aprobadas.
-- Build Angular de producción: aprobado, sin warnings de `anyComponentStyle`.
-- HEAD local y `origin/develop-v2`: coincidentes tras el push.
-- MySQL: base real del proyecto; SQLite: únicamente temporal durante pruebas backend.
-
-## Política de evidencia de este slice
-
-El paquete QA vuelve a ejecutar todas las puertas anteriores. La matriz RF01-RF26 solo se publica si:
-
-1. su CSV contiene exactamente RF01 a RF26, sin duplicados;
-2. las evidencias estructurales declaradas existen en el repositorio;
-3. las brechas conocidas siguen clasificadas explícitamente y no se convierten silenciosamente en “CUMPLE”;
-4. `git diff --check`, Django, migraciones, backend, `npm audit`, las 26 specs Angular y el build terminan correctamente;
-5. el commit contiene exclusivamente los cuatro archivos autorizados de QA;
-6. el push deja HEAD local y remoto idénticos y el árbol limpio.
+## Criterio RF24
+RF24 pasa a `CUMPLE` solo si este paquete vuelve a verificar:
+1. proyectos Angular `frontend` y `maintainers`;
+2. sourceRoot/entrada/index/serve/tests/build propios de maintainers;
+3. autenticación, contexto de empresa y APIs compartidas con Django;
+4. 29 specs principales y 2 specs secundarios;
+5. ambos builds;
+6. backend completo, migraciones y npm audit;
+7. commit/push y HEAD remoto verificados.
 
 ## Límites
-
-- QA no activa SMTP real, Mercado Pago externo real ni activos SII.
-- QA no almacena secretos.
-- QA no cambia configuración persistente de base de datos.
-- QA no corrige automáticamente RF parciales; registra la evidencia para una decisión explícita posterior.
-
-## Correcciones QA posteriores
-
-Sobre `41306f3c826f17e87e4a8bec19ed4a6562597f38` se corrigen RF05, RF06, RF16 y RF17. RF24 permanece explícitamente como `PARCIAL_TRAZABILIDAD` hasta una decisión de aceptación sobre la exigencia de una segunda aplicación ejecutable.
+No se activa SMTP real, Mercado Pago externo ni SII real; no se almacenan secretos ni se modifica
+la configuración persistente de MySQL.

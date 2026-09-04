@@ -1,67 +1,49 @@
 # QA y trazabilidad RF01-RF26
 
-**Checkpoint técnico auditado:** `develop-v2` en `33fa009027159ab8ada6baa26a826861e070a01a`.
+**Checkpoint de entrada de Revalidación RF24:** `develop-v2` en `8869bed986735485a8c61f9b89ee91e2e661a642`.
 
-Este documento no declara cumplimiento por intuición. La clasificación cruza la ERS académica, los casos de uso, la cobertura visual y la evidencia verificable del repositorio en el checkpoint indicado. El objetivo del slice es identificar con precisión qué está cerrado, qué solo está cerrado en código y qué conserva brechas funcionales, de QA o de trazabilidad documental.
-
-## Fuentes de referencia
-
-- `Informe ERS.docx`: RF01-RF26 y su relación con CU001-CU025 / R.1-R.26.
-- `Documento Caso Uso Extendido.docx`: actores, precondiciones, flujo normal y alternativos de CU001-CU025.
-- `Documento Mockups(1).docx`: cobertura visual esperada de Dashboard, autenticación, mantenedores, inventario, pedidos, ventas, reportes, administración y ayuda.
-- `Acta de constitución.docx`: criterio de aprobación de 26 requisitos y demostración de dos aplicaciones conectadas, Mercado Pago y descarga de reportes.
-- `docs/quality/API_PUBLIC_CONTRACTS.md` y `docs/quality/API_ERROR_POLICY.md`: inventario de contratos y política técnica del checkpoint.
-
-## Leyenda
-
-- **CUMPLE**: existen implementación y evidencia automatizada suficientes para el alcance del RF.
-- **CUMPLE_EN_CODIGO**: el comportamiento está implementado y probado localmente, pero la integración externa real está reservada para la fase final controlada.
-- **CUMPLE_CON_DECISION_SEGURIDAD**: cumple la decisión técnica vigente, aunque una redacción documental anterior debe actualizarse.
-- **PARCIAL_FUNCIONAL**: falta una operación exigida por el RF en el producto demostrable.
-- **PARCIAL_UI**: backend ofrece parte del contrato, pero la UI no expone todo el ciclo exigido.
-- **PARCIAL_QA**: el flujo existe, pero falta evidencia automatizada específica de una parte relevante.
-- **PARCIAL_TRAZABILIDAD**: existe funcionalidad, pero la arquitectura/evidencia actual no coincide de manera demostrable con la formulación académica.
+RF24 deja de depender de una interpretación documental: existe un segundo proyecto Angular
+ejecutable, `maintainers`, con entrada, sourceRoot, servidor, tests y bundle propios,
+conectado al mismo backend Django.
 
 ## Matriz
 
-| RF | ERS | CU | Requisito | API | Pantalla | Estado | Observación |
-|---|---|---|---|---|---|---|---|
-| RF01 | 3.2.1 | CU001 | Gestionar usuarios | /api/administration/users/ | /app/administration | CUMPLE | Administración V2 expone alta/actualización y estado de usuarios con alcance por empresa. |
-| RF02 | 3.2.2 | CU002 | Gestionar roles y perfiles de acceso | /api/administration/roles/ | /app/administration | CUMPLE | Roles y permisos están integrados al contexto de empresa y a la autorización del shell. |
-| RF03 | 3.2.3 | CU003 | Gestionar empresas o tiendas | /api/administration/companies/ | /app/administration | CUMPLE | Existe creación y actualización de empresa desde Administración. |
-| RF04 | 3.2.4 | CU004 | Gestionar sucursales | /api/administration/branches/ | /app/administration | CUMPLE | Sucursales se administran dentro del alcance de empresa. |
-| RF05 | 3.2.5 | CU005 | Gestionar categorías de productos | /api/catalog/categories/; /api/catalog/categories/manage/; /api/catalog/categories/<id>/ | /app/categories | CUMPLE | La ERS exige crear, consultar, actualizar y deshabilitar. En el checkpoint, API y UI de categorías exponen lista/creación, pero no existe endpoint de detalle PATCH ni flujo Angular de actualización/deshabilitación. |
-| RF06 | 3.2.6 | CU006 | Gestionar productos | /api/catalog/products/; /api/catalog/products/<id>/ | /app/products | CUMPLE | Backend soporta consulta y PATCH de producto, pero el servicio/pantalla Angular del checkpoint exponen lista/creación y no un flujo de edición/baja; tampoco existe spec dedicada de Products. |
-| RF07 | 3.2.7 | CU007 | Gestionar proveedores | /api/catalog/suppliers/; /api/catalog/suppliers/<id>/ | /app/suppliers | CUMPLE | Listado, creación y actualización están cubiertos en UI y pruebas. |
-| RF08 | 3.2.8 | CU008 | Gestionar bodegas | /api/organizations/warehouses/; /api/organizations/warehouses/<id>/ | /app/warehouses | CUMPLE | Bodegas se gestionan por empresa/sucursal con pruebas de CRUD operativo. |
-| RF09 | 3.2.9 | CU009 | Gestionar métodos de pago | /api/administration/payment-methods/ | /app/administration | CUMPLE | Configuración y estado se administran desde el módulo de Administración. |
-| RF10 | 3.2.10 | CU010 | Gestionar estados de pedidos | /api/administration/order-statuses/<id>/ | /app/administration | CUMPLE | Administración controla los estados configurables sin sustituir las transiciones operacionales del módulo Pedidos. |
-| RF11 | 3.2.12 | CU012 | Gestionar clientes | /api/customers/; /api/customers/<id>/ | /app/customers | CUMPLE | Registro, consulta y actualización de clientes están cubiertos por API, pantalla y tests. |
-| RF12 | 3.2.13 | CU013 | Gestionar inventario y existencias | /api/inventory/stocks/; /api/inventory/options/ | /app/inventory | CUMPLE | Stock por empresa/bodega y opciones operacionales están integrados. |
-| RF13 | 3.2.14 | CU014 | Registrar movimientos de inventario | /api/inventory/movements/; /api/inventory/transfers/ | /app/inventory | CUMPLE | Entradas/salidas/ajustes y transferencias cuentan con trazabilidad y pruebas. |
-| RF14 | 3.2.15-3.2.16 | CU015/CU016 | Registrar pedidos y gestionar su estado | /api/orders/; /api/orders/<id>/{confirm,prepare,deliver,cancel}/ | /app/orders; /portal | CUMPLE | Pedido, líneas y transiciones explícitas se prueban en aplicación principal y el Portal crea pedidos. |
-| RF15 | 3.2.17 | CU017 | Registrar y consultar ventas | /api/sales/; /api/sales/<id>/payments/; /api/sales/<id>/cancel/ | /app/sales | CUMPLE | Venta, pago, cancelación, historial y control de idempotencia están cubiertos. |
-| RF16 | 3.2.18-3.2.19 | CU018/CU019 | Consultar tiendas, catálogo y detalle de productos | /api/portal/stores/; /api/portal/stores/<company>/catalog/; /api/portal/stores/<company>/products/<id>/ | /portal | CUMPLE | La implementación incluye tienda, catálogo y detalle; la suite Angular existente prueba explícitamente tiendas/catálogo, pero no tiene una prueba dedicada que evidencie el detalle de producto de CU019. |
-| RF17 | 3.2.21 | CU021 | Consultar estado e historial de pedidos | /api/portal/account/; /api/portal/orders/; /api/portal/orders/<id>/ | /portal/account | CUMPLE | El flujo y endpoints existen, pero falta evidencia Angular dedicada para la pantalla de cuenta/historial. |
-| RF18 | 3.2.20 | CU020 | Integrar proceso de pago con servicio externo | /api/portal/payments/orders/<id>/mercado-pago/* | /portal; /portal/payment-result | CUMPLE_EN_CODIGO | Mercado Pago Sandbox está integrado en código con idempotencia, retorno/webhook y reconciliación. La prueba E2E contra el servicio externo real se mantiene para la fase final controlada. |
-| RF19 | 3.2.24 | CU024 | Enviar notificaciones por correo electrónico | capacidad interna transactional_notifications (sin raíz pública dedicada) | sin pantalla obligatoria; eventos de pedidos/pagos | CUMPLE_EN_CODIGO | Notificaciones transaccionales, persistencia, idempotencia y reintentos están cerrados en código con backend local/fake durante pruebas. SMTP real queda reservado para integración final. |
-| RF20 | 3.2.22 | CU022 | Generar reportes de ventas | /api/reports/sales/; /api/reports/sales/export/{pdf,xls}/ | /app/reports | CUMPLE | Filtros, resumen y exportación PDF/XLS se validaron en Reportes. |
-| RF21 | 3.2.23 | CU023 | Generar reportes de inventario | /api/reports/inventory/; /api/reports/inventory/export/{pdf,xls}/ | /app/reports | CUMPLE | Filtros de inventario y exportación PDF/XLS están implementados y probados. |
-| RF22 | 3.2.25 | CU025 | Autenticar usuarios | /api/auth/csrf/; /api/auth/login/; /api/auth/me/; /api/auth/logout/ | /login | CUMPLE | Autenticación y acceso protegido se integran mediante CSRF/sesión y rutas protegidas. |
-| RF23 | 3.2.25 | CU025 | Gestionar sesión segura | /api/auth/me/; /api/auth/logout/ | /login; /app/* | CUMPLE | La sesión y el acceso a rutas protegidas se comprueban junto con el contexto de membresía. |
-| RF24 | 3.2.26 | CU001-CU011 | Administrar mantenedores mediante aplicación secundaria | /api/administration/* y APIs de mantenedores | /app/administration + rutas de mantenedores dentro del mismo frontend Angular | PARCIAL_TRAZABILIDAD | La funcionalidad administrativa está integrada, pero la ERS exige una aplicación secundaria dedicada y el Acta exige demostrar dos aplicaciones conectadas. La evidencia actual muestra estos mantenedores dentro del mismo frontend/ruteo /app; debe reconciliarse o completarse antes de la aceptación. |
-| RF25 | 3.2.11 | CU011 | Configurar parámetros generales del sistema | /api/administration/settings/ | /app/administration | CUMPLE_CON_DECISION_SEGURIDAD | Los parámetros no secretos están administrados. La ERS antigua menciona credenciales de APIs y SMTP, pero la decisión vigente exige mantener secretos fuera del dominio/repositorio; Documentación v2 debe alinear la redacción. |
-| RF26 | 3.2.25 | CU025 | Restringir funcionalidades según rol/permisos | autorización transversal en endpoints + contexto de membresía | /app/*; /app/administration | CUMPLE | RBAC y aislamiento por empresa se aplican en backend y en navegación/acciones del frontend. |
+| RF | ERS | CU | Requisito | Pantalla / aplicación | Estado | Observación |
+|---|---|---|---|---|---|---|
+| RF01 | 3.2.1 | CU001 | Gestionar usuarios | maintainers: Usuarios | **CUMPLE** | Usuarios administrables por empresa desde la segunda aplicación. |
+| RF02 | 3.2.2 | CU002 | Gestionar roles y perfiles de acceso | maintainers: Roles y permisos | **CUMPLE** | Roles/permisos expuestos en maintainers y autorizados por backend. |
+| RF03 | 3.2.3 | CU003 | Gestionar empresas o tiendas | maintainers: Empresa y sucursales | **CUMPLE** | Empresa creada/actualizada mediante el backend compartido. |
+| RF04 | 3.2.4 | CU004 | Gestionar sucursales | maintainers: Empresa y sucursales | **CUMPLE** | Sucursales administrables en alcance de empresa. |
+| RF05 | 3.2.5 | CU005 | Gestionar categorías de productos | /app/categories; maintainers: Catálogo | **CUMPLE** | ACTIVE/INACTIVE, listado de administración y PATCH con evidencia en ambos frontends. |
+| RF06 | 3.2.6 | CU006 | Gestionar productos | /app/products; maintainers: Catálogo | **CUMPLE** | Actualización y baja lógica expuestas en principal y secundaria. |
+| RF07 | 3.2.7 | CU007 | Gestionar proveedores | /app/suppliers; maintainers: Proveedores | **CUMPLE** | Proveedor administrable desde la secundaria y cubierto en principal. |
+| RF08 | 3.2.8 | CU008 | Gestionar bodegas | /app/warehouses; maintainers: Bodegas | **CUMPLE** | Bodegas conectadas al mismo contexto organizacional. |
+| RF09 | 3.2.9 | CU009 | Gestionar métodos de pago | maintainers: Pagos y estados | **CUMPLE** | Métodos de pago no secretos administrables en la secundaria. |
+| RF10 | 3.2.10 | CU010 | Gestionar estados de pedidos | maintainers: Pagos y estados | **CUMPLE** | Estados configurables disponibles; is_system permanece protegido. |
+| RF11 | 3.2.12 | CU012 | Gestionar clientes | /app/customers | **CUMPLE** | CRUD operativo de clientes cubierto. |
+| RF12 | 3.2.13 | CU013 | Gestionar inventario y existencias | /app/inventory | **CUMPLE** | Stock por empresa/bodega integrado. |
+| RF13 | 3.2.14 | CU014 | Registrar movimientos de inventario | /app/inventory | **CUMPLE** | Movimientos y transferencias con trazabilidad. |
+| RF14 | 3.2.15-3.2.16 | CU015/CU016 | Registrar pedidos y gestionar su estado | /app/orders; /portal | **CUMPLE** | Pedido y transiciones explícitas probadas. |
+| RF15 | 3.2.17 | CU017 | Registrar y consultar ventas | /app/sales | **CUMPLE** | Venta, pagos, cancelación e idempotencia cubiertos. |
+| RF16 | 3.2.18-3.2.19 | CU018/CU019 | Consultar tiendas, catálogo y detalle de productos | /portal | **CUMPLE** | Portal cubre tienda, catálogo y detalle dedicado. |
+| RF17 | 3.2.21 | CU021 | Consultar estado e historial de pedidos | /portal/account | **CUMPLE** | Historial y detalle de pedido con evidencia Angular. |
+| RF18 | 3.2.20 | CU020 | Integrar proceso de pago con servicio externo | /portal; /portal/payment-result | **CUMPLE_EN_CODIGO** | Mercado Pago integrado; E2E externo reservado para integración final. |
+| RF19 | 3.2.24 | CU024 | Enviar notificaciones por correo electrónico | eventos de pedidos/pagos | **CUMPLE_EN_CODIGO** | SMTP real reservado para integración final. |
+| RF20 | 3.2.22 | CU022 | Generar reportes de ventas | /app/reports | **CUMPLE** | Reportes de ventas y exportaciones probados. |
+| RF21 | 3.2.23 | CU023 | Generar reportes de inventario | /app/reports | **CUMPLE** | Reportes de inventario y exportaciones probados. |
+| RF22 | 3.2.25 | CU025 | Autenticar usuarios | /login; login de maintainers | **CUMPLE** | Ambos frontends autentican contra la misma sesión Django. |
+| RF23 | 3.2.25 | CU025 | Gestionar sesión segura | /app/*; maintainers | **CUMPLE** | Sesión y contexto de membresía compartidos por backend. |
+| RF24 | 3.2.26 | CU001-CU011 | Administrar mantenedores mediante aplicación secundaria | proyecto Angular maintainers: projects/maintainers/src; npm run start:maintainers; puerto 4300 | **CUMPLE** | Segunda aplicación ejecutable con entrada, sourceRoot, tests, serve y bundle propios, conectada al mismo backend. |
+| RF25 | 3.2.11 | CU011 | Configurar parámetros generales del sistema | maintainers: Parámetros | **CUMPLE_CON_DECISION_SEGURIDAD** | Parámetros no secretos administrables; credenciales y secretos permanecen fuera del dominio/repositorio. |
+| RF26 | 3.2.25 | CU025 | Restringir funcionalidades según rol/permisos | /app/*; maintainers | **CUMPLE** | RBAC y aislamiento por empresa se mantienen en backend para ambos frontends. |
 
-## Hallazgos después de Correcciones QA
+## Resultado esperado
 
-1. **RF05 Categorías — cerrado.** El dominio ahora dispone de estado `ACTIVE/INACTIVE`, endpoint de administración con estado, `PATCH` de detalle y UI para editar, deshabilitar y reactivar.
-2. **RF06 Productos — cerrado.** El `PATCH` backend existente se expone en Angular y la pantalla permite actualizar datos y realizar baja lógica mediante `INACTIVE`.
-3. **RF16 y RF17 — cobertura QA cerrada.** Portal prueba explícitamente el detalle de producto y `portal-account.spec.ts` cubre cuenta, historial y detalle de pedido.
-4. **RF18 y RF19 — cierre en código, no activación real.** Mercado Pago Sandbox y SMTP siguen reservando credenciales/pruebas externas para integración controlada.
-5. **RF24 — continúa como decisión de aceptación.** No se declara cierre artificial: la evidencia sigue mostrando Administración/mantenedores dentro del mismo frontend Angular. La documentación final debe reconciliar el requisito de “segunda aplicación” o, si la comisión exige un ejecutable separado, deberá abrirse un slice funcional específico.
-6. **RF25 — seguridad prevalece sobre redacción antigua.** Los secretos permanecen fuera del repositorio y del mantenedor general.
+- CUMPLE: **23**
+- CUMPLE_EN_CODIGO: **2**
+- CUMPLE_CON_DECISION_SEGURIDAD: **1**
+- Parciales: **0**
+- Total: **26**
 
-## Resultado del slice QA
-
-Este slice **no modifica lógica funcional** para ocultar brechas. Publica una línea base auditable y reejecuta las puertas técnicas antes del commit. Las brechas detectadas deben alimentar el siguiente slice, **Documentación v2**, y cualquier corrección funcional que la reconciliación documental confirme como obligatoria.
+RF18/RF19 conservan activación externa para integración final y RF25 conserva la decisión de
+seguridad sobre secretos. El siguiente bloque recomendado es **Documentación v2**.
