@@ -19,6 +19,14 @@ export const routes: Routes = [
       import('./pages/portal-register/portal-register').then((module) => module.PortalRegister),
   },
   {
+    path: 'portal/seller-onboarding',
+    canActivate: [portalAuthGuard],
+    loadComponent: () =>
+      import('./pages/portal-seller-onboarding/portal-seller-onboarding').then(
+        (module) => module.PortalSellerOnboarding,
+      ),
+  },
+  {
     path: 'portal/account',
     canActivate: [portalAuthGuard],
     loadComponent: () =>

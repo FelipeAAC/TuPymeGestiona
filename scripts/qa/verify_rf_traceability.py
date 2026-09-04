@@ -215,8 +215,8 @@ def main() -> int:
     )
 
     main_specs = sorted((root / "frontend/src/app").rglob("*.spec.ts"))
-    if len(main_specs) != 29:
-        fail(f"la aplicación principal espera 29 specs; encontró {len(main_specs)}")
+    if len(main_specs) != 31:
+        fail(f"la aplicación principal espera 31 specs; encontró {len(main_specs)}")
 
     secondary_specs = sorted((root / "frontend/projects/maintainers/src").rglob("*.spec.ts"))
     if len(secondary_specs) != 2:

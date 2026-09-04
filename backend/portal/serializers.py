@@ -10,15 +10,18 @@ from organizations.models import Branch, Company
 class PortalRegistrationSerializer(serializers.Serializer):
     company = serializers.PrimaryKeyRelatedField(
         queryset=Company.objects.filter(is_active=True),
+        required=False,
+        allow_null=True,
+        default=None,
     )
     email = serializers.EmailField(max_length=254)
     password = serializers.CharField(write_only=True, min_length=8, trim_whitespace=False)
     first_name = serializers.CharField(max_length=150)
     last_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
     phone = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
-    address = serializers.CharField(max_length=220)
-    commune = serializers.CharField(max_length=120)
-    city = serializers.CharField(max_length=120)
+    address = serializers.CharField(max_length=220, required=False, allow_blank=True, default="")
+    commune = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    city = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
 
     def validate_password(self, value):
         validate_password(value)

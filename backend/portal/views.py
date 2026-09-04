@@ -178,11 +178,15 @@ def register_view(request):
     return Response(
         {
             "user": {"id": user.id, "username": user.username, "email": user.email, "first_name": user.first_name, "last_name": user.last_name},
-            "account": {
-                "company": account.company_id,
-                "company_name": account.company.name,
-                "customer": account.customer_id,
-            },
+            "account": (
+                {
+                    "company": account.company_id,
+                    "company_name": account.company.name,
+                    "customer": account.customer_id,
+                }
+                if account is not None
+                else None
+            ),
         },
         status=status.HTTP_201_CREATED,
     )

@@ -114,6 +114,31 @@ def company_create_view(request):
     return Response({"company": CompanyAdminSerializer(company).data}, status=status.HTTP_201_CREATED)
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def self_service_company_create_view(request):
+    serializer = CompanyAdminSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    company = create_company_for_user(
+        user=request.user,
+        company_data=serializer.validated_data,
+    )
+    Branch.objects.create(
+        company=company,
+        code="CASA",
+        name="Casa Matriz",
+        address=company.address,
+        commune=company.commune,
+        city=company.city,
+        phone=company.phone,
+        is_active=True,
+    )
+    return Response(
+        {"company": CompanyAdminSerializer(company).data},
+        status=status.HTTP_201_CREATED,
+    )
+
+
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def company_detail_view(request, company_id):

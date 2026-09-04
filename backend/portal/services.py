@@ -51,11 +51,21 @@ def canonical_order_hash(*, company_id, branch_id, items, delivery_address, deli
 
 
 @transaction.atomic
-def register_portal_customer(*, company, email, password, first_name, last_name, phone, address, commune, city):
+def register_portal_customer(
+    *,
+    email,
+    password,
+    first_name,
+    last_name,
+    company=None,
+    phone="",
+    address="",
+    commune="",
+    city="",
+):
     normalized_email = email.strip().lower()
     if User.objects.filter(email__iexact=normalized_email).exists():
         raise PortalConflictError("Ya existe una cuenta con ese correo electrónico.")
-
     username_base = normalized_email[:140] or f"cliente-{uuid.uuid4().hex[:8]}"
     username = username_base
     suffix = 1
@@ -70,11 +80,12 @@ def register_portal_customer(*, company, email, password, first_name, last_name,
         first_name=first_name.strip(),
         last_name=last_name.strip(),
     )
+    if company is None:
+        return user, None
 
     code = f"WEB-{uuid.uuid4().hex[:10].upper()}"
     while Customer.objects.filter(company=company, code=code).exists():
         code = f"WEB-{uuid.uuid4().hex[:10].upper()}"
-
     customer = Customer.objects.create(
         company=company,
         code=code,
@@ -86,7 +97,6 @@ def register_portal_customer(*, company, email, password, first_name, last_name,
         city=city.strip(),
         status=Customer.Status.ACTIVE,
     )
-
     account = CustomerPortalAccount.objects.create(
         user=user,
         company=company,
@@ -94,7 +104,6 @@ def register_portal_customer(*, company, email, password, first_name, last_name,
         status=CustomerPortalAccount.Status.ACTIVE,
     )
     return user, account
-
 
 def get_active_portal_account(*, user, company):
     return (
@@ -106,6 +115,63 @@ def get_active_portal_account(*, user, company):
         )
         .select_related("company", "customer")
         .first()
+    )
+
+
+def ensure_portal_account_for_order(
+    *,
+    user,
+    company,
+    delivery_address,
+    delivery_commune,
+    delivery_city,
+):
+    account = get_active_portal_account(user=user, company=company)
+    if account is not None:
+        return account
+
+    existing = (
+        CustomerPortalAccount.objects.filter(user=user, company=company)
+        .select_related("customer")
+        .first()
+    )
+    if existing is not None:
+        raise PortalConflictError("Tu relación con esta tienda está suspendida.")
+
+    customer = (
+        Customer.objects.filter(
+            company=company,
+            email__iexact=user.email,
+            status=Customer.Status.ACTIVE,
+            portal_account__isnull=True,
+        )
+        .order_by("id")
+        .first()
+    )
+    if customer is None:
+        code = f"WEB-{uuid.uuid4().hex[:10].upper()}"
+        while Customer.objects.filter(company=company, code=code).exists():
+            code = f"WEB-{uuid.uuid4().hex[:10].upper()}"
+        customer = Customer.objects.create(
+            company=company,
+            code=code,
+            name=" ".join(
+                part for part in [user.first_name.strip(), user.last_name.strip()] if part
+            )
+            or user.email,
+            email=user.email.strip().lower(),
+            phone="",
+            address=delivery_address.strip(),
+            commune=delivery_commune.strip(),
+            city=delivery_city.strip(),
+            status=Customer.Status.ACTIVE,
+        )
+
+    return CustomerPortalAccount.objects.create(
+        user=user,
+        company=company,
+        customer=customer,
+        status=CustomerPortalAccount.Status.ACTIVE,
     )
 
 
@@ -131,9 +197,13 @@ def select_warehouse_with_stock(*, company, branch, items):
 
 @transaction.atomic
 def create_portal_order(*, user, company, branch, items, delivery_address, delivery_commune, delivery_city, notes, idempotency_key):
-    account = get_active_portal_account(user=user, company=company)
-    if account is None:
-        raise PortalConflictError("Tu cuenta no está habilitada para comprar en esta tienda.")
+    account = ensure_portal_account_for_order(
+        user=user,
+        company=company,
+        delivery_address=delivery_address,
+        delivery_commune=delivery_commune,
+        delivery_city=delivery_city,
+    )
 
     request_hash = canonical_order_hash(
         company_id=company.id,

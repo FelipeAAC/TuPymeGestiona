@@ -40,10 +40,15 @@ export class PortalService {
       .pipe(map((response) => response.product));
   }
 
-  register(input: PortalRegistrationInput): Observable<{ account: { company: number } }> {
+  register(
+    input: PortalRegistrationInput,
+  ): Observable<{ account: { company: number } | null }> {
     return this.http.get('/api/auth/csrf/').pipe(
       switchMap(() =>
-        this.http.post<{ account: { company: number } }>('/api/portal/register/', input),
+        this.http.post<{ account: { company: number } | null }>(
+          '/api/portal/register/',
+          input,
+        ),
       ),
     );
   }

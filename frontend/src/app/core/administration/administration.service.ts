@@ -30,6 +30,12 @@ export class AdministrationService {
       .pipe(map((response) => response.company));
   }
 
+  createOwnCompany(input: Partial<AdminCompany>): Observable<AdminCompany> {
+    return this.http
+      .post<{ company: AdminCompany }>(`${this.baseUrl}/self-service/companies/`, input)
+      .pipe(map((response) => response.company));
+  }
+
   updateCompany(companyId: number, input: Partial<AdminCompany>): Observable<AdminCompany> {
     return this.http
       .patch<{ company: AdminCompany }>(`${this.baseUrl}/companies/${companyId}/`, input)

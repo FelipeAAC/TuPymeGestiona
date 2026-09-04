@@ -89,15 +89,10 @@ export interface PortalOrder {
 }
 
 export interface PortalRegistrationInput {
-  company: number;
   email: string;
   password: string;
   first_name: string;
   last_name: string;
-  phone: string;
-  address: string;
-  commune: string;
-  city: string;
 }
 
 export interface PortalOrderInput {

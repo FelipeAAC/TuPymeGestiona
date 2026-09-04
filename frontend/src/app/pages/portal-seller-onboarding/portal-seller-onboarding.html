@@ -1,0 +1,58 @@
+<div class="seller-page">
+  <header>
+    <a routerLink="/portal"><span>TG</span> TuPymeGestiona</a>
+    <nav>
+      <a routerLink="/portal/account">Mi cuenta</a>
+      <a routerLink="/portal">Seguir comprando</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="intro">
+      <span class="eyebrow">Modo vendedor</span>
+      <h1>Crea tu PYME con tu cuenta actual</h1>
+      <p>
+        No necesitas otro usuario ni otra contraseña. Tu identidad personal será vinculada como
+        propietaria/administradora de esta PYME y podrás cambiar entre cliente y gestión sin cerrar sesión.
+      </p>
+      <div class="prototype-note">
+        <strong>Etapa prototipo</strong>
+        <span>
+          La tienda se habilita inmediatamente. La verificación real de identidad, RUT y existencia
+          comercial queda preparada como una fase posterior antes de producción.
+        </span>
+      </div>
+    </section>
+
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      <label>Nombre comercial<input formControlName="name" /></label>
+
+      <div class="grid">
+        <label>RUT<input formControlName="rut" placeholder="12.345.678-5" /></label>
+        <label>Razón social<input formControlName="legalName" /></label>
+      </div>
+
+      <label>Actividad comercial<input formControlName="businessActivity" /></label>
+
+      <div class="grid">
+        <label>Correo de contacto<input formControlName="contactEmail" type="email" /></label>
+        <label>Teléfono<input formControlName="phone" /></label>
+      </div>
+
+      <label>Dirección comercial<input formControlName="address" /></label>
+
+      <div class="grid">
+        <label>Comuna<input formControlName="commune" /></label>
+        <label>Ciudad<input formControlName="city" /></label>
+      </div>
+
+      @if (errorMessage()) {
+        <div class="error" role="alert">{{ errorMessage() }}</div>
+      }
+
+      <button type="submit" [disabled]="isSubmitting()">
+        {{ isSubmitting() ? 'Creando PYME...' : 'Crear mi PYME y comenzar a gestionar' }}
+      </button>
+    </form>
+  </main>
+</div>
