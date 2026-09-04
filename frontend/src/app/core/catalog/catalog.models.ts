@@ -1,4 +1,5 @@
 export type CatalogProductStatus = 'DRAFT' | 'ACTIVE' | 'INACTIVE';
+export type CatalogCategoryStatus = 'ACTIVE' | 'INACTIVE';
 
 export interface CatalogCategory {
   id: number;
@@ -9,6 +10,7 @@ export interface CatalogCategoryDetail {
   id: number;
   name: string;
   parent: CatalogCategory | null;
+  status: CatalogCategoryStatus;
 }
 
 export interface CatalogBrand {
@@ -59,7 +61,20 @@ export interface CatalogProductCreateInput {
   variant: CatalogProductVariantCreateInput;
 }
 
+export interface CatalogProductUpdateInput {
+  name?: string;
+  description?: string;
+  image_url?: string;
+  category?: number;
+  brand?: number | null;
+  status?: CatalogProductStatus;
+}
+
 export interface CatalogProductCreateResponse {
+  product: CatalogProduct;
+}
+
+export interface CatalogProductUpdateResponse {
   product: CatalogProduct;
 }
 
@@ -72,7 +87,21 @@ export interface CatalogCategoryCreateInput {
   parent: number | null;
 }
 
+export interface CatalogCategoryUpdateInput {
+  name?: string;
+  parent?: number | null;
+  status?: CatalogCategoryStatus;
+}
+
 export interface CatalogCategoryCreateResponse {
+  category: {
+    id: number;
+    name: string;
+    parent: CatalogCategory | null;
+  };
+}
+
+export interface CatalogCategoryUpdateResponse {
   category: CatalogCategoryDetail;
 }
 

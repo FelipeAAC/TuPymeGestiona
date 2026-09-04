@@ -3,7 +3,8 @@
 ## Base
 
 - Rama: `develop-v2`
-- HEAD de entrada: `33fa009027159ab8ada6baa26a826861e070a01a`
+- HEAD de entrada del QA base: `33fa009027159ab8ada6baa26a826861e070a01a`
+- HEAD de entrada de Correcciones QA: `41306f3c826f17e87e4a8bec19ed4a6562597f38`
 - Último cierre previo: `chore(quality): harden technical gates`
 
 ## Evidencia heredada del cierre de Calidad Técnica
@@ -37,3 +38,7 @@ El paquete QA vuelve a ejecutar todas las puertas anteriores. La matriz RF01-RF2
 - QA no almacena secretos.
 - QA no cambia configuración persistente de base de datos.
 - QA no corrige automáticamente RF parciales; registra la evidencia para una decisión explícita posterior.
+
+## Correcciones QA posteriores
+
+Sobre `41306f3c826f17e87e4a8bec19ed4a6562597f38` se corrigen RF05, RF06, RF16 y RF17. RF24 permanece explícitamente como `PARCIAL_TRAZABILIDAD` hasta una decisión de aceptación sobre la exigencia de una segunda aplicación ejecutable.

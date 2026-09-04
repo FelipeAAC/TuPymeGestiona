@@ -5,6 +5,10 @@ from organizations.models import Company
 
 
 class Category(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Activo"
+        INACTIVE = "INACTIVE", "Inactivo"
+
     company = models.ForeignKey(
         Company,
         on_delete=models.PROTECT,
@@ -18,6 +22,12 @@ class Category(models.Model):
         blank=True,
     )
     name = models.CharField(max_length=150)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+    )
+
 
     class Meta:
         ordering = ["company_id", "name"]

@@ -599,6 +599,7 @@ def product_options_view(request):
 
     categories = Category.objects.filter(
         company=company,
+        status=Category.Status.ACTIVE,
     )
 
     brands = Brand.objects.filter(

@@ -1,6 +1,6 @@
 # Public API Route Inventory
 
-Checkpoint: `develop-v2` at `29e83753a18fe60a479591dcd815581ce4d51b7a`.
+Checkpoint: `develop-v2` after QA corrections, based on `41306f3c826f17e87e4a8bec19ed4a6562597f38`.
 
 This document records the public route namespaces currently registered by `backend/config/urls.py`. It is a routing contract, not a replacement for endpoint-level request/response tests.
 
@@ -24,6 +24,17 @@ This document records the public route namespaces currently registered by `backe
 - `/api/dashboard/`
 
 `transactional_notifications` does not expose a dedicated public root at this checkpoint; it is an internal transactional capability used by business flows.
+
+## Catalog corrections
+
+Under `/api/catalog/` the RF05/RF06 correction slice confirms these management contracts:
+
+- `categories/` — list/create compatibility endpoint.
+- `categories/manage/` — management list including category operational status.
+- `categories/<id>/` — retrieve/update category, including `ACTIVE`/`INACTIVE` state.
+- `products/<id>/` — retrieve/update product; Angular now exposes this existing PATCH contract.
+
+Inactive categories are excluded from product management options so new/updated products cannot be assigned to a disabled category.
 
 ## Reports
 

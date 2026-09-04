@@ -1,7 +1,6 @@
 from django.urls import path
 
-from catalog import views
-
+from catalog import category_management, views
 
 urlpatterns = [
     path(
@@ -33,6 +32,16 @@ urlpatterns = [
         "categories/",
         views.category_list_create_view,
         name="catalog-category-list-create",
+    ),
+    path(
+        "categories/manage/",
+        category_management.category_management_list_view,
+        name="catalog-category-management-list",
+    ),
+    path(
+        "categories/<int:category_id>/",
+        category_management.category_management_detail_view,
+        name="catalog-category-management-detail",
     ),
     path(
         "brands/",

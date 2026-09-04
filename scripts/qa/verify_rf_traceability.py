@@ -18,10 +18,10 @@ ALLOWED_STATUSES = {
     "PARCIAL_TRAZABILIDAD",
 }
 EXPECTED_SPECIAL = {
-    "RF05": "PARCIAL_FUNCIONAL",
-    "RF06": "PARCIAL_UI",
-    "RF16": "PARCIAL_QA",
-    "RF17": "PARCIAL_QA",
+    "RF05": "CUMPLE",
+    "RF06": "CUMPLE",
+    "RF16": "CUMPLE",
+    "RF17": "CUMPLE",
     "RF18": "CUMPLE_EN_CODIGO",
     "RF19": "CUMPLE_EN_CODIGO",
     "RF24": "PARCIAL_TRAZABILIDAD",
@@ -127,16 +127,12 @@ def main() -> int:
     for relative, needles in checks.items():
         require_text(root, relative, needles)
 
-    # Las brechas RF05/RF06 se mantienen verificables: categorías no tiene endpoint detail
-    # y la UI de productos no publica updateProduct en el servicio del checkpoint.
-    catalog_urls = require_file(root, "backend/catalog/urls.py").read_text(encoding="utf-8-sig")
-    if 'categories/<int:' in catalog_urls:
-        fail("RF05 cambió: apareció endpoint de detalle de categoría; la matriz debe re-auditarse")
-    catalog_service = require_file(root, "frontend/src/app/core/catalog/catalog.service.ts").read_text(encoding="utf-8-sig")
-    if "updateCategory(" in catalog_service:
-        fail("RF05 cambió: apareció updateCategory; la matriz debe re-auditarse")
-    if "updateProduct(" in catalog_service:
-        fail("RF06 cambió: apareció updateProduct en Angular; la matriz debe re-auditarse")
+    # Correcciones QA RF05/RF06 deben existir estructuralmente.
+    require_text(root, "backend/catalog/urls.py", ["categories/manage/", "categories/<int:category_id>/"])
+    require_text(root, "backend/catalog/models.py", ["class Status(models.TextChoices):", "INACTIVE = \"INACTIVE\""])
+    require_file(root, "backend/catalog/migrations/0009_category_status.py")
+    require_file(root, "backend/catalog/test_qa_corrections.py")
+    require_text(root, "frontend/src/app/core/catalog/catalog.service.ts", ["updateCategory(", "updateProduct(", "/api/catalog/categories/manage/"])
 
     # Pantallas clave.
     for page in [
@@ -145,18 +141,18 @@ def main() -> int:
     ]:
         require_dir(root, f"frontend/src/app/pages/{page}")
 
-    # En el checkpoint de Calidad Técnica existen exactamente 26 specs. Las brechas QA
-    # se expresan, entre otras cosas, por ausencia de specs dedicadas en estas pantallas.
+    # Correcciones QA agregan specs dedicadas de Categorías, Productos y Portal Account.
     specs = sorted((root / "frontend/src/app").rglob("*.spec.ts"))
-    if len(specs) != 26:
-        fail(f"el checkpoint QA espera 26 specs Angular antes de este slice; encontró {len(specs)}")
+    if len(specs) != 29:
+        fail(f"el checkpoint corregido espera 29 specs Angular; encontró {len(specs)}")
     for relative in [
         "frontend/src/app/pages/categories/categories.spec.ts",
         "frontend/src/app/pages/products/products.spec.ts",
         "frontend/src/app/pages/portal-account/portal-account.spec.ts",
     ]:
-        if (root / relative).exists():
-            fail(f"la brecha QA documentada cambió porque ahora existe {relative}; re-auditar matriz")
+        require_file(root, relative)
+    require_text(root, "frontend/src/app/pages/portal/portal.spec.ts", ["dedicated product detail", "/api/portal/stores/1/products/4/"])
+    require_file(root, "docs/qa/RF24_ACCEPTANCE_DECISION.md")
 
     # RF24: la administración está actualmente registrada como hija de /app en el mismo router.
     require_text(root, "frontend/src/app/app.routes.ts", ["path: 'app'", "path: 'administration'"])

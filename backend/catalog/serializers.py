@@ -312,6 +312,7 @@ class ProductCreateSerializer(serializers.Serializer):
         if company is not None:
             self.fields["category"].queryset = Category.objects.filter(
                 company=company,
+                status=Category.Status.ACTIVE,
             )
             self.fields["brand"].queryset = Brand.objects.filter(
                 company=company,
@@ -376,6 +377,7 @@ class ProductUpdateSerializer(serializers.Serializer):
         if company is not None:
             self.fields["category"].queryset = Category.objects.filter(
                 company=company,
+                status=Category.Status.ACTIVE,
             )
             self.fields["brand"].queryset = Brand.objects.filter(
                 company=company,
