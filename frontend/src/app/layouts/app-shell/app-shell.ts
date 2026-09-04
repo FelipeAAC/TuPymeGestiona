@@ -23,6 +23,13 @@ export class AppShell implements OnInit {
   readonly canAdminister = computed(() =>
     this.selectedMembership()?.permissions?.includes('administration.manage') ?? false,
   );
+  readonly canViewReports = computed(() => {
+    const permissions = this.selectedMembership()?.permissions ?? [];
+    return (
+      permissions.includes('administration.manage') ||
+      permissions.includes('inventory.stocks.manage')
+    );
+  });
 
   readonly isOrganizationContextLoading = signal(false);
   readonly organizationContextError = signal('');

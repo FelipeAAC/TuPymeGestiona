@@ -100,6 +100,10 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./pages/administration/administration').then((module) => module.Administration),
       },
+      {
+        path: 'reports',
+        loadComponent: () => import('./pages/reports/reports').then((module) => module.Reports),
+      },
     ],
   },
   {

@@ -1,0 +1,113 @@
+<section class="reports-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">RF20 · RF21</span>
+      <h1>Reportes</h1>
+      <p>Consulta ventas e inventario con filtros y exporta los resultados a PDF o Excel.</p>
+      @if (selectedMembership(); as membership) {
+        <span class="company-context">Empresa activa: {{ membership.company.name }}</span>
+      }
+    </div>
+  </header>
+
+  @if (errorMessage()) {
+    <div class="alert alert-error" role="alert">{{ errorMessage() }}</div>
+  }
+
+  @if (isLoadingOptions()) {
+    <div class="state-panel"><span class="spinner"></span><p>Cargando permisos y filtros...</p></div>
+  } @else if (options(); as reportOptions) {
+    <div class="report-tabs" role="tablist" aria-label="Tipo de reporte">
+      @if (reportOptions.permissions.sales) {
+        <button type="button" [class.active]="activeTab() === 'sales'" (click)="selectTab('sales')">Ventas</button>
+      }
+      @if (reportOptions.permissions.inventory) {
+        <button type="button" [class.active]="activeTab() === 'inventory'" (click)="selectTab('inventory')">Inventario</button>
+      }
+    </div>
+
+    @if (!reportOptions.permissions.sales && !reportOptions.permissions.inventory) {
+      <div class="state-panel empty-state">
+        <strong>Sin acceso a reportes</strong>
+        <p>Tu rol actual no tiene permisos administrativos ni de inventario suficientes.</p>
+      </div>
+    }
+
+    @if (activeTab() === 'sales' && reportOptions.permissions.sales) {
+      <section class="content-card">
+        <div class="section-title">
+          <div><span>CU022</span><h2>Reporte de ventas</h2><p>Filtra por rango de fechas, sucursal y vendedor.</p></div>
+        </div>
+
+        <form class="filters" [formGroup]="salesForm" (ngSubmit)="generateSales()">
+          <label><span>Desde</span><input type="date" formControlName="dateFrom" /></label>
+          <label><span>Hasta</span><input type="date" formControlName="dateTo" /></label>
+          <label><span>Sucursal</span><select formControlName="branchId"><option [ngValue]="0">Todas</option>@for (branch of reportOptions.branches; track branch.id) {<option [ngValue]="branch.id">{{ branch.code }} · {{ branch.name }}</option>}</select></label>
+          <label><span>Vendedor</span><select formControlName="sellerId"><option [ngValue]="0">Todos</option>@for (seller of reportOptions.sellers; track seller.id) {<option [ngValue]="seller.id">{{ seller.username }}</option>}</select></label>
+          <button class="primary-button" type="submit" [disabled]="isLoadingSales()">{{ isLoadingSales() ? 'Generando...' : 'Generar reporte' }}</button>
+        </form>
+
+        @if (salesReport(); as report) {
+          <div class="summary-grid">
+            <article><span>Registros</span><strong>{{ report.summary.records }}</strong><small>{{ report.summary.active_sales }} venta(s) vigente(s)</small></article>
+            <article><span>Total ventas</span><strong>{{ formatMoney(report.summary.gross_total) }}</strong><small>Excluye ventas anuladas</small></article>
+            <article><span>Abonado</span><strong>{{ formatMoney(report.summary.paid_total) }}</strong><small>Pagos registrados</small></article>
+            <article><span>Saldo</span><strong>{{ formatMoney(report.summary.balance_total) }}</strong><small>Pendiente de cobro</small></article>
+          </div>
+
+          <div class="export-bar">
+            <span>{{ report.rows.length ? 'Reporte listo para descargar.' : 'No se encontraron transacciones para los filtros seleccionados.' }}</span>
+            <div>
+              <button type="button" class="secondary-button" [disabled]="!report.rows.length || downloading() !== null" (click)="exportSales('pdf')">Exportar PDF</button>
+              <button type="button" class="secondary-button" [disabled]="!report.rows.length || downloading() !== null" (click)="exportSales('xls')">Exportar XLS</button>
+            </div>
+          </div>
+
+          @if (report.rows.length) {
+            <div class="table-wrap"><table><thead><tr><th>Venta</th><th>Fecha</th><th>Sucursal</th><th>Vendedor</th><th>Cliente</th><th>Estado</th><th>Total</th><th>Abonado</th><th>Saldo</th></tr></thead><tbody>
+              @for (row of report.rows; track row.id) {<tr><td><strong>#{{ row.number }}</strong></td><td>{{ row.date }}</td><td>{{ row.branch }}</td><td>{{ row.seller }}</td><td>{{ row.customer }}</td><td><span class="status-pill" [class]="'status-pill sale-' + row.status.toLowerCase()">{{ saleStatusLabel(row.status) }}</span></td><td class="money">{{ formatMoney(row.total_amount) }}</td><td class="money">{{ formatMoney(row.paid_amount) }}</td><td class="money">{{ formatMoney(row.balance) }}</td></tr>}
+            </tbody></table></div>
+          }
+        }
+      </section>
+    }
+
+    @if (activeTab() === 'inventory' && reportOptions.permissions.inventory) {
+      <section class="content-card">
+        <div class="section-title"><div><span>CU023</span><h2>Reporte de inventario</h2><p>Consulta existencias valorizadas por bodega, categoría y nivel.</p></div></div>
+
+        <form class="filters inventory-filters" [formGroup]="inventoryForm" (ngSubmit)="generateInventory()">
+          <label><span>Bodega</span><select formControlName="warehouseId"><option [ngValue]="0">Todas autorizadas</option>@for (warehouse of reportOptions.warehouses; track warehouse.id) {<option [ngValue]="warehouse.id">{{ warehouse.code }} · {{ warehouse.name }}</option>}</select></label>
+          <label><span>Categoría</span><select formControlName="categoryId"><option [ngValue]="0">Todas</option>@for (category of reportOptions.categories; track category.id) {<option [ngValue]="category.id">{{ category.name }}</option>}</select></label>
+          <label><span>Nivel</span><select formControlName="stockLevel"><option value="ALL">Todos</option><option value="OUT">Sin stock</option><option value="CRITICAL">Crítico</option><option value="AVAILABLE">Disponible</option></select></label>
+          <label><span>Umbral crítico</span><input type="number" min="0" step="1" formControlName="criticalThreshold" /></label>
+          <button class="primary-button" type="submit" [disabled]="isLoadingInventory() || inventoryForm.invalid">{{ isLoadingInventory() ? 'Consultando...' : 'Consultar' }}</button>
+        </form>
+
+        @if (inventoryReport(); as report) {
+          <div class="summary-grid">
+            <article><span>Registros</span><strong>{{ report.summary.records }}</strong><small>Existencias visibles</small></article>
+            <article><span>Unidades</span><strong>{{ formatQuantity(report.summary.total_units) }}</strong><small>Suma de cantidades</small></article>
+            <article><span>Valor referencial</span><strong>{{ formatMoney(report.summary.reference_value) }}</strong><small>Precio base × cantidad</small></article>
+            <article><span>Alertas</span><strong>{{ report.summary.critical_count }} / {{ report.summary.out_count }}</strong><small>Críticos / sin stock</small></article>
+          </div>
+          <p class="valuation-note">{{ report.valuation_note }}</p>
+
+          <div class="export-bar">
+            <span>{{ report.rows.length ? 'Reporte listo para descargar.' : 'No se encontraron productos para los filtros seleccionados.' }}</span>
+            <div>
+              <button type="button" class="secondary-button" [disabled]="!report.rows.length || downloading() !== null" (click)="exportInventory('pdf')">Exportar PDF</button>
+              <button type="button" class="secondary-button" [disabled]="!report.rows.length || downloading() !== null" (click)="exportInventory('xls')">Exportar XLS</button>
+            </div>
+          </div>
+
+          @if (report.rows.length) {
+            <div class="table-wrap"><table><thead><tr><th>Bodega</th><th>Sucursal</th><th>Categoría</th><th>Producto</th><th>SKU</th><th>Cantidad</th><th>Precio base</th><th>Valor ref.</th><th>Nivel</th></tr></thead><tbody>
+              @for (row of report.rows; track row.id) {<tr><td>{{ row.warehouse }}</td><td>{{ row.branch }}</td><td>{{ row.category }}</td><td><strong>{{ row.product }}</strong></td><td>{{ row.sku }}</td><td class="money">{{ formatQuantity(row.quantity) }}</td><td class="money">{{ formatMoney(row.unit_price) }}</td><td class="money">{{ formatMoney(row.reference_value) }}</td><td><span class="status-pill" [class]="'status-pill stock-' + row.stock_level.toLowerCase()">{{ stockLevelLabel(row.stock_level) }}</span></td></tr>}
+            </tbody></table></div>
+          }
+        }
+      </section>
+    }
+  }
+</section>

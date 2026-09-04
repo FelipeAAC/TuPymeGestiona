@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "portal",
     "external_payments",
     "transactional_notifications",
+    "reports",
 ]
 
 MIDDLEWARE = [

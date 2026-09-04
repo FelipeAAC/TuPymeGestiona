@@ -1,0 +1,1 @@
+"""Reportería exportable de TuPymeGestiona."""
