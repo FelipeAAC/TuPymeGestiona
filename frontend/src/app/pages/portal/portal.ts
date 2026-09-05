@@ -4,6 +4,9 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
 import { Router, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 
+import { AuthService } from '../../core/auth/auth.service';
+import { OrganizationContextService } from '../../core/organization/organization-context.service';
+
 import {
   PortalProduct,
   PortalStore,
@@ -26,8 +29,21 @@ interface CartLine {
 })
 export class Portal implements OnInit {
   private readonly portalService = inject(PortalService);
+  private readonly authService = inject(AuthService);
+  private readonly organizationContextService = inject(OrganizationContextService);
   private readonly formBuilder = inject(NonNullableFormBuilder);
   private readonly router = inject(Router);
+
+  readonly currentUser = this.authService.currentUser;
+  readonly memberships = this.organizationContextService.memberships;
+  readonly hasActiveMembership = computed(() =>
+    this.memberships().some((membership) => membership.status === 'ACTIVE'),
+  );
+  readonly displayName = computed(() => {
+    const user = this.currentUser();
+    if (!user) return '';
+    return user.first_name.trim() || user.username || user.email;
+  });
 
   readonly stores = signal<PortalStore[]>([]);
   readonly selectedStore = signal<PortalStore | null>(null);
@@ -40,6 +56,9 @@ export class Portal implements OnInit {
   readonly isLoadingCatalog = signal(false);
   readonly isLoadingDetail = signal(false);
   readonly isSubmitting = signal(false);
+  readonly isRestoringSession = signal(false);
+  readonly isLoggingOut = signal(false);
+  readonly sessionMessage = signal('');
   readonly errorMessage = signal('');
   readonly checkoutMessage = signal('');
 
@@ -64,7 +83,21 @@ export class Portal implements OnInit {
   );
 
   ngOnInit(): void {
+    this.restoreSession();
     this.loadStores();
+  }
+
+  logout(): void {
+    if (this.isLoggingOut()) return;
+    this.sessionMessage.set('');
+    this.isLoggingOut.set(true);
+    this.authService
+      .logout()
+      .pipe(finalize(() => this.isLoggingOut.set(false)))
+      .subscribe({
+        next: () => this.organizationContextService.clear(),
+        error: () => this.sessionMessage.set('No pudimos cerrar sesión. Inténtalo nuevamente.'),
+      });
   }
 
   selectStore(store: PortalStore): void {
@@ -177,6 +210,26 @@ export class Portal implements OnInit {
               ? (error.error?.detail ?? 'No hay stock suficiente para completar el pedido.')
               : 'No pudimos registrar el pedido. Inténtalo nuevamente.',
           );
+        },
+      });
+  }
+
+  private restoreSession(): void {
+    this.isRestoringSession.set(true);
+    this.authService
+      .me()
+      .pipe(finalize(() => this.isRestoringSession.set(false)))
+      .subscribe({
+        next: () => {
+          this.organizationContextService.load().subscribe({
+            error: () => this.organizationContextService.clear(),
+          });
+        },
+        error: (error: HttpErrorResponse) => {
+          this.organizationContextService.clear();
+          if (error.status !== 401 && error.status !== 403) {
+            this.sessionMessage.set('No pudimos comprobar tu sesión en este momento.');
+          }
         },
       });
   }

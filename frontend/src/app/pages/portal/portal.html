@@ -2,9 +2,22 @@
   <header class="portal-header">
     <a class="portal-brand" routerLink="/portal"><span>TG</span> TuPymeGestiona</a>
     <nav>
-      <a routerLink="/portal/account">Mis pedidos</a>
-      <a routerLink="/portal/register">Crear cuenta</a>
-      <a routerLink="/login" [queryParams]="{ returnUrl: '/portal/account' }">Iniciar sesión</a>
+      @if (currentUser()) {
+        <span class="portal-user">Hola, {{ displayName() }}</span>
+        <a routerLink="/portal/account">Mis pedidos</a>
+        @if (hasActiveMembership()) {
+          <a routerLink="/app/dashboard">Gestionar mi PYME</a>
+        } @else {
+          <a routerLink="/portal/seller-onboarding">Crear mi PYME</a>
+        }
+        <button type="button" class="portal-nav-button" [disabled]="isLoggingOut()" (click)="logout()">
+          {{ isLoggingOut() ? 'Cerrando...' : 'Cerrar sesión' }}
+        </button>
+      } @else {
+        <a routerLink="/portal/account">Mis pedidos</a>
+        <a routerLink="/portal/register">Crear cuenta</a>
+        <a routerLink="/login" [queryParams]="{ returnUrl: '/portal/account' }">Iniciar sesión</a>
+      }
     </nav>
   </header>
 
@@ -16,6 +29,9 @@
     </div>
   </section>
 
+  @if (sessionMessage()) {
+    <div class="alert alert-error" role="alert">{{ sessionMessage() }}</div>
+  }
   @if (errorMessage()) {
     <div class="alert alert-error" role="alert">{{ errorMessage() }}</div>
   }

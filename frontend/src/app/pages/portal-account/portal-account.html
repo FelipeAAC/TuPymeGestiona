@@ -2,9 +2,20 @@
   <header>
     <a routerLink="/portal"><span>TG</span> TuPymeGestiona</a>
     <nav>
+      @if (currentUser()) {
+        <span class="account-user">Hola, {{ displayName() }}</span>
+      }
       <a routerLink="/portal">Catálogo</a>
-      <a routerLink="/portal/seller-onboarding">Crear mi PYME</a>
-      <a routerLink="/app/dashboard">Gestionar mi PYME</a>
+      @if (!isOrganizationContextLoading()) {
+        @if (hasActiveMembership()) {
+          <a routerLink="/app/dashboard">Gestionar mi PYME</a>
+        } @else {
+          <a routerLink="/portal/seller-onboarding">Crear mi PYME</a>
+        }
+      }
+      <button type="button" class="account-nav-button" [disabled]="isLoggingOut()" (click)="logout()">
+        {{ isLoggingOut() ? 'Cerrando...' : 'Cerrar sesión' }}
+      </button>
     </nav>
   </header>
 
@@ -24,11 +35,21 @@
         <span>Compra en distintas PYMES sin crear una cuenta por tienda.</span>
         <small>La relación comercial con cada tienda se crea cuando realizas tu primera compra.</small>
       </article>
-      <article>
-        <strong>¿También vendes?</strong>
-        <span>Crea tu PYME con esta misma cuenta y cambia entre cliente y gestión sin cerrar sesión.</span>
-        <a routerLink="/portal/seller-onboarding">Crear mi PYME</a>
-      </article>
+      @if (!isOrganizationContextLoading()) {
+        @if (hasActiveMembership()) {
+          <article>
+            <strong>También administras una PYME</strong>
+            <span>Tienes {{ memberships().length }} empresa(s) disponible(s) en tu contexto de gestión.</span>
+            <a routerLink="/app/dashboard">Gestionar mi PYME</a>
+          </article>
+        } @else {
+          <article>
+            <strong>¿También vendes?</strong>
+            <span>Crea tu PYME con esta misma cuenta y cambia entre cliente y gestión sin cerrar sesión.</span>
+            <a routerLink="/portal/seller-onboarding">Crear mi PYME</a>
+          </article>
+        }
+      }
       @for(account of accounts(); track account.company){
         <article>
           <strong>{{ account.company_name }}</strong>

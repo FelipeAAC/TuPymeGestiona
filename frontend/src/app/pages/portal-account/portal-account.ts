@@ -1,8 +1,11 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, OnInit, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import { finalize, forkJoin } from 'rxjs';
+
+import { AuthService } from '../../core/auth/auth.service';
+import { OrganizationContextService } from '../../core/organization/organization-context.service';
 
 import {
   PortalAccount,
@@ -19,16 +22,33 @@ import { PortalService } from '../../core/portal/portal.service';
 })
 export class PortalAccountPage implements OnInit {
   private readonly portalService = inject(PortalService);
+  private readonly authService = inject(AuthService);
+  private readonly organizationContextService = inject(OrganizationContextService);
+  private readonly router = inject(Router);
+
+  readonly currentUser = this.authService.currentUser;
+  readonly memberships = this.organizationContextService.memberships;
+  readonly hasActiveMembership = computed(() =>
+    this.memberships().some((membership) => membership.status === 'ACTIVE'),
+  );
+  readonly displayName = computed(() => {
+    const user = this.currentUser();
+    if (!user) return '';
+    return user.first_name.trim() || user.username || user.email;
+  });
   readonly accounts = signal<PortalAccount[]>([]);
   readonly orders = signal<PortalOrder[]>([]);
   readonly payments = signal<PortalMercadoPagoPayment[]>([]);
   readonly selectedOrder = signal<PortalOrder | null>(null);
   readonly isLoading = signal(false);
+  readonly isOrganizationContextLoading = signal(false);
+  readonly isLoggingOut = signal(false);
   readonly payingOrderId = signal<number | null>(null);
   readonly errorMessage = signal('');
   readonly paymentMessage = signal('');
 
   ngOnInit(): void {
+    this.loadOrganizationContext();
     this.isLoading.set(true);
     forkJoin({
       accounts: this.portalService.getAccounts(),
@@ -43,6 +63,21 @@ export class PortalAccountPage implements OnInit {
           this.payments.set(payments);
         },
         error: () => this.errorMessage.set('No pudimos cargar tu cuenta e historial.'),
+      });
+  }
+
+  logout(): void {
+    if (this.isLoggingOut()) return;
+    this.isLoggingOut.set(true);
+    this.authService
+      .logout()
+      .pipe(finalize(() => this.isLoggingOut.set(false)))
+      .subscribe({
+        next: () => {
+          this.organizationContextService.clear();
+          void this.router.navigate(['/portal']);
+        },
+        error: () => this.errorMessage.set('No pudimos cerrar sesión. Inténtalo nuevamente.'),
       });
   }
 
@@ -136,6 +171,16 @@ export class PortalAccountPage implements OnInit {
       REFUNDED: 'Pago devuelto',
       UNCERTAIN: 'Pago por verificar',
     } as const)[payment.status];
+  }
+
+  private loadOrganizationContext(): void {
+    this.isOrganizationContextLoading.set(true);
+    this.organizationContextService
+      .load()
+      .pipe(finalize(() => this.isOrganizationContextLoading.set(false)))
+      .subscribe({
+        error: () => this.organizationContextService.clear(),
+      });
   }
 
   private upsertPayment(payment: PortalMercadoPagoPayment): void {

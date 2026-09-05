@@ -24,7 +24,10 @@ describe('Portal', () => {
 
   afterEach(() => http.verify());
 
-  function flushCatalog(): void {
+  function flushCatalog(options: { authenticated?: boolean } = {}): void {
+    if (!options.authenticated) {
+      http.expectOne('/api/auth/me/').flush({}, { status: 403, statusText: 'Forbidden' });
+    }
     http.expectOne('/api/portal/stores/').flush({ stores: [store] });
     http.expectOne('/api/portal/stores/1/catalog/').flush({
       store: { id: 1, name: 'Tienda Norte', business_activity: 'Comercio' },
@@ -48,4 +51,55 @@ describe('Portal', () => {
     expect(fixture.componentInstance.selectedProduct()?.description).toBe('Detalle completo del producto');
     expect(fixture.nativeElement.textContent).toContain('Detalle completo del producto');
   });
+  it('restores an authenticated session in the public portal header', () => {
+    http.expectOne('/api/auth/me/').flush({
+      user: {
+        id: 7,
+        username: 'felipe',
+        email: 'felipe@example.com',
+        first_name: 'Felipe',
+        last_name: '',
+      },
+    });
+    http.expectOne('/api/organizations/context/').flush({
+      memberships: [
+        {
+          id: 10,
+          status: 'ACTIVE',
+          company: { id: 1, name: 'Tienda Norte' },
+          branches: [],
+          permissions: [],
+        },
+      ],
+    });
+    flushCatalog({ authenticated: true });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Hola, Felipe');
+    expect(fixture.nativeElement.textContent).toContain('Gestionar mi PYME');
+    expect(fixture.nativeElement.textContent).not.toContain('Iniciar sesión');
+  });
+
+  it('returns the portal header to anonymous state after logout', () => {
+    http.expectOne('/api/auth/me/').flush({
+      user: {
+        id: 7,
+        username: 'felipe',
+        email: 'felipe@example.com',
+        first_name: 'Felipe',
+        last_name: '',
+      },
+    });
+    http.expectOne('/api/organizations/context/').flush({ memberships: [] });
+    flushCatalog({ authenticated: true });
+    fixture.detectChanges();
+
+    fixture.componentInstance.logout();
+    http.expectOne('/api/auth/logout/').flush({});
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Iniciar sesión');
+    expect(fixture.nativeElement.textContent).not.toContain('Hola, Felipe');
+  });
+
 });
