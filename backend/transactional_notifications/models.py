@@ -104,6 +104,7 @@ class TransactionalNotificationAttempt(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "tx_notification_attempt"
         ordering = ["notification_id", "attempt_number", "id"]
         constraints = [
             models.UniqueConstraint(

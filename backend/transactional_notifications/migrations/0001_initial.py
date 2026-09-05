@@ -56,6 +56,7 @@ class Migration(migrations.Migration):
                 ('notification', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='attempt_log', to='transactional_notifications.transactionalnotification')),
             ],
             options={
+                'db_table': 'tx_notification_attempt',
                 'ordering': ['notification_id', 'attempt_number', 'id'],
             },
         ),
