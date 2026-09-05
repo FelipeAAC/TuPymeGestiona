@@ -1,16 +1,16 @@
 import hashlib
 import json
 import uuid
+from collections import defaultdict
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Q, Sum
+from django.db.models import Q
 
 from customers.models import Customer
 from inventory.models import InventoryStock
-from orders.models import Order
 from orders.services import confirm_order, create_draft_order
 from organizations.models import Warehouse
 
@@ -27,7 +27,16 @@ class PortalStockError(Exception):
     pass
 
 
-def canonical_order_hash(*, company_id, branch_id, items, delivery_address, delivery_commune, delivery_city, notes):
+def canonical_order_hash(
+    *,
+    company_id,
+    branch_id,
+    items,
+    delivery_address,
+    delivery_commune,
+    delivery_city,
+    notes,
+):
     payload = {
         "company": company_id,
         "branch": branch_id,
@@ -66,6 +75,7 @@ def register_portal_customer(
     normalized_email = email.strip().lower()
     if User.objects.filter(email__iexact=normalized_email).exists():
         raise PortalConflictError("Ya existe una cuenta con ese correo electrónico.")
+
     username_base = normalized_email[:140] or f"cliente-{uuid.uuid4().hex[:8]}"
     username = username_base
     suffix = 1
@@ -83,9 +93,7 @@ def register_portal_customer(
     if company is None:
         return user, None
 
-    code = f"WEB-{uuid.uuid4().hex[:10].upper()}"
-    while Customer.objects.filter(company=company, code=code).exists():
-        code = f"WEB-{uuid.uuid4().hex[:10].upper()}"
+    code = _next_customer_code(company=company)
     customer = Customer.objects.create(
         company=company,
         code=code,
@@ -104,6 +112,14 @@ def register_portal_customer(
         status=CustomerPortalAccount.Status.ACTIVE,
     )
     return user, account
+
+
+def _next_customer_code(*, company):
+    code = f"WEB-{uuid.uuid4().hex[:10].upper()}"
+    while Customer.objects.filter(company=company, code=code).exists():
+        code = f"WEB-{uuid.uuid4().hex[:10].upper()}"
+    return code
+
 
 def get_active_portal_account(*, user, company):
     return (
@@ -149,12 +165,9 @@ def ensure_portal_account_for_order(
         .first()
     )
     if customer is None:
-        code = f"WEB-{uuid.uuid4().hex[:10].upper()}"
-        while Customer.objects.filter(company=company, code=code).exists():
-            code = f"WEB-{uuid.uuid4().hex[:10].upper()}"
         customer = Customer.objects.create(
             company=company,
-            code=code,
+            code=_next_customer_code(company=company),
             name=" ".join(
                 part for part in [user.first_name.strip(), user.last_name.strip()] if part
             )
@@ -182,21 +195,39 @@ def _candidate_warehouses(*, company, branch):
 
 
 def select_warehouse_with_stock(*, company, branch, items):
-    for warehouse in _candidate_warehouses(company=company, branch=branch):
-        stocks = {
-            row["variant_id"]: row["quantity"]
-            for row in InventoryStock.objects.filter(
-                warehouse=warehouse,
-                variant_id__in=[item["variant"].id for item in items],
-            ).values("variant_id", "quantity")
-        }
-        if all(stocks.get(item["variant"].id, Decimal("0")) >= item["quantity"] for item in items):
+    warehouses = list(_candidate_warehouses(company=company, branch=branch))
+    if not warehouses:
+        return None
+
+    required = {item["variant"].id: item["quantity"] for item in items}
+    quantities: dict[int, dict[int, Decimal]] = defaultdict(dict)
+    rows = InventoryStock.objects.filter(
+        warehouse__in=warehouses,
+        variant_id__in=required,
+    ).values_list("warehouse_id", "variant_id", "quantity")
+    for warehouse_id, variant_id, quantity in rows:
+        quantities[warehouse_id][variant_id] = quantity
+
+    for warehouse in warehouses:
+        stock = quantities[warehouse.id]
+        if all(stock.get(variant_id, Decimal("0")) >= quantity for variant_id, quantity in required.items()):
             return warehouse
     return None
 
 
 @transaction.atomic
-def create_portal_order(*, user, company, branch, items, delivery_address, delivery_commune, delivery_city, notes, idempotency_key):
+def create_portal_order(
+    *,
+    user,
+    company,
+    branch,
+    items,
+    delivery_address,
+    delivery_commune,
+    delivery_city,
+    notes,
+    idempotency_key,
+):
     account = ensure_portal_account_for_order(
         user=user,
         company=company,
@@ -251,7 +282,14 @@ def create_portal_order(*, user, company, branch, items, delivery_address, deliv
     order.delivery_address = delivery_address.strip()
     order.delivery_commune = delivery_commune.strip()
     order.delivery_city = delivery_city.strip()
-    order.save(update_fields=("delivery_address", "delivery_commune", "delivery_city", "updated_at"))
+    order.save(
+        update_fields=(
+            "delivery_address",
+            "delivery_commune",
+            "delivery_city",
+            "updated_at",
+        )
+    )
 
     try:
         order = confirm_order(order=order, performed_by=user)

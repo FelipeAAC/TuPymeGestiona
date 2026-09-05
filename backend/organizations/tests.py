@@ -2,7 +2,6 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
-from django.urls import reverse
 
 from .authorization import has_permission
 from .models import (

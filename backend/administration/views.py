@@ -6,16 +6,13 @@ from rest_framework.response import Response
 
 from organizations.models import (
     Branch,
-    Company,
     CompanyMembership,
     CompanyRole,
     CompanyRolePermission,
     Permission,
-    RoleAssignment,
     normalize_role_name,
 )
 
-from administration.models import AdministrationEvent, OrderStatusConfiguration, PaymentMethod
 from administration.serializers import (
     AdministrationEventSerializer,
     BranchAdminSerializer,
@@ -36,7 +33,6 @@ from administration.services import (
     ensure_company_configuration,
     get_managed_company,
     log_admin_event,
-    membership_has_admin_access,
     replace_membership_access,
     user_can_create_company,
 )

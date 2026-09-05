@@ -1,7 +1,7 @@
 import re
 
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from rest_framework import serializers
 
 from organizations.models import (
@@ -9,10 +9,7 @@ from organizations.models import (
     Company,
     CompanyMembership,
     CompanyRole,
-    CompanyRolePermission,
-    MembershipBranch,
     Permission,
-    RoleAssignment,
 )
 
 from administration.models import (

@@ -1,16 +1,15 @@
 import hashlib
 import json
-import os
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.utils.dateparse import parse_datetime
 
 from orders.models import Order
 from portal.models import CustomerPortalAccount
 from sales.models import Sale
-from sales.services import SaleIdempotencyConflictError, SaleTransitionError, create_sale, record_payment
+from sales.services import create_sale, record_payment
 
 from .models import MercadoPagoCheckout, MercadoPagoEvent, MercadoPagoRemotePayment
 from .provider import MercadoPagoClient, MercadoPagoProviderError, MercadoPagoUncertainError

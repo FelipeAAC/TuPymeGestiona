@@ -6,7 +6,7 @@ from decimal import Decimal
 from io import BytesIO
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q, QuerySet
+from django.db.models import QuerySet
 from django.utils import timezone
 
 from reportlab.lib import colors

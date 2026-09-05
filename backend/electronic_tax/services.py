@@ -2,7 +2,6 @@ import hashlib
 import json
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 

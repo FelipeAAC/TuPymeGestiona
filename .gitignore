@@ -3,24 +3,23 @@ __pycache__/
 *.py[cod]
 
 # Virtual environments
+.venv/
 backend/.venv/
 
-# Django
-backend/db.sqlite3
+# Django / local databases
+*.sqlite3
 
-# Environment variables
+# Environment variables / secrets
 .env
 *.env
 
-# Node
+# Node / Angular
 node_modules/
-
-# Angular
 .angular/
 dist/
 
-# React / Vite
-admin-frontend/dist/
+# Legacy tree removed from the current architecture
+panel/
 
-# VS Code
+# Editor
 .vscode/

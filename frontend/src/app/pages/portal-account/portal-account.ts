@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { finalize, forkJoin } from 'rxjs';
 
 import {
@@ -19,7 +19,6 @@ import { PortalService } from '../../core/portal/portal.service';
 })
 export class PortalAccountPage implements OnInit {
   private readonly portalService = inject(PortalService);
-  private readonly router = inject(Router);
   readonly accounts = signal<PortalAccount[]>([]);
   readonly orders = signal<PortalOrder[]>([]);
   readonly payments = signal<PortalMercadoPagoPayment[]>([]);

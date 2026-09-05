@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import login
-from django.db.models import Q, Sum
+from django.db.models import Prefetch, Q, Sum
 from django.views.decorators.csrf import csrf_protect
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -9,7 +9,6 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from catalog.models import Category, Product, ProductVariant
-from inventory.models import InventoryStock
 from orders.models import Order
 from orders.serializers import OrderSerializer
 from organizations.models import Branch, Company
@@ -24,23 +23,24 @@ from .services import (
 )
 
 
-def _availability_for_variant(variant):
-    total = (
-        InventoryStock.objects.filter(
-            variant=variant,
-            warehouse__company=variant.product.company,
-        ).aggregate(total=Sum("quantity"))["total"]
-        or Decimal("0")
+def _portal_variant_queryset(*, company):
+    return (
+        ProductVariant.objects.filter(status=ProductVariant.Status.ACTIVE)
+        .annotate(
+            portal_available_quantity=Sum(
+                "inventory_stocks__quantity",
+                filter=Q(inventory_stocks__warehouse__company=company),
+                default=Decimal("0"),
+            )
+        )
+        .order_by("sku", "id")
     )
-    return total
 
 
 def _serialize_product(product, *, detailed=False):
     variants = []
-    for variant in product.variants.all():
-        if variant.status != ProductVariant.Status.ACTIVE:
-            continue
-        available = _availability_for_variant(variant)
+    for variant in product.portal_variants:
+        available = variant.portal_available_quantity or Decimal("0")
         variants.append(
             {
                 "id": variant.id,
@@ -74,7 +74,12 @@ def _serialize_product(product, *, detailed=False):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def store_list_view(request):
-    stores = Company.objects.filter(is_active=True).order_by("name", "id")
+    branches = Branch.objects.filter(is_active=True).order_by("name", "id")
+    stores = (
+        Company.objects.filter(is_active=True)
+        .prefetch_related(Prefetch("branches", queryset=branches))
+        .order_by("name", "id")
+    )
     return Response(
         {
             "stores": [
@@ -94,7 +99,7 @@ def store_list_view(request):
                             "commune": branch.commune,
                             "city": branch.city,
                         }
-                        for branch in company.branches.filter(is_active=True).order_by("name", "id")
+                        for branch in company.branches.all()
                     ],
                 }
                 for company in stores
@@ -108,13 +113,17 @@ def store_list_view(request):
 def catalog_view(request, company_id):
     company = Company.objects.filter(pk=company_id, is_active=True).first()
     if company is None:
-        return Response({"detail": "La tienda no existe o no está publicada."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"detail": "La tienda no existe o no está publicada."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
 
-    products = (
-        Product.objects.filter(company=company, status=Product.Status.ACTIVE)
-        .select_related("category", "brand", "company")
-        .prefetch_related("variants")
-    )
+    products = Product.objects.filter(
+        company=company,
+        status=Product.Status.ACTIVE,
+        variants__status=ProductVariant.Status.ACTIVE,
+    ).select_related("category", "brand", "company")
+
     search = request.query_params.get("search", "").strip()
     category_raw = request.query_params.get("category", "").strip()
 
@@ -124,19 +133,45 @@ def catalog_view(request, company_id):
             | Q(description__icontains=search)
             | Q(brand__name__icontains=search)
             | Q(variants__sku__icontains=search)
-        ).distinct()
+        )
 
     if category_raw:
         if not category_raw.isdecimal():
-            return Response({"category": ["La categoría debe ser un entero válido."]}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"category": ["La categoría debe ser un entero válido."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         products = products.filter(category_id=int(category_raw))
 
-    products = products.filter(variants__status=ProductVariant.Status.ACTIVE).distinct().order_by("name", "id")
-    categories = Category.objects.filter(company=company, products__status=Product.Status.ACTIVE).distinct().order_by("name", "id")
+    products = (
+        products.distinct()
+        .prefetch_related(
+            Prefetch(
+                "variants",
+                queryset=_portal_variant_queryset(company=company),
+                to_attr="portal_variants",
+            )
+        )
+        .order_by("name", "id")
+    )
+    categories = (
+        Category.objects.filter(
+            company=company,
+            status=Category.Status.ACTIVE,
+            products__status=Product.Status.ACTIVE,
+            products__variants__status=ProductVariant.Status.ACTIVE,
+        )
+        .distinct()
+        .order_by("name", "id")
+    )
 
     return Response(
         {
-            "store": {"id": company.id, "name": company.name, "business_activity": company.business_activity},
+            "store": {
+                "id": company.id,
+                "name": company.name,
+                "business_activity": company.business_activity,
+            },
             "categories": [{"id": item.id, "name": item.name} for item in categories],
             "products": [_serialize_product(product) for product in products],
         }
@@ -146,21 +181,36 @@ def catalog_view(request, company_id):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def product_detail_view(request, company_id, product_id):
+    company = Company.objects.filter(pk=company_id, is_active=True).first()
+    if company is None:
+        return Response(
+            {"detail": "El producto no existe o no está publicado."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
     product = (
         Product.objects.filter(
             pk=product_id,
-            company_id=company_id,
-            company__is_active=True,
+            company=company,
             status=Product.Status.ACTIVE,
             variants__status=ProductVariant.Status.ACTIVE,
         )
         .select_related("company", "category", "brand")
-        .prefetch_related("variants")
+        .prefetch_related(
+            Prefetch(
+                "variants",
+                queryset=_portal_variant_queryset(company=company),
+                to_attr="portal_variants",
+            )
+        )
         .distinct()
         .first()
     )
     if product is None:
-        return Response({"detail": "El producto no existe o no está publicado."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"detail": "El producto no existe o no está publicado."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
     return Response({"product": _serialize_product(product, detailed=True)})
 
 
@@ -177,7 +227,13 @@ def register_view(request):
     login(request, user)
     return Response(
         {
-            "user": {"id": user.id, "username": user.username, "email": user.email, "first_name": user.first_name, "last_name": user.last_name},
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            },
             "account": (
                 {
                     "company": account.company_id,
@@ -233,13 +289,19 @@ def order_history_view(request):
             customer__portal_account__status=CustomerPortalAccount.Status.ACTIVE,
         )
         .select_related("company", "branch", "warehouse", "customer", "created_by")
-        .prefetch_related("items__variant__product", "items__stock_movements__inventory_movement")
+        .prefetch_related(
+            "items__variant__product",
+            "items__stock_movements__inventory_movement",
+        )
         .order_by("-created_at", "-id")
     )
     company_raw = request.query_params.get("company", "").strip()
     if company_raw:
         if not company_raw.isdecimal():
-            return Response({"company": ["La empresa debe ser un entero válido."]}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"company": ["La empresa debe ser un entero válido."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         orders = orders.filter(company_id=int(company_raw))
     return Response({"orders": OrderSerializer(orders, many=True).data})
 
@@ -254,11 +316,17 @@ def order_detail_view(request, order_id):
             customer__portal_account__status=CustomerPortalAccount.Status.ACTIVE,
         )
         .select_related("company", "branch", "warehouse", "customer", "created_by")
-        .prefetch_related("items__variant__product", "items__stock_movements__inventory_movement")
+        .prefetch_related(
+            "items__variant__product",
+            "items__stock_movements__inventory_movement",
+        )
         .first()
     )
     if order is None:
-        return Response({"detail": "El pedido no existe en tu historial."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"detail": "El pedido no existe en tu historial."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
     return Response({"order": OrderSerializer(order).data})
 
 
@@ -267,9 +335,15 @@ def order_detail_view(request, order_id):
 def create_order_view(request):
     idempotency_key = request.headers.get("Idempotency-Key", "").strip()
     if not idempotency_key:
-        return Response({"detail": "Idempotency-Key es obligatorio."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": "Idempotency-Key es obligatorio."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if len(idempotency_key) > 100:
-        return Response({"detail": "Idempotency-Key es demasiado largo."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": "Idempotency-Key es demasiado largo."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     serializer = PortalOrderCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -287,7 +361,10 @@ def create_order_view(request):
     order = (
         Order.objects.filter(pk=order.pk)
         .select_related("company", "branch", "warehouse", "customer", "created_by")
-        .prefetch_related("items__variant__product", "items__stock_movements__inventory_movement")
+        .prefetch_related(
+            "items__variant__product",
+            "items__stock_movements__inventory_movement",
+        )
         .get()
     )
     return Response(

@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
+      DJANGO_SECRET_KEY: ci-only-secret-not-used-outside-tests
       DB_ENGINE: sqlite
       SII_ADAPTER_ENABLED: "false"
       SII_EXCHANGE_ENABLED: "false"
@@ -56,10 +57,13 @@ jobs:
         working-directory: backend
         run: python manage.py test
 
+      - name: Repository hygiene
+        run: python scripts/qa/verify_repository_hygiene.py --repository .
+
   frontend:
     name: Frontend quality
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       NG_BUILD_MAX_WORKERS: "1"
@@ -83,18 +87,17 @@ jobs:
       - name: Dependency audit - high and critical
         run: npm audit --audit-level=high
 
-      - name: Angular specs in isolated processes
-        shell: bash
-        run: |
-          mapfile -t specs < <(find src/app -type f -name '*.spec.ts' | sort)
-          if [ "${#specs[@]}" -eq 0 ]; then
-            echo "No Angular specs were found."
-            exit 1
-          fi
-          for spec in "${specs[@]}"; do
-            echo "==> $spec"
-            npm test -- --watch=false "--include=$spec"
-          done
+      - name: TypeScript strict unused checks
+        run: npm run typecheck
 
-      - name: Production build
+      - name: Angular principal specs in isolated processes
+        run: npm run test:isolated
+
+      - name: Maintainers specs
+        run: npm run test:maintainers
+
+      - name: Production build - principal
         run: npm run build
+
+      - name: Production build - maintainers
+        run: npm run build:maintainers

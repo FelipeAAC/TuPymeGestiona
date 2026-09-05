@@ -3,14 +3,12 @@ import copy
 import hashlib
 import html
 import os
-import re
 import threading
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
 import requests
-from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM

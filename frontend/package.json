@@ -12,7 +12,9 @@
     "test:maintainers": "ng test maintainers --watch=false",
     "test:ci": "ng test frontend --watch=false",
     "audit:high": "npm audit --audit-level=high",
-    "quality:frontend": "npm run audit:high && npm run test:ci && npm run build"
+    "quality:frontend": "npm run audit:high && npm run typecheck && npm run test:isolated && npm run test:maintainers && npm run build && npm run build:maintainers",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p projects/maintainers/tsconfig.app.json --noEmit",
+    "test:isolated": "node scripts/run-angular-specs.mjs"
   },
   "private": true,
   "packageManager": "npm@11.17.0",

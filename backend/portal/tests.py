@@ -2,7 +2,6 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.urls import reverse
 
 from catalog.models import Category, Product, ProductVariant
 from customers.models import Customer
