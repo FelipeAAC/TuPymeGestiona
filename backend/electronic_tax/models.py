@@ -214,6 +214,15 @@ class ElectronicTaxDocument(models.Model):
         on_delete=models.PROTECT,
         related_name="electronic_tax_documents",
     )
+    active_base_sale = models.OneToOneField(
+        Sale,
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="Guard técnico: solo se informa para la factura base activa de una venta.",
+    )
     type_code = models.PositiveSmallIntegerField(choices=TypeCode.choices)
     state = models.CharField(max_length=32, choices=State.choices, default=State.DRAFT)
     version = models.PositiveIntegerField(default=1)
@@ -274,13 +283,14 @@ class ElectronicTaxDocument(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["company", "type_code", "folio"],
-                condition=Q(folio__isnull=False),
                 name="uniq_dte_company_type_folio",
             ),
-            models.UniqueConstraint(
-                fields=["company", "sale"],
-                condition=Q(is_active_base=True),
-                name="uniq_dte_active_base_per_sale",
+            models.CheckConstraint(
+                condition=(
+                    Q(is_active_base=True, active_base_sale=models.F("sale"))
+                    | Q(is_active_base=False, active_base_sale__isnull=True)
+                ),
+                name="dte_active_base_guard_consistent",
             ),
             models.CheckConstraint(condition=Q(version__gt=0), name="dte_version_positive"),
             models.CheckConstraint(condition=Q(net_amount__gte=0), name="dte_net_not_negative"),
@@ -317,9 +327,17 @@ class ElectronicTaxDocument(models.Model):
         "snapshot_hash",
     )
 
+    def _sync_active_base_sale(self):
+        self.active_base_sale_id = self.sale_id if self.is_active_base else None
+
     def clean(self):
         super().clean()
         errors = {}
+        expected_active_base_sale_id = self.sale_id if self.is_active_base else None
+        if self.active_base_sale_id != expected_active_base_sale_id:
+            errors["active_base_sale"] = (
+                "El guard de factura base debe apuntar a la venta solo cuando is_active_base=True."
+            )
         if self.company_id and self.branch_id and self.branch.company_id != self.company_id:
             errors["branch"] = "La sucursal debe pertenecer a la empresa del DTE."
         if self.company_id and self.sale_id and self.sale.company_id != self.company_id:
@@ -365,6 +383,10 @@ class ElectronicTaxDocument(models.Model):
             raise ValidationError({"state": "El contenido fiscal es inmutable desde FOLIO_RESERVED."})
 
     def save(self, *args, **kwargs):
+        self._sync_active_base_sale()
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = tuple(set(update_fields) | {"active_base_sale"})
         self._assert_fiscal_immutability()
         self.clean()
         super().save(*args, **kwargs)

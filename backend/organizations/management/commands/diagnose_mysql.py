@@ -47,13 +47,42 @@ class Command(BaseCommand):
         executor = MigrationExecutor(connection)
         pending = executor.migration_plan(executor.loader.graph.leaf_nodes())
         if pending:
-            names = ", ".join(f"{migration.app_label}.{migration.name}" for migration, _ in pending)
-            errors.append(f"Migraciones pendientes: {names}")
+            pending_names = [
+                f"{migration.app_label}.{migration.name}"
+                for migration, _ in pending
+            ]
+            errors.append("Migraciones pendientes: " + ", ".join(pending_names))
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Migraciones pendientes ({len(pending_names)}):"
+                )
+            )
+            for name in pending_names:
+                self.stdout.write(f"  - {name}")
         else:
             self.stdout.write(self.style.SUCCESS("Migraciones: al día"))
 
         if is_mysql:
             self._mysql_runtime_checks(errors, warnings)
+
+        if pending:
+            self.stdout.write(
+                self.style.WARNING(
+                    "\nIntegridad de dominio omitida: el esquema aún no está completamente migrado."
+                )
+            )
+            if warnings:
+                self.stdout.write("\nAdvertencias:")
+                for warning in warnings:
+                    self.stdout.write(self.style.WARNING(f"  - {warning}"))
+            self.stdout.write("\nProblemas críticos:")
+            for error in errors:
+                self.stdout.write(self.style.ERROR(f"  - {error}"))
+            if options["strict"]:
+                raise CommandError(
+                    f"Diagnóstico detenido: hay {len(pending_names)} migración(es) pendiente(s)."
+                )
+            return
 
         checks = {
             "Bodegas con sucursal de otra empresa": Warehouse.objects.filter(branch__isnull=False)
