@@ -26,6 +26,9 @@
 .compact-modal {
   width: min(620px, 100%);
 }
+.pos-modal {
+  width: min(1020px, 100%);
+}
 .modal-header {
   justify-content: space-between;
   align-items: flex-start;
@@ -56,6 +59,55 @@
   display: grid;
   grid-template-columns: 1fr 1.5fr;
   gap: 13px;
+}
+.pos-context-grid,
+.pos-payment-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+.pos-product-grid {
+  grid-template-columns: minmax(0, 1fr) 130px auto;
+  align-items: end;
+}
+.pos-add-button {
+  white-space: nowrap;
+}
+.pos-cart {
+  display: grid;
+  gap: 8px;
+  min-height: 62px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 10px;
+  background: #f8fafc;
+}
+.pos-cart-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: #fff;
+}
+.pos-cart-row span {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.78rem;
+}
+.pos-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  color: #66758a;
+}
+.pos-total-row strong {
+  color: #162033;
+  font-size: 1.25rem;
+}
+.detail-items {
+  margin-bottom: 22px;
 }
 .form-grid div {
   display: grid;
@@ -260,11 +312,21 @@
     margin: 14px;
   }
   .form-grid,
+  .pos-context-grid,
+  .pos-product-grid,
+  .pos-payment-grid,
   .selection-preview,
   .amount-grid,
   .detail-meta,
   .detail-columns {
     grid-template-columns: 1fr;
+  }
+  .pos-cart-row {
+    grid-template-columns: 1fr auto;
+  }
+  .pos-cart-row .text-button {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
   .detail-actions div {
     justify-content: flex-start;

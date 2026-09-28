@@ -4,8 +4,12 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from administration.models import PaymentMethod
+from catalog.models import ProductVariant
+from customers.models import Customer
+from inventory.models import InventoryMovement
 from orders.models import Order
-from organizations.models import Branch, Company
+from organizations.models import Branch, Company, Warehouse
 
 
 class SaleNumberSequence(models.Model):
@@ -40,6 +44,10 @@ class SaleNumberSequence(models.Model):
 
 
 class Sale(models.Model):
+    class Origin(models.TextChoices):
+        ORDER = "ORDER", "Pedido"
+        POS = "POS", "Venta directa"
+
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pendiente"
         PARTIAL = "PARTIAL", "Parcial"
@@ -56,10 +64,31 @@ class Sale(models.Model):
         on_delete=models.PROTECT,
         related_name="sales",
     )
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.PROTECT,
+        related_name="sales",
+        null=True,
+        blank=True,
+    )
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.PROTECT,
+        related_name="sales",
+        null=True,
+        blank=True,
+    )
     order = models.OneToOneField(
         Order,
         on_delete=models.PROTECT,
         related_name="sale",
+        null=True,
+        blank=True,
+    )
+    origin = models.CharField(
+        max_length=10,
+        choices=Origin.choices,
+        default=Origin.ORDER,
     )
     number = models.PositiveBigIntegerField()
     status = models.CharField(
@@ -124,6 +153,16 @@ class Sale(models.Model):
                 name="sale_paid_amount_not_over_total",
             ),
         ]
+        indexes = [
+            models.Index(
+                fields=["company", "origin", "-created_at"],
+                name="sale_co_origin_created_idx",
+            ),
+            models.Index(
+                fields=["company", "branch", "-number"],
+                name="sale_co_branch_number_idx",
+            ),
+        ]
 
     def clean(self):
         super().clean()
@@ -136,6 +175,35 @@ class Sale(models.Model):
         ):
             errors["branch"] = (
                 "La sucursal debe pertenecer a la empresa de la venta."
+            )
+
+        if (
+            self.warehouse_id
+            and self.company_id
+            and self.warehouse.company_id != self.company_id
+        ):
+            errors["warehouse"] = (
+                "La bodega debe pertenecer a la empresa de la venta."
+            )
+
+        if (
+            self.warehouse_id
+            and self.branch_id
+            and self.warehouse.branch_id is not None
+            and self.warehouse.branch_id != self.branch_id
+        ):
+            errors["warehouse"] = (
+                "La bodega debe pertenecer a la sucursal de la venta "
+                "o ser una bodega de empresa."
+            )
+
+        if (
+            self.customer_id
+            and self.company_id
+            and self.customer.company_id != self.company_id
+        ):
+            errors["customer"] = (
+                "El cliente debe pertenecer a la empresa de la venta."
             )
 
         if self.order_id and self.company_id:
@@ -151,6 +219,20 @@ class Sale(models.Model):
                 errors["order"] = (
                     "La venta solo puede asociarse a un pedido entregado."
                 )
+
+            if self.warehouse_id and self.order.warehouse_id != self.warehouse_id:
+                errors["warehouse"] = (
+                    "La bodega debe coincidir con la del pedido de la venta."
+                )
+            if self.customer_id and self.order.customer_id != self.customer_id:
+                errors["customer"] = (
+                    "El cliente debe coincidir con el del pedido de la venta."
+                )
+
+        if self.origin == self.Origin.ORDER and self.order_id is None:
+            errors["order"] = "Una venta de pedido debe tener un pedido asociado."
+        if self.origin == self.Origin.POS and self.order_id is not None:
+            errors["order"] = "Una venta POS no puede tener un pedido asociado."
 
         if not self.idempotency_key.strip():
             errors["idempotency_key"] = (
@@ -224,10 +306,177 @@ class Sale(models.Model):
 
     @property
     def balance(self):
+        if self.status == self.Status.CANCELLED:
+            return Decimal("0.00")
         return self.total_amount - self.paid_amount
 
     def __str__(self):
         return f"{self.company} - Venta {self.number}"
+
+
+class SaleItem(models.Model):
+    sale = models.ForeignKey(
+        Sale,
+        on_delete=models.PROTECT,
+        related_name="items",
+    )
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.PROTECT,
+        related_name="sale_items",
+    )
+    sku_snapshot = models.CharField(max_length=100)
+    product_name_snapshot = models.CharField(max_length=200)
+    quantity = models.DecimalField(max_digits=14, decimal_places=3)
+    unit_price = models.DecimalField(max_digits=14, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sale_id", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["sale", "variant"],
+                name="uniq_sale_item_variant",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gt=0),
+                name="sale_item_quantity_greater_than_zero",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(unit_price__gte=0),
+                name="sale_item_unit_price_not_negative",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.sale_id and self.variant_id:
+            if self.variant.product.company_id != self.sale.company_id:
+                errors["variant"] = (
+                    "La variante debe pertenecer a la empresa de la venta."
+                )
+        if not self.sku_snapshot.strip():
+            errors["sku_snapshot"] = "El SKU capturado no puede estar vacio."
+        if not self.product_name_snapshot.strip():
+            errors["product_name_snapshot"] = (
+                "El nombre capturado no puede estar vacio."
+            )
+        if self.quantity is not None and self.quantity <= 0:
+            errors["quantity"] = "La cantidad debe ser mayor a cero."
+        if self.unit_price is not None and self.unit_price < 0:
+            errors["unit_price"] = "El precio unitario no puede ser negativo."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.sku_snapshot = self.sku_snapshot.strip()
+        self.product_name_snapshot = self.product_name_snapshot.strip()
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def line_total(self):
+        return self.quantity * self.unit_price
+
+    def __str__(self):
+        return f"Venta {self.sale.number} - {self.sku_snapshot}"
+
+
+class SaleInventoryMovement(models.Model):
+    class Kind(models.TextChoices):
+        SALE = "SALE", "Salida por venta"
+        REVERSAL = "REVERSAL", "Reposicion por anulacion"
+
+    sale_item = models.ForeignKey(
+        SaleItem,
+        on_delete=models.PROTECT,
+        related_name="stock_movements",
+    )
+    inventory_movement = models.OneToOneField(
+        InventoryMovement,
+        on_delete=models.PROTECT,
+        related_name="sale_stock_link",
+    )
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sale_item_id", "kind", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["sale_item", "kind"],
+                name="uniq_sale_item_stock_movement_kind",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if not self.sale_item_id or not self.inventory_movement_id:
+            return
+        if self.inventory_movement.variant_id != self.sale_item.variant_id:
+            raise ValidationError(
+                {"inventory_movement": "El movimiento debe corresponder a la variante de la linea."}
+            )
+        sale = self.sale_item.sale
+        if sale.warehouse_id and self.inventory_movement.warehouse_id != sale.warehouse_id:
+            raise ValidationError(
+                {"inventory_movement": "El movimiento debe pertenecer a la bodega de la venta."}
+            )
+        if self.kind == self.Kind.SALE and self.inventory_movement.quantity_delta >= 0:
+            raise ValidationError(
+                {"inventory_movement": "La salida de venta debe disminuir el stock."}
+            )
+        if self.kind == self.Kind.REVERSAL and self.inventory_movement.quantity_delta <= 0:
+            raise ValidationError(
+                {"inventory_movement": "La reposicion debe aumentar el stock."}
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class SaleReversal(models.Model):
+    sale = models.OneToOneField(
+        Sale,
+        on_delete=models.PROTECT,
+        related_name="reversal",
+    )
+    amount = models.DecimalField(max_digits=28, decimal_places=2)
+    reference = models.CharField(max_length=150)
+    performed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="sale_reversals",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sale_id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="sale_reversal_amount_greater_than_zero",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.amount is not None and self.amount <= 0:
+            errors["amount"] = "El monto de la reversión debe ser mayor a cero."
+        if not self.reference.strip():
+            errors["reference"] = "La referencia de reversión no puede estar vacia."
+        if self.sale_id and self.amount is not None and self.amount > self.sale.total_amount:
+            errors["amount"] = "La reversión no puede superar el total de la venta."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.reference = self.reference.strip()
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class Payment(models.Model):
@@ -242,6 +491,13 @@ class Payment(models.Model):
     )
     reference = models.CharField(max_length=150)
     idempotency_key = models.CharField(max_length=100)
+    payment_method = models.ForeignKey(
+        PaymentMethod,
+        on_delete=models.PROTECT,
+        related_name="sales_payments",
+        null=True,
+        blank=True,
+    )
     recorded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -277,6 +533,15 @@ class Payment(models.Model):
         if not self.idempotency_key.strip():
             errors["idempotency_key"] = (
                 "La clave de idempotencia no puede estar vacia."
+            )
+
+        if (
+            self.payment_method_id
+            and self.sale_id
+            and self.payment_method.company_id != self.sale.company_id
+        ):
+            errors["payment_method"] = (
+                "El metodo de pago debe pertenecer a la empresa de la venta."
             )
 
         if errors:

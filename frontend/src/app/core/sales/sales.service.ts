@@ -8,6 +8,10 @@ import {
   SaleCreateResponse,
   SaleListQuery,
   SaleListResponse,
+  PosSaleCreateRequest,
+  PosSaleCreateResponse,
+  PosSaleOptionsQuery,
+  SaleReverseResponse,
   SaleOptionsResponse,
   SalePaymentResponse,
   SaleResponse,
@@ -23,6 +27,27 @@ export class SalesService {
     const params = new HttpParams().set('company', companyId.toString());
 
     return this.http.get<SaleOptionsResponse>('/api/sales/options/', { params });
+  }
+
+  getPosOptions(
+    companyId: number,
+    query: PosSaleOptionsQuery = {},
+  ): Observable<SaleOptionsResponse> {
+    let params = new HttpParams().set('company', companyId.toString());
+
+    if (query.branch) {
+      params = params.set('branch', query.branch.toString());
+    }
+
+    if (query.warehouse) {
+      params = params.set('warehouse', query.warehouse.toString());
+    }
+
+    if (query.search?.trim()) {
+      params = params.set('search', query.search.trim());
+    }
+
+    return this.http.get<SaleOptionsResponse>('/api/sales/pos/options/', { params });
   }
 
   listSales(companyId: number, query: SaleListQuery = {}): Observable<SaleListResponse> {
@@ -72,6 +97,16 @@ export class SalesService {
     });
   }
 
+  createPosSale(
+    companyId: number,
+    payload: PosSaleCreateRequest,
+  ): Observable<PosSaleCreateResponse> {
+    return this.http.post<PosSaleCreateResponse>('/api/sales/pos/', {
+      company: companyId,
+      ...payload,
+    });
+  }
+
   recordPayment(
     companyId: number,
     saleId: number,
@@ -90,6 +125,17 @@ export class SalesService {
   cancelSale(companyId: number, saleId: number): Observable<SaleCancelResponse> {
     return this.http.post<SaleCancelResponse>(`/api/sales/${saleId}/cancel/`, {
       company: companyId,
+    });
+  }
+
+  reversePosSale(
+    companyId: number,
+    saleId: number,
+    reference: string,
+  ): Observable<SaleReverseResponse> {
+    return this.http.post<SaleReverseResponse>(`/api/sales/${saleId}/reverse/`, {
+      company: companyId,
+      reference,
     });
   }
 }

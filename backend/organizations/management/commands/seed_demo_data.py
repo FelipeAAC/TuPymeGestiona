@@ -11,6 +11,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
 from administration.services import create_company_for_user
+from administration.models import PaymentMethod
 from catalog.models import Brand, Category, Product, ProductVariant, Supplier
 from customers.models import Customer
 from inventory.models import InventoryStock
@@ -29,7 +30,7 @@ from organizations.models import (
 )
 from portal.models import CustomerPortalAccount
 from sales.models import Payment, Sale, SaleEvent
-from sales.services import create_sale, record_payment
+from sales.services import create_pos_sale, create_sale, record_payment
 
 User = get_user_model()
 
@@ -91,16 +92,14 @@ class Command(BaseCommand):
         parser.add_argument("--customers", type=int, default=70)
         parser.add_argument("--orders", type=int, default=36)
         parser.add_argument("--password", default="")
-        parser.add_argument("--allow-sqlite", action="store_true")
-        parser.add_argument("--force-production", action="store_true")
 
     def handle(self, *args, **options):
-        if connection.vendor != "mysql" and not options["allow_sqlite"]:
+        if connection.vendor != "mysql":
             raise CommandError(
                 f"La conexión activa es {connection.vendor!r}. El cargador demo normal exige MySQL."
             )
-        if not settings.DEBUG and not options["force_production"]:
-            raise CommandError("El seed demo está bloqueado con DEBUG=False salvo --force-production.")
+        if not settings.DEBUG:
+            raise CommandError("El seed demo está bloqueado con DEBUG=False.")
 
         executor = MigrationExecutor(connection)
         pending = executor.migration_plan(executor.loader.graph.leaf_nodes())
@@ -201,13 +200,22 @@ class Command(BaseCommand):
                     order_count=orders_count,
                     rng=rng,
                 )
+                self._pos_sales(
+                    company=company,
+                    branches=branches,
+                    warehouses=warehouses,
+                    variants=variants,
+                    customers=customers,
+                    owner=owner,
+                )
                 self._low_stock_examples(warehouses, variants)
 
         self.stdout.write(self.style.SUCCESS(
             f"Dataset {seed!r} creado: {companies_count} empresas, "
             f"{companies_count * products_count} productos, "
             f"{companies_count * customers_count} clientes y hasta "
-            f"{companies_count * orders_count} pedidos."
+            f"{companies_count * orders_count} pedidos, "
+            f"{companies_count * 2} ventas POS."
         ))
         self._print_credentials(seed, password)
 
@@ -496,6 +504,74 @@ class Command(BaseCommand):
             return
         InventoryStock.objects.filter(warehouse=warehouses[0], variant=variants[0]).update(quantity=0)
         InventoryStock.objects.filter(warehouse=warehouses[0], variant=variants[1]).update(quantity=Decimal("3.000"))
+
+    def _pos_sales(
+        self,
+        *,
+        company,
+        branches,
+        warehouses,
+        variants,
+        customers,
+        owner,
+    ):
+        """Crea dos ventas directas pequeñas para probar el flujo POS local.
+
+        Las primeras variantes se reservan para este flujo y no son utilizadas
+        por los pedidos demo. Se usa la segunda sucursal para que el ejemplo no
+        choque con los casos de stock bajo que se dejan en la casa matriz.
+        """
+        if len(variants) < 2 or len(branches) < 2:
+            return
+
+        branch = branches[1]
+        warehouse = next(item for item in warehouses if item.branch_id == branch.id)
+        cash = PaymentMethod.objects.get(company=company, code="CASH", is_active=True)
+        transfer = PaymentMethod.objects.get(
+            company=company,
+            code="TRANSFER",
+            is_active=True,
+        )
+        examples = (
+            {
+                "variant": variants[0],
+                "customer": None,
+                "payment_method": cash,
+                "reference": f"DEMO-POS-EFECTIVO-{company.id}",
+                "idempotency_key": f"demo-pos-cash-{company.id}",
+            },
+            {
+                "variant": variants[1],
+                "customer": customers[1] if len(customers) > 1 else customers[0],
+                "payment_method": transfer,
+                "reference": f"DEMO-POS-TRANSFERENCIA-{company.id}",
+                "idempotency_key": f"demo-pos-transfer-{company.id}",
+            },
+        )
+        for index, example in enumerate(examples):
+            sale, payment, _ = create_pos_sale(
+                company=company,
+                branch=branch,
+                warehouse=warehouse,
+                customer=example["customer"],
+                items=[
+                    {
+                        "variant": example["variant"],
+                        "quantity": Decimal("1.000"),
+                    }
+                ],
+                payment_method=example["payment_method"],
+                reference=example["reference"],
+                idempotency_key=example["idempotency_key"],
+                created_by=owner,
+            )
+            occurred_at = timezone.now() - timedelta(days=3 - index)
+            Sale.objects.filter(pk=sale.pk).update(
+                created_at=occurred_at,
+                updated_at=occurred_at,
+            )
+            Payment.objects.filter(pk=payment.pk).update(created_at=occurred_at)
+            SaleEvent.objects.filter(sale=sale).update(created_at=occurred_at)
 
     def _print_credentials(self, seed, password):
         marker_domain = f"demo-{seed}.tupyme.local"

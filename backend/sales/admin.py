@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import Payment, Sale, SaleEvent, SaleNumberSequence
+from .models import (
+    Payment,
+    Sale,
+    SaleEvent,
+    SaleItem,
+    SaleNumberSequence,
+    SaleReversal,
+)
 
 
 class PaymentInline(admin.TabularInline):
@@ -10,7 +17,34 @@ class PaymentInline(admin.TabularInline):
         "amount",
         "reference",
         "idempotency_key",
+        "payment_method",
         "recorded_by",
+        "created_at",
+    )
+    can_delete = False
+
+
+class SaleItemInline(admin.TabularInline):
+    model = SaleItem
+    extra = 0
+    readonly_fields = (
+        "variant",
+        "sku_snapshot",
+        "product_name_snapshot",
+        "quantity",
+        "unit_price",
+        "created_at",
+    )
+    can_delete = False
+
+
+class SaleReversalInline(admin.TabularInline):
+    model = SaleReversal
+    extra = 0
+    readonly_fields = (
+        "amount",
+        "reference",
+        "performed_by",
         "created_at",
     )
     can_delete = False
@@ -38,7 +72,10 @@ class SaleAdmin(admin.ModelAdmin):
         "number",
         "company",
         "branch",
+        "origin",
         "order",
+        "customer",
+        "warehouse",
         "status",
         "total_amount",
         "paid_amount",
@@ -46,6 +83,7 @@ class SaleAdmin(admin.ModelAdmin):
     )
     list_filter = (
         "status",
+        "origin",
         "company",
         "branch",
     )
@@ -54,8 +92,16 @@ class SaleAdmin(admin.ModelAdmin):
         "order__number",
         "order__customer__name",
         "order__customer__code",
+        "customer__name",
+        "customer__code",
+        "warehouse__code",
     )
-    inlines = (PaymentInline, SaleEventInline)
+    inlines = (
+        SaleItemInline,
+        PaymentInline,
+        SaleEventInline,
+        SaleReversalInline,
+    )
 
 
 @admin.register(SaleNumberSequence)

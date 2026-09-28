@@ -8,17 +8,25 @@ if not exist "%PYTHON%" (
   exit /b 1
 )
 
-echo ==^> Verificar MySQL antes de cargar datos demo
-call "%ROOT%Revisar_MySQL.cmd"
+echo ==^> Validar configuracion Django y aplicar migraciones
+pushd "%ROOT%backend"
+"%PYTHON%" manage.py check
 if errorlevel 1 (
+  popd
   echo.
-  echo No se cargaran datos demo hasta que Revisar_MySQL.cmd quede verde.
+  echo La validacion de Django termino con error.
+  exit /b 1
+)
+"%PYTHON%" manage.py migrate --noinput
+if errorlevel 1 (
+  popd
+  echo.
+  echo Las migraciones terminaron con error.
   exit /b 1
 )
 
 echo.
 echo ==^> Cargar dataset demo poblado
-pushd "%ROOT%backend"
 "%PYTHON%" manage.py seed_demo_data %*
 set "EXIT_CODE=%ERRORLEVEL%"
 popd

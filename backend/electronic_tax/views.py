@@ -217,7 +217,7 @@ def document_list_create_view(request):
         company = membership.company
         sale = (
             Sale.objects.filter(company=company, pk=serializer.validated_data["sale_id"])
-            .select_related("branch", "order__customer")
+            .select_related("branch", "customer", "order__customer")
             .first()
         )
         if sale is None:

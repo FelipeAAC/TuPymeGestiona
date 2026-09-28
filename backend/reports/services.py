@@ -3,19 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.db.models import QuerySet
 from django.utils import timezone
-
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-import xlsxwriter
 
 from catalog.models import Category
 from inventory.models import InventoryStock
@@ -27,6 +18,7 @@ from organizations.models import (
     Warehouse,
 )
 from sales.models import Sale
+from reports import export_renderers
 
 
 ADMIN_PERMISSION_CODE = "administration.manage"
@@ -207,7 +199,7 @@ def sales_queryset(*, context: ReportContext, filters: SalesFilters) -> QuerySet
 
     queryset = (
         Sale.objects.filter(company=context.company)
-        .select_related("branch", "order__customer", "created_by")
+        .select_related("branch", "customer", "order__customer", "created_by")
         .order_by("-created_at", "-number")
     )
     if filters.date_from:
@@ -235,24 +227,30 @@ def sales_report_data(*, context: ReportContext, filters: SalesFilters) -> dict:
     paid_total = sum((sale.paid_amount for sale in active_sales), Decimal("0.00"))
     balance_total = gross_total - paid_total
 
-    rows = [
-        {
-            "id": sale.id,
-            "number": sale.number,
-            "date": timezone.localtime(sale.created_at).date().isoformat(),
-            "branch": sale.branch.name,
-            "branch_code": sale.branch.code,
-            "seller": sale.created_by.get_full_name().strip() or sale.created_by.username,
-            "seller_username": sale.created_by.username,
-            "customer": sale.order.customer.name,
-            "customer_code": sale.order.customer.code,
-            "status": sale.status,
-            "total_amount": str(sale.total_amount),
-            "paid_amount": str(sale.paid_amount),
-            "balance": str(sale.balance),
-        }
-        for sale in sales
-    ]
+    rows = []
+    for sale in sales:
+        customer = sale.customer
+        if customer is None and sale.order_id:
+            customer = sale.order.customer
+        rows.append(
+            {
+                "id": sale.id,
+                "number": sale.number,
+                "origin": sale.origin,
+                "order_number": sale.order.number if sale.order_id else None,
+                "date": timezone.localtime(sale.created_at).date().isoformat(),
+                "branch": sale.branch.name,
+                "branch_code": sale.branch.code,
+                "seller": sale.created_by.get_full_name().strip() or sale.created_by.username,
+                "seller_username": sale.created_by.username,
+                "customer": customer.name if customer else "Consumidor final",
+                "customer_code": customer.code if customer else "CONSUMIDOR_FINAL",
+                "status": sale.status,
+                "total_amount": str(sale.total_amount),
+                "paid_amount": str(sale.paid_amount),
+                "balance": str(sale.balance),
+            }
+        )
     return {
         "filters": _sales_filter_labels(context=context, filters=filters),
         "summary": {
@@ -404,202 +402,29 @@ def _inventory_filter_labels(*, context, filters):
     }
 
 
-def _money(value):
-    return f"${Decimal(value):,.0f}".replace(",", ".")
-
-
 def build_sales_pdf(*, context: ReportContext, filters: SalesFilters) -> bytes:
     data = sales_report_data(context=context, filters=filters)
     if not data["rows"]:
         raise ReportValidationError("No se encontraron transacciones para exportar.")
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(A4),
-        rightMargin=12 * mm,
-        leftMargin=12 * mm,
-        topMargin=12 * mm,
-        bottomMargin=12 * mm,
-        title="Reporte de ventas",
-    )
-    styles = getSampleStyleSheet()
-    small = ParagraphStyle("small", parent=styles["BodyText"], fontSize=7.5, leading=9, alignment=TA_LEFT)
-    story = [
-        Paragraph(f"Reporte de ventas · {context.company.name}", styles["Title"]),
-        Paragraph(
-            f"Fechas: {data['filters']['date_from']} a {data['filters']['date_to']} · "
-            f"Sucursal: {data['filters']['branch']} · Vendedor: {data['filters']['seller']}",
-            styles["BodyText"],
-        ),
-        Spacer(1, 5 * mm),
-        Paragraph(
-            f"Registros: {data['summary']['records']} · Ventas vigentes: {data['summary']['active_sales']} · "
-            f"Total: {_money(data['summary']['gross_total'])} · Abonado: {_money(data['summary']['paid_total'])} · "
-            f"Saldo: {_money(data['summary']['balance_total'])}",
-            styles["BodyText"],
-        ),
-        Spacer(1, 4 * mm),
-    ]
-    table_data = [["Venta", "Fecha", "Sucursal", "Vendedor", "Cliente", "Estado", "Total", "Abonado", "Saldo"]]
-    for row in data["rows"]:
-        table_data.append([
-            f"#{row['number']}", row["date"], row["branch"], row["seller"], row["customer"], row["status"],
-            _money(row["total_amount"]), _money(row["paid_amount"]), _money(row["balance"]),
-        ])
-    table = Table(table_data, repeatRows=1, colWidths=[15*mm, 21*mm, 31*mm, 31*mm, 42*mm, 23*mm, 23*mm, 23*mm, 23*mm])
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#2F75B5")),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTSIZE", (0,0), (-1,-1), 7.2),
-        ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#D0D5DD")),
-        ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#F7F9FC")]),
-        ("ALIGN", (6,1), (-1,-1), "RIGHT"),
-        ("LEFTPADDING", (0,0), (-1,-1), 3), ("RIGHTPADDING", (0,0), (-1,-1), 3),
-        ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-    ]))
-    story.append(table)
-    doc.build(story)
-    return buffer.getvalue()
-
-
-def build_inventory_pdf(*, context: ReportContext, filters: InventoryFilters) -> bytes:
-    data = inventory_report_data(context=context, filters=filters)
-    if not data["rows"]:
-        raise ReportValidationError("No se encontraron productos para exportar.")
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(A4),
-        rightMargin=12 * mm,
-        leftMargin=12 * mm,
-        topMargin=12 * mm,
-        bottomMargin=12 * mm,
-        title="Reporte de inventario",
-    )
-    styles = getSampleStyleSheet()
-    story = [
-        Paragraph(f"Reporte de inventario · {context.company.name}", styles["Title"]),
-        Paragraph(
-            f"Bodega: {data['filters']['warehouse']} · Categoría: {data['filters']['category']} · "
-            f"Nivel: {data['filters']['stock_level']} · Umbral crítico: {data['filters']['critical_threshold']}",
-            styles["BodyText"],
-        ),
-        Spacer(1, 4 * mm),
-        Paragraph(
-            f"Registros: {data['summary']['records']} · Unidades: {data['summary']['total_units']} · "
-            f"Valor referencial: {_money(data['summary']['reference_value'])} · "
-            f"Críticos: {data['summary']['critical_count']} · Sin stock: {data['summary']['out_count']}",
-            styles["BodyText"],
-        ),
-        Paragraph(data["valuation_note"], styles["Italic"]),
-        Spacer(1, 4 * mm),
-    ]
-    table_data = [["Bodega", "Sucursal", "Categoría", "Producto", "SKU", "Cantidad", "Precio base", "Valor ref.", "Nivel"]]
-    for row in data["rows"]:
-        table_data.append([
-            row["warehouse"], row["branch"], row["category"], row["product"], row["sku"], row["quantity"],
-            _money(row["unit_price"]), _money(row["reference_value"]), row["stock_level"],
-        ])
-    table = Table(table_data, repeatRows=1, colWidths=[30*mm, 28*mm, 30*mm, 42*mm, 28*mm, 22*mm, 24*mm, 25*mm, 24*mm])
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#2F75B5")),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTSIZE", (0,0), (-1,-1), 7.1),
-        ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#D0D5DD")),
-        ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#F7F9FC")]),
-        ("ALIGN", (5,1), (7,-1), "RIGHT"),
-        ("LEFTPADDING", (0,0), (-1,-1), 3), ("RIGHTPADDING", (0,0), (-1,-1), 3),
-        ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-    ]))
-    story.append(table)
-    doc.build(story)
-    return buffer.getvalue()
-
-
-def _xlsx_workbook():
-    buffer = BytesIO()
-    workbook = xlsxwriter.Workbook(buffer, {"in_memory": True})
-    return buffer, workbook
+    return export_renderers.sales_pdf(company_name=context.company.name, data=data)
 
 
 def build_sales_xlsx(*, context: ReportContext, filters: SalesFilters) -> bytes:
     data = sales_report_data(context=context, filters=filters)
     if not data["rows"]:
         raise ReportValidationError("No se encontraron transacciones para exportar.")
-    buffer, workbook = _xlsx_workbook()
-    sheet = workbook.add_worksheet("Ventas")
-    title_fmt = workbook.add_format({"bold": True, "font_size": 16, "font_color": "#15233C"})
-    label_fmt = workbook.add_format({"bold": True, "font_color": "#475467"})
-    header_fmt = workbook.add_format({"bold": True, "bg_color": "#2F75B5", "font_color": "#FFFFFF", "border": 1})
-    text_fmt = workbook.add_format({"border": 1, "border_color": "#D0D5DD"})
-    money_fmt = workbook.add_format({"border": 1, "border_color": "#D0D5DD", "num_format": '$#,##0'})
-    sheet.write("A1", f"Reporte de ventas · {context.company.name}", title_fmt)
-    sheet.write("A3", "Fecha desde", label_fmt); sheet.write("B3", data["filters"]["date_from"])
-    sheet.write("C3", "Fecha hasta", label_fmt); sheet.write("D3", data["filters"]["date_to"])
-    sheet.write("E3", "Sucursal", label_fmt); sheet.write("F3", data["filters"]["branch"])
-    sheet.write("G3", "Vendedor", label_fmt); sheet.write("H3", data["filters"]["seller"])
-    sheet.write("A4", "Registros", label_fmt); sheet.write_number("B4", data["summary"]["records"])
-    sheet.write("C4", "Total", label_fmt); sheet.write_number("D4", float(data["summary"]["gross_total"]), money_fmt)
-    sheet.write("E4", "Abonado", label_fmt); sheet.write_number("F4", float(data["summary"]["paid_total"]), money_fmt)
-    sheet.write("G4", "Saldo", label_fmt); sheet.write_number("H4", float(data["summary"]["balance_total"]), money_fmt)
-    headers = ["Venta", "Fecha", "Sucursal", "Vendedor", "Cliente", "Estado", "Total", "Abonado", "Saldo"]
-    for col, header in enumerate(headers):
-        sheet.write(6, col, header, header_fmt)
-    for idx, row in enumerate(data["rows"], start=7):
-        values = [f"#{row['number']}", row["date"], row["branch"], row["seller"], row["customer"], row["status"]]
-        for col, value in enumerate(values):
-            sheet.write(idx, col, value, text_fmt)
-        sheet.write_number(idx, 6, float(row["total_amount"]), money_fmt)
-        sheet.write_number(idx, 7, float(row["paid_amount"]), money_fmt)
-        sheet.write_number(idx, 8, float(row["balance"]), money_fmt)
-    sheet.freeze_panes(7, 0)
-    sheet.autofilter(6, 0, 6 + len(data["rows"]), len(headers)-1)
-    sheet.set_column("A:A", 11); sheet.set_column("B:B", 12); sheet.set_column("C:E", 24)
-    sheet.set_column("F:F", 14); sheet.set_column("G:I", 14)
-    workbook.close()
-    return buffer.getvalue()
+    return export_renderers.sales_xlsx(company_name=context.company.name, data=data)
+
+
+def build_inventory_pdf(*, context: ReportContext, filters: InventoryFilters) -> bytes:
+    data = inventory_report_data(context=context, filters=filters)
+    if not data["rows"]:
+        raise ReportValidationError("No se encontraron productos para exportar.")
+    return export_renderers.inventory_pdf(company_name=context.company.name, data=data)
 
 
 def build_inventory_xlsx(*, context: ReportContext, filters: InventoryFilters) -> bytes:
     data = inventory_report_data(context=context, filters=filters)
     if not data["rows"]:
         raise ReportValidationError("No se encontraron productos para exportar.")
-    buffer, workbook = _xlsx_workbook()
-    sheet = workbook.add_worksheet("Inventario")
-    title_fmt = workbook.add_format({"bold": True, "font_size": 16, "font_color": "#15233C"})
-    label_fmt = workbook.add_format({"bold": True, "font_color": "#475467"})
-    note_fmt = workbook.add_format({"italic": True, "font_color": "#667085", "text_wrap": True})
-    header_fmt = workbook.add_format({"bold": True, "bg_color": "#2F75B5", "font_color": "#FFFFFF", "border": 1})
-    text_fmt = workbook.add_format({"border": 1, "border_color": "#D0D5DD"})
-    qty_fmt = workbook.add_format({"border": 1, "border_color": "#D0D5DD", "num_format": '0.000'})
-    money_fmt = workbook.add_format({"border": 1, "border_color": "#D0D5DD", "num_format": '$#,##0'})
-    sheet.write("A1", f"Reporte de inventario · {context.company.name}", title_fmt)
-    sheet.write("A3", "Bodega", label_fmt); sheet.write("B3", data["filters"]["warehouse"])
-    sheet.write("C3", "Categoría", label_fmt); sheet.write("D3", data["filters"]["category"])
-    sheet.write("E3", "Nivel", label_fmt); sheet.write("F3", data["filters"]["stock_level"])
-    sheet.write("G3", "Umbral", label_fmt); sheet.write_number("H3", float(data["summary"]["critical_threshold"]), qty_fmt)
-    sheet.write("A4", "Registros", label_fmt); sheet.write_number("B4", data["summary"]["records"])
-    sheet.write("C4", "Unidades", label_fmt); sheet.write_number("D4", float(data["summary"]["total_units"]), qty_fmt)
-    sheet.write("E4", "Valor ref.", label_fmt); sheet.write_number("F4", float(data["summary"]["reference_value"]), money_fmt)
-    sheet.write("G4", "Críticos / sin stock", label_fmt); sheet.write("H4", f"{data['summary']['critical_count']} / {data['summary']['out_count']}")
-    sheet.merge_range("A5:I5", data["valuation_note"], note_fmt)
-    headers = ["Bodega", "Sucursal", "Categoría", "Producto", "SKU", "Cantidad", "Precio base", "Valor referencial", "Nivel"]
-    for col, header in enumerate(headers):
-        sheet.write(6, col, header, header_fmt)
-    for idx, row in enumerate(data["rows"], start=7):
-        values = [row["warehouse"], row["branch"], row["category"], row["product"], row["sku"]]
-        for col, value in enumerate(values):
-            sheet.write(idx, col, value, text_fmt)
-        sheet.write_number(idx, 5, float(row["quantity"]), qty_fmt)
-        sheet.write_number(idx, 6, float(row["unit_price"]), money_fmt)
-        sheet.write_number(idx, 7, float(row["reference_value"]), money_fmt)
-        sheet.write(idx, 8, row["stock_level"], text_fmt)
-    sheet.freeze_panes(7, 0)
-    sheet.autofilter(6, 0, 6 + len(data["rows"]), len(headers)-1)
-    sheet.set_column("A:D", 24); sheet.set_column("E:E", 18); sheet.set_column("F:H", 16); sheet.set_column("I:I", 14)
-    workbook.close()
-    return buffer.getvalue()
+    return export_renderers.inventory_xlsx(company_name=context.company.name, data=data)

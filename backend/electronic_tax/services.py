@@ -279,7 +279,12 @@ def _load_tax_profiles(*, sale):
     company_profile = TaxCompanyProfile.objects.filter(company=sale.company).first()
     if company_profile is None:
         raise DTEValidationError("La empresa no tiene perfil tributario configurado.")
-    customer_profile = TaxCustomerProfile.objects.filter(customer=sale.order.customer).first()
+    customer = sale.customer
+    if customer is None and sale.order_id:
+        customer = sale.order.customer
+    if customer is None:
+        raise DTEValidationError("La venta no tiene un receptor tributario asociado.")
+    customer_profile = TaxCustomerProfile.objects.filter(customer=customer).first()
     if customer_profile is None:
         raise DTEValidationError("El receptor no tiene perfil tributario configurado.")
     issuer_rut = _require_profile_fields(company_profile, party_name="la empresa emisora")
@@ -287,14 +292,32 @@ def _load_tax_profiles(*, sale):
     return company_profile, customer_profile, issuer_rut, receiver_rut
 
 
+def _sale_line_items(*, sale):
+    """Return captured sale lines, with an order fallback for legacy rows."""
+    items = list(sale.items.select_related("variant__product").order_by("id"))
+    if items:
+        return items
+    if sale.order_id:
+        return list(
+            sale.order.items.select_related("variant__product").order_by("id")
+        )
+    return []
+
+
+def _line_sku(item):
+    return getattr(item, "sku_snapshot", "") or item.variant.sku
+
+
+def _line_description(item):
+    return getattr(item, "product_name_snapshot", "") or item.variant.product.name
+
+
 def _round_clp(value):
     return int(Decimal(value).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def _calculate_sale_lines(*, sale, type_code, vat_rate=DEFAULT_VAT_RATE):
-    items = list(
-        sale.order.items.select_related("variant__product").order_by("id")
-    )
+    items = _sale_line_items(sale=sale)
     if not items:
         raise DTEValidationError("La venta no contiene lineas facturables.")
 
@@ -303,12 +326,12 @@ def _calculate_sale_lines(*, sale, type_code, vat_rate=DEFAULT_VAT_RATE):
         profile.variant_id: profile
         for profile in TaxProductProfile.objects.filter(variant_id__in=variant_ids)
     }
-    missing = [item.variant.sku for item in items if item.variant_id not in tax_profiles]
+    missing = [_line_sku(item) for item in items if item.variant_id not in tax_profiles]
     if missing:
         raise DTEValidationError(
             "Falta clasificacion tributaria para las variantes: " + ", ".join(missing)
         )
-    inactive = [item.variant.sku for item in items if not tax_profiles[item.variant_id].active]
+    inactive = [_line_sku(item) for item in items if not tax_profiles[item.variant_id].active]
     if inactive:
         raise DTEValidationError(
             "La clasificacion tributaria esta inactiva para: " + ", ".join(inactive)
@@ -342,8 +365,8 @@ def _calculate_sale_lines(*, sale, type_code, vat_rate=DEFAULT_VAT_RATE):
             {
                 "line_number": line_number,
                 "variant": item.variant,
-                "sku": item.variant.sku,
-                "description": item.variant.product.name,
+                "sku": _line_sku(item),
+                "description": _line_description(item),
                 "quantity": item.quantity,
                 "unit_price": item.unit_price,
                 "discount_amount": 0,
@@ -460,7 +483,7 @@ def create_base_document(*, company, sale, type_code, idempotency_key, created_b
     try:
         locked_sale = (
             Sale.objects.select_for_update()
-            .select_related("company", "branch", "order__customer")
+            .select_related("company", "branch", "customer", "order__customer")
             .get(pk=sale.pk, company=locked_company)
         )
     except Sale.DoesNotExist as error:
@@ -478,8 +501,11 @@ def create_base_document(*, company, sale, type_code, idempotency_key, created_b
 
     if locked_sale.status == Sale.Status.CANCELLED:
         raise DTEValidationError("Una venta CANCELLED no es elegible para facturacion.")
-    if locked_sale.order.status != Order.Status.DELIVERED:
-        raise DTEValidationError("La venta debe mantener un pedido entregado.")
+    if locked_sale.origin == Sale.Origin.ORDER:
+        if not locked_sale.order_id or locked_sale.order.status != Order.Status.DELIVERED:
+            raise DTEValidationError("La venta debe mantener un pedido entregado.")
+    elif locked_sale.origin == Sale.Origin.POS and locked_sale.order_id:
+        raise DTEValidationError("Una venta POS no puede mantener un pedido asociado.")
     if ElectronicTaxDocument.objects.filter(
         company=locked_company,
         sale=locked_sale,

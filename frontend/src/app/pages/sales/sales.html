@@ -3,22 +3,32 @@
     <div>
       <span class="eyebrow">Cierre comercial interno</span>
       <h1>Ventas y pagos</h1>
-      <p>Convierte pedidos entregados en ventas y controla abonos, saldo y auditoría.</p>
+      <p>Registra ventas desde pedidos o directamente en caja, con pagos y auditoría.</p>
       @if (selectedMembership(); as membership) {
         <span class="company-context">Empresa activa: {{ membership.company.name }}</span>
       }
     </div>
 
-    <button
-      type="button"
-      class="primary-button"
-      [disabled]="
-        !canManageSales() || isLoading() || (options()?.delivered_orders?.length ?? 0) === 0
-      "
-      (click)="openCreate()"
-    >
-      Nueva venta
-    </button>
+    <div class="header-actions">
+      <button
+        type="button"
+        class="secondary-button"
+        [disabled]="
+          !canManageSales() || isLoading() || (options()?.delivered_orders?.length ?? 0) === 0
+        "
+        (click)="openCreate()"
+      >
+        Desde pedido
+      </button>
+      <button
+        type="button"
+        class="primary-button"
+        [disabled]="!canManageSales() || isLoading()"
+        (click)="openPos()"
+      >
+        Nueva venta POS
+      </button>
+    </div>
   </header>
 
   <div class="summary-grid" aria-label="Resumen de ventas visibles">
@@ -150,8 +160,13 @@
                   <small>{{ formatDate(sale.created_at) }}</small>
                 </td>
                 <td>
-                  <strong>Pedido #{{ sale.order_number }}</strong>
-                  <small>{{ sale.customer_code }} · {{ sale.customer_name }}</small>
+                  <strong>{{ saleOriginLabel(sale) }}</strong>
+                  @if (isPosSale(sale)) {
+                    <small>{{ warehouseLabel(sale.warehouse) }}</small>
+                  } @else {
+                    <small>Pedido #{{ sale.order_number }}</small>
+                  }
+                  <small>{{ customerLabel(sale) }}</small>
                 </td>
                 <td>{{ branchLabel(sale.branch) }}</td>
                 <td>
@@ -178,6 +193,11 @@
                     @if (canCancel(sale)) {
                       <button type="button" class="danger-button" (click)="requestCancel(sale)">
                         Anular
+                      </button>
+                    }
+                    @if (canReverse(sale)) {
+                      <button type="button" class="danger-button" (click)="requestReverse(sale)">
+                        Revertir
                       </button>
                     }
                   </div>
@@ -283,6 +303,174 @@
           </button>
           <button type="submit" class="primary-button" [disabled]="isCreating()">
             {{ isCreating() ? 'Creando...' : 'Crear venta' }}
+          </button>
+        </footer>
+      </form>
+    </section>
+  </div>
+}
+
+@if (isPosOpen()) {
+  <div class="modal-backdrop" (click)="closePos()">
+    <section
+      class="modal-card pos-modal"
+      role="dialog"
+      aria-modal="true"
+      (click)="$event.stopPropagation()"
+    >
+      <header class="modal-header">
+        <div>
+          <span class="eyebrow">Caja · venta directa</span>
+          <h2>Nueva venta POS</h2>
+          <p>El servidor valida precios, stock y la empresa antes de registrar el cobro.</p>
+        </div>
+        <button
+          type="button"
+          class="modal-close"
+          aria-label="Cerrar"
+          [disabled]="isPosCreating()"
+          (click)="closePos()"
+        >
+          ×
+        </button>
+      </header>
+
+      <form class="action-form" [formGroup]="posForm" (ngSubmit)="createPosSale()">
+        <div class="form-grid pos-context-grid">
+          <div>
+            <label for="pos-branch">Sucursal</label>
+            <select id="pos-branch" formControlName="branchId" (change)="onPosBranchChange()">
+              <option [ngValue]="null">Selecciona una sucursal</option>
+              @for (branch of options()?.branches ?? []; track branch.id) {
+                <option [ngValue]="branch.id">{{ branch.code }} · {{ branch.name }}</option>
+              }
+            </select>
+          </div>
+          <div>
+            <label for="pos-warehouse">Bodega</label>
+            <select id="pos-warehouse" formControlName="warehouseId" (change)="refreshPosOptions()">
+              <option [ngValue]="null">Selecciona una bodega</option>
+              @for (warehouse of posWarehouses(); track warehouse.id) {
+                <option [ngValue]="warehouse.id">
+                  {{ warehouse.code }} · {{ warehouse.name }}
+                </option>
+              }
+            </select>
+          </div>
+        </div>
+
+        <div class="form-grid pos-product-grid">
+          <div>
+            <label for="pos-variant">Producto</label>
+            <select id="pos-variant" formControlName="variantId">
+              <option [ngValue]="null">Selecciona un producto</option>
+              @for (variant of posVariants(); track variant.id) {
+                <option [ngValue]="variant.id">
+                  {{ variant.sku }} · {{ variant.name }} · {{ formatMoney(variant.unit_price) }} ·
+                  stock {{ variant.stock }}
+                </option>
+              }
+            </select>
+          </div>
+          <div>
+            <label for="pos-quantity">Cantidad</label>
+            <input
+              id="pos-quantity"
+              type="number"
+              min="0.001"
+              step="0.001"
+              formControlName="quantity"
+            />
+          </div>
+          <button
+            type="button"
+            class="secondary-button pos-add-button"
+            [disabled]="isPosLoading() || isPosCreating()"
+            (click)="addPosItem()"
+          >
+            Agregar
+          </button>
+        </div>
+
+        @if (isPosLoading()) {
+          <p class="form-note">Cargando productos y stock de la bodega...</p>
+        }
+
+        <div class="pos-cart" aria-label="Carrito de venta POS">
+          @for (item of posItems(); track item.variant) {
+            <article class="pos-cart-row">
+              <div>
+                <strong>{{ item.name }}</strong>
+                <span
+                  >{{ item.sku }} · {{ item.quantity }} × {{ formatMoney(item.unitPrice) }}</span
+                >
+              </div>
+              <strong>{{ formatMoney(item.quantity * item.unitPrice) }}</strong>
+              <button
+                type="button"
+                class="text-button"
+                [disabled]="isPosCreating()"
+                (click)="removePosItem(item.variant)"
+              >
+                Quitar
+              </button>
+            </article>
+          } @empty {
+            <div class="empty-entry">Agrega productos para preparar la venta.</div>
+          }
+        </div>
+
+        <div class="form-grid pos-payment-grid">
+          <div>
+            <label for="pos-customer">Cliente (opcional)</label>
+            <select id="pos-customer" formControlName="customerId">
+              <option [ngValue]="null">Consumidor final</option>
+              @for (customer of posCustomers(); track customer.id) {
+                <option [ngValue]="customer.id">{{ customer.code }} · {{ customer.name }}</option>
+              }
+            </select>
+          </div>
+          <div>
+            <label for="pos-payment-method">Medio de pago</label>
+            <select id="pos-payment-method" formControlName="paymentMethodId">
+              <option [ngValue]="null">Selecciona un medio</option>
+              @for (method of posPaymentMethods(); track method.id) {
+                <option [ngValue]="method.id">{{ method.name }}</option>
+              }
+            </select>
+          </div>
+          <div>
+            <label for="pos-reference">Referencia</label>
+            <input
+              id="pos-reference"
+              type="text"
+              maxlength="150"
+              formControlName="reference"
+              placeholder="Caja, comprobante o transferencia"
+            />
+          </div>
+        </div>
+
+        <div class="pos-total-row">
+          <span>{{ posItemCount() }} unidad(es)</span>
+          <strong>Total {{ formatMoney(posTotal()) }}</strong>
+        </div>
+
+        @if (posErrorMessage()) {
+          <div class="alert alert-error" role="alert">{{ posErrorMessage() }}</div>
+        }
+
+        <footer class="modal-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="isPosCreating()"
+            (click)="closePos()"
+          >
+            Cancelar
+          </button>
+          <button type="submit" class="primary-button" [disabled]="isPosCreating()">
+            {{ isPosCreating() ? 'Registrando...' : 'Registrar venta POS' }}
           </button>
         </footer>
       </form>
@@ -414,18 +602,45 @@
 
       <div class="detail-meta">
         <div>
-          <span>Pedido origen</span><strong>#{{ sale.order_number }}</strong>
+          <span>Origen</span><strong>{{ saleOriginLabel(sale) }}</strong>
         </div>
         <div>
-          <span>Cliente</span><strong>{{ sale.customer_code }} · {{ sale.customer_name }}</strong>
+          <span>Cliente</span><strong>{{ customerLabel(sale) }}</strong>
         </div>
         <div>
           <span>Sucursal</span><strong>{{ branchLabel(sale.branch) }}</strong>
         </div>
         <div>
-          <span>Creada</span><strong>{{ formatDate(sale.created_at) }}</strong>
+          @if (isPosSale(sale)) {
+            <span>Bodega</span><strong>{{ warehouseLabel(sale.warehouse) }}</strong>
+          } @else {
+            <span>Pedido origen</span><strong>#{{ sale.order_number }}</strong>
+          }
         </div>
       </div>
+
+      @if (sale.items?.length) {
+        <section class="detail-section detail-items">
+          <div class="section-heading">
+            <span class="eyebrow">Productos</span>
+            <h3>Detalle de artículos</h3>
+          </div>
+          <div class="entry-list">
+            @for (item of sale.items; track item.id) {
+              <article class="entry-card">
+                <div>
+                  <strong>{{ item.product_name_snapshot }}</strong>
+                  <span
+                    >{{ item.sku_snapshot }} · {{ item.quantity }} ×
+                    {{ formatMoney(item.unit_price) }}</span
+                  >
+                </div>
+                <strong>{{ formatMoney(item.line_total) }}</strong>
+              </article>
+            }
+          </div>
+        </section>
+      }
 
       <div class="detail-columns">
         <section class="detail-section">
@@ -485,6 +700,11 @@
               Anular venta
             </button>
           }
+          @if (canReverse(sale)) {
+            <button type="button" class="danger-button" (click)="requestReverse(sale)">
+              Revertir venta POS
+            </button>
+          }
         </div>
       </footer>
     </section>
@@ -526,6 +746,50 @@
           {{ cancellingSaleId() === sale.id ? 'Anulando...' : 'Confirmar anulación' }}
         </button>
       </footer>
+    </section>
+  </div>
+}
+
+@if (reverseCandidate(); as sale) {
+  <div class="modal-backdrop confirmation-layer" (click)="closeReverseConfirmation()">
+    <section
+      class="modal-card confirmation-card"
+      role="alertdialog"
+      aria-modal="true"
+      (click)="$event.stopPropagation()"
+    >
+      <span class="warning-mark">↶</span>
+      <h2>Revertir venta POS #{{ sale.number }}</h2>
+      <p>
+        Se restaurará el stock y se registrará una reversa por el total pagado. Esta operación no
+        elimina la trazabilidad de la venta.
+      </p>
+      <form class="action-form" [formGroup]="reverseForm" (ngSubmit)="confirmReverse()">
+        <label for="reverse-reference">Referencia de reversa</label>
+        <input
+          id="reverse-reference"
+          type="text"
+          maxlength="150"
+          formControlName="reference"
+          placeholder="DEVOLUCION-001"
+        />
+        @if (reverseErrorMessage()) {
+          <div class="alert alert-error" role="alert">{{ reverseErrorMessage() }}</div>
+        }
+        <footer class="modal-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="isReversing()"
+            (click)="closeReverseConfirmation()"
+          >
+            Volver
+          </button>
+          <button type="submit" class="danger-button" [disabled]="isReversing()">
+            {{ isReversing() ? 'Revirtiendo...' : 'Confirmar reversa' }}
+          </button>
+        </footer>
+      </form>
     </section>
   </div>
 }

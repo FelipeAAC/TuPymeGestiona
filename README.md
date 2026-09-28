@@ -26,7 +26,8 @@ Una empresa puede administrar:
 - movimientos y transferencias de stock;
 - clientes;
 - pedidos y sus estados;
-- ventas y pagos internos;
+- ventas derivadas de pedidos y ventas directas POS;
+- pagos internos en efectivo, transferencia y canales externos configurados;
 - facturación electrónica y RIDE;
 - reportes PDF/XLS;
 - indicadores de dashboard;
@@ -58,8 +59,9 @@ Se recomienda disponer de:
 - **Python 3.13** o una versión compatible con Django 6.1;
 - **MySQL** para la base de datos real/local del proyecto;
 - **Node.js 22.22.3+, 24.15.0+** o una release posterior soportada por Angular 22;
-- **npm**;
+- **npm 11.17.0**, declarado en `frontend/package.json` y activado explícitamente en CI;
 - **Git**.
+- **PowerShell 5.1+** (incluido en Windows) para los scripts de preparación y carga.
 
 El backend usa las dependencias fijadas en:
 
@@ -120,7 +122,16 @@ DB_CONN_MAX_AGE=60
 
 ### Base nueva
 
-Si estás creando una base vacía para desarrollo:
+Si estás creando una base vacía para desarrollo, primero puedes crearla con el
+archivo SQL incluido:
+
+```powershell
+Get-Content .\database\01_create_database.sql | mysql -u root -p
+```
+
+El archivo crea `tupymegestiona` con `utf8mb4`. Si usarás otro nombre, cambia
+el identificador del SQL y usa el mismo valor en `DB_NAME` dentro de
+`backend/.env`. Después aplica las migraciones:
 
 ```cmd
 .\.venv\Scripts\python.exe manage.py check
@@ -129,21 +140,16 @@ Si estás creando una base vacía para desarrollo:
 
 ### Base existente
 
-Si ya tienes la base MySQL utilizada durante el desarrollo, **no apliques migraciones a ciegas**. Desde la raíz del repositorio ejecuta primero:
+Si ya tienes una base MySQL utilizada durante el desarrollo, **no apliques migraciones a ciegas**. Revisa primero el plan y realiza un backup:
 
 ```cmd
-Revisar_MySQL.cmd
+cd backend
+.\.venv\Scripts\python.exe manage.py showmigrations
+.\.venv\Scripts\python.exe manage.py migrate --plan
 ```
 
-Este comando es de solo lectura. Revisa migraciones, versión/configuración MySQL, integridad multiempresa y anomalías de datos.
-
-Existe una migración conocida que fue versionada pero que los módulos QA anteriores no aplicaron sobre la base real:
-
-```text
-backend/catalog/migrations/0009_category_status.py
-```
-
-Si `Revisar_MySQL.cmd` informa que continúa pendiente, debe aplicarse en un paso controlado y con backup previo.
+Si el plan muestra migraciones pendientes, aplícalas después del backup con
+`manage.py migrate` y vuelve a revisar el estado de la aplicación.
 
 ### 4. Levantar Django
 
@@ -190,7 +196,7 @@ Rutas útiles:
 /app/products                   Productos
 /app/inventory                  Inventario
 /app/orders                     Pedidos
-/app/sales                      Ventas
+/app/sales                      Ventas de pedidos y caja POS
 /app/reports                    Reportes
 ```
 
@@ -249,6 +255,24 @@ Customer de esa Company
 ```
 
 Comprar en otra PYME crea otra relación comercial, pero conserva el mismo `User`.
+
+## Registrar una venta POS
+
+La ruta `/app/sales` conserva el flujo de ventas derivadas de pedidos y agrega
+una caja para registrar ventas directas. El cliente es opcional: si no se
+selecciona uno, el backend usa o crea el cliente interno **Consumidor final**
+de la empresa. El POS exige una bodega, valida y descuenta stock dentro de una
+transacción y permite pagar con:
+
+```text
+Efectivo
+Transferencia
+```
+
+El precio y la disponibilidad se toman nuevamente desde el backend. Una venta
+POS pagada puede anularse desde su detalle; la anulación repone el stock y deja
+la trazabilidad del movimiento. Las ventas creadas desde pedidos entregados
+continúan funcionando con su flujo anterior.
 
 ## Crear mi PYME
 
@@ -359,13 +383,15 @@ Build:
 frontend/dist/maintainers
 ```
 
-Esta separación satisface RF24 mediante dos aplicaciones frontend ejecutables conectadas al mismo backend.
+Esta separación proporciona la estructura técnica prevista para RF24. La aceptación completa requiere ejecutar las dos aplicaciones y comprobar sus mantenedores, permisos, flujos y relación con la documentación formal.
 
 ## Código legado eliminado
 
 La implementación histórica ubicada en `panel/`, su SQLite y bytecode Python versionado fueron eliminados durante la limpieza del repositorio. Ya no forman parte de la arquitectura ni de los pasos de ejecución.
 
-La documentación técnica dispersa también fue consolidada en este único `README.md` para mantener una fuente de verdad clara.
+La documentación técnica dispersa también fue consolidada en este `README.md`.
+Los únicos archivos operativos adicionales son los scripts versionados de
+creación y carga de la base MySQL.
 
 ---
 
@@ -381,7 +407,7 @@ Backend principal:
 | `inventory` | existencias, movimientos y transferencias |
 | `customers` | clientes comerciales por empresa |
 | `orders` | pedidos, items y transiciones de estado |
-| `sales` | ventas, abonos, pagos y eventos |
+| `sales` | ventas de pedidos, ventas POS, abonos, pagos, stock y eventos |
 | `portal` | Portal Cliente, cuenta, pedidos y onboarding |
 | `electronic_tax` | DTE, folios, RIDE, intercambio y operación |
 | `administration` | mantenedores y parámetros generales |
@@ -407,25 +433,17 @@ Mercado Pago Sandbox
 notificaciones SMTP/outbox
 reportes PDF/XLS
 dashboard real
-calidad técnica
-QA RF01-RF26
 segunda aplicación maintainers
-cierre RF24
-identidad/onboarding persona-primero
-QA de identidad/onboarding
+cierre de identidad/onboarding persona-primero
 ```
 
 ---
 
 ## Base de datos MySQL
 
-MySQL es la base de datos real del proyecto.
-
-SQLite se mantiene únicamente como motor temporal para pruebas automatizadas cuando los scripts establecen explícitamente:
-
-```text
-DB_ENGINE=sqlite
-```
+MySQL es la base de datos del proyecto. La configuración y los scripts de
+entrega están preparados para MySQL 8.x y usan `utf8mb4`; la creación inicial
+usa una collation Unicode compatible con instalaciones MySQL habituales.
 
 El `settings.py` actual usa MySQL por defecto y configura:
 
@@ -433,39 +451,6 @@ El `settings.py` actual usa MySQL por defecto y configura:
 - `STRICT_TRANS_TABLES`;
 - conexiones persistentes configurables;
 - health checks de conexión.
-
-## Auditoría read-only
-
-Desde la raíz:
-
-```cmd
-Revisar_MySQL.cmd
-```
-
-El comando verifica sin modificar datos:
-
-- motor MySQL real;
-- versión del servidor;
-- `sql_mode` global y de la sesión Django, incluyendo modo estricto;
-- charset/collation;
-- tablas fuera de InnoDB;
-- migraciones pendientes;
-- relaciones multiempresa inconsistentes;
-- bodegas/sucursales cruzadas;
-- productos/categorías/marcas cruzadas;
-- stock de otra empresa;
-- stock negativo;
-- pedidos con sucursal/bodega/cliente incorrectos;
-- items de pedido cruzados;
-- ventas cruzadas;
-- pagos superiores al total;
-- `CustomerPortalAccount` inconsistente;
-- SKU duplicados por empresa;
-- códigos de clientes duplicados;
-- RUT empresariales duplicados;
-- volumen actual de datos.
-
-No imprime la contraseña de MySQL ni otros secretos.
 
 ## Django y consistencia
 
@@ -483,7 +468,26 @@ Para poder explorar visualmente el sistema con información realista existe:
 Cargar_Datos_Demo.cmd
 ```
 
-El ejecutable primero lanza `Revisar_MySQL.cmd`. Si la base no está sana o existen migraciones pendientes, **no carga datos**.
+Para una base recién creada, el flujo reproducible recomendado desde PowerShell
+es:
+
+```powershell
+.\database\02_poblar_demo.ps1
+```
+
+El script ejecuta `check`, aplica las migraciones pendientes y llama al
+comando oficial `seed_demo_data`. También admite un dataset pequeño para una
+presentación:
+
+```powershell
+.\database\02_poblar_demo.ps1 -Seed presentacion -Companies 1 -Products 12 -Customers 20 -Orders 12
+```
+
+La carga usa los servicios reales del dominio, por lo que las ventas POS
+demo descuentan stock y quedan asociadas a pagos de efectivo y transferencia.
+
+El cargador valida la configuración, aplica las migraciones pendientes y se
+detiene ante cualquier error antes de insertar datos.
 
 ## Dataset predeterminado
 
@@ -499,6 +503,7 @@ El ejecutable primero lanza `Revisar_MySQL.cmd`. Si la base no está sana o exis
 70 clientes por PYME
 36 pedidos por PYME
 6 pedidos del cliente demo por PYME, distribuidos en distintos estados
+2 ventas POS por PYME (una con Consumidor final y efectivo, otra con cliente y transferencia)
 3 usuarios de personal por PYME
 ventas y pagos derivados
 stock normal, crítico y agotado
@@ -513,7 +518,9 @@ Aproximadamente:
 240 productos
 480 variantes
 350 clientes
+355 clientes contando el Consumidor final de cada PYME
 180 pedidos
+10 ventas POS
 ```
 
 más empresas, sucursales, usuarios, roles, inventario, movimientos, ventas y pagos.
@@ -545,16 +552,21 @@ Cargar_Datos_Demo.cmd --seed prueba2 --companies 3 --products 30 --customers 50 
 ```
 
 El seed es determinista e idempotente para un mismo identificador: si detecta el dataset completo, no vuelve a duplicarlo.
+Si necesitas cargar ejemplos POS en una base que ya tiene un seed anterior,
+usa un identificador nuevo con `-Seed`.
 
-El comando se bloquea con `DEBUG=False` salvo uso explícito de `--force-production`. No se recomienda usar datos demo en producción.
+El comando se bloquea con `DEBUG=False`; está pensado únicamente para una
+instancia local o de presentación.
 
 El dataset **no fabrica pagos Mercado Pago ni DTE SII** para evitar presentar integraciones externas falsas.
+Las ventas POS demo sí son operaciones internas completas y reversibles.
 
 ---
 
 ## Optimización y limpieza aplicada
 
-La revisión general del repositorio prioriza cambios conservadores, sin reescribir módulos que ya tienen pruebas y comportamiento estable.
+La revisión general del repositorio prioriza cambios conservadores y deja el
+árbol final enfocado en el código ejecutable y sus archivos operativos.
 
 Principales ajustes:
 
@@ -566,8 +578,6 @@ Principales ajustes:
 - eliminación de scaffolding vacío de Django;
 - `noUnusedLocals` y `noUnusedParameters` activos en TypeScript;
 - eliminación de una inyección Angular no utilizada;
-- runner único de specs Angular en procesos aislados;
-- CI validando también `maintainers`;
 - `DJANGO_SECRET_KEY` explícita para CI;
 - configuración MySQL endurecida;
 - CSRF preparado para puertos 4200 y 4300;
@@ -575,131 +585,33 @@ Principales ajustes:
 - selección de bodega con stock en un número fijo de queries;
 - disponibilidad de variantes agregada/prefetch en catálogo;
 - prefetch de sucursales en listado de tiendas;
-- nuevas pruebas de eficiencia de queries;
-- herramientas de diagnóstico MySQL y datos demo.
+- carga demo determinista mediante servicios de dominio.
 
 No se realizaron cambios invasivos en modelos o contratos públicos únicamente por estética.
 
 ---
 
-## Pruebas y calidad
+## Verificación de instalación
 
-## Baseline de este refactor
-
-Después de incorporar las nuevas pruebas de rendimiento/tooling, el gate esperado es:
-
-```text
-Backend Django:                    547 tests
-Angular principal:                 31 archivos spec
-Angular maintainers:               2 archivos spec / 6 tests
-npm audit high/critical:            0 vulnerabilidades
-Build frontend:                     OK
-Build maintainers:                  OK
-RF01-RF26 parciales:                0
-RF24:                               CUMPLE
-```
-
-El módulo de aplicación solo realiza commit/push si todos estos gates pasan.
-
-## Backend
+Después de instalar dependencias o cambiar variables de entorno, valida la
+configuración y genera ambos bundles de producción:
 
 ```cmd
 cd backend
 .\.venv\Scripts\python.exe -m pip check
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
-.\.venv\Scripts\python.exe manage.py test
-```
 
-## Frontend
-
-```cmd
-cd frontend
-npm ci
-npm audit --audit-level=high
+cd ..\frontend
 npm run typecheck
-npm run test:isolated
-npm run test:maintainers
 npm run build
 npm run build:maintainers
 ```
 
-`npm run test:isolated` descubre automáticamente los 31 specs de la aplicación principal y ejecuta cada archivo en un proceso independiente. Esto reduce los picos de memoria observados en Windows.
-
-## Gate completo frontend
-
-```cmd
-npm run quality:frontend
-```
-
-## Verificadores internos
-
-```cmd
-backend\.venv\Scripts\python.exe scripts\qa\verify_repository_hygiene.py --repository .
-backend\.venv\Scripts\python.exe scripts\qa\verify_identity_onboarding.py --repository .
-backend\.venv\Scripts\python.exe scripts\qa\verify_rf_traceability.py --repository .
-```
-
----
-
-## Estado RF01-RF26
-
-Clasificación de cierre actual:
-
-```text
-CUMPLE:                          23
-CUMPLE_EN_CODIGO:                2
-CUMPLE_CON_DECISION_SEGURIDAD:   1
-PARCIALES:                       0
-TOTAL:                          26
-```
-
-## RF18 — Mercado Pago
-
-Estado:
-
-```text
-CUMPLE_EN_CODIGO
-```
-
-La integración está implementada y probada en código. El E2E contra servicio externo se reserva para activación controlada con credenciales Sandbox.
-
-## RF19 — Notificaciones
-
-Estado:
-
-```text
-CUMPLE_EN_CODIGO
-```
-
-Existe outbox transaccional, reintentos y procesamiento SMTP. La entrega SMTP real se activa posteriormente con credenciales de entorno.
-
-## RF24 — segunda aplicación
-
-Estado:
-
-```text
-CUMPLE
-```
-
-Existen dos proyectos Angular ejecutables:
-
-```text
-frontend
-maintainers
-```
-
-ambos conectados al mismo Django/MySQL.
-
-## RF25 — parámetros y secretos
-
-Estado:
-
-```text
-CUMPLE_CON_DECISION_SEGURIDAD
-```
-
-Los parámetros generales no secretos pueden administrarse. Credenciales, tokens, certificados y contraseñas permanecen fuera del dominio administrativo y del repositorio.
+Para una presentación, confirma manualmente el recorrido de registro/login,
+cambio de empresa, catálogo, inventario, pedido, caja POS, reversa, reportes y
+la aplicación de mantenedores. Mercado Pago, SMTP y SII necesitan sus propias
+credenciales y ambientes autorizados.
 
 ---
 
@@ -713,29 +625,26 @@ El sistema dispone actualmente de:
 - alta de PYME desde cuenta existente;
 - cambio cliente ↔ gestión sin logout;
 - inventario y pedidos;
-- ventas y pagos internos;
+- ventas de pedidos y caja POS con pagos internos;
 - facturación electrónica base, RIDE e integración SII en código;
 - Mercado Pago Sandbox en código;
 - outbox y SMTP en código;
 - reportes PDF/XLS;
 - dashboard real;
 - aplicación secundaria de mantenedores;
-- suite automatizada amplia;
-- auditoría MySQL read-only;
-- cargador de datos demo poblados.
+- cargador de datos demo poblados, incluyendo ventas POS.
 
 ## Pendiente para cierre real/controlado
 
-1. Ejecutar `Revisar_MySQL.cmd` contra la instancia real local.
-2. Confirmar si `catalog.0009_category_status` sigue pendiente.
-3. Realizar backup MySQL.
-4. Aplicar la migración pendiente en un paso controlado si corresponde.
-5. Ejecutar nuevamente `Revisar_MySQL.cmd`.
-6. Cargar datos demo para exploración visual.
-7. Ejecutar E2E manual completo.
-8. Activar Mercado Pago Sandbox con secretos externos.
-9. Activar SMTP real de forma controlada.
-10. Activar/validar SII solamente con certificados y credenciales autorizadas.
+1. Realizar backup MySQL.
+2. Confirmar el estado con `showmigrations` y `migrate --plan`.
+3. Aplicar migraciones pendientes en un paso controlado.
+4. Cargar datos demo para exploración visual.
+5. Probar manualmente compra, venta POS y reversa antes de la presentación.
+6. Ejecutar E2E manual completo.
+7. Activar Mercado Pago Sandbox con secretos externos.
+8. Activar SMTP real de forma controlada.
+9. Activar/validar SII solamente con certificados y credenciales autorizadas.
 
 ---
 
@@ -872,11 +781,10 @@ cd backend
 .\.venv\Scripts\python.exe manage.py showmigrations
 ```
 
-## Revisar MySQL
+## Crear la base MySQL
 
-```cmd
-Revisar_MySQL.cmd
-```
+Ejecuta `database/01_create_database.sql` desde tu cliente MySQL y configura las
+credenciales en `backend/.env`.
 
 ## Cargar datos demo
 
@@ -932,7 +840,9 @@ DB_PORT
 Luego ejecuta:
 
 ```cmd
-Revisar_MySQL.cmd
+cd backend
+.\.venv\Scripts\python.exe manage.py check
+.\.venv\Scripts\python.exe manage.py showmigrations
 ```
 
 ## Hay migraciones pendientes
@@ -946,16 +856,6 @@ cd backend
 ```
 
 Haz backup antes de aplicar una migración sobre la base real.
-
-## Angular consume demasiada memoria durante tests
-
-Usa:
-
-```cmd
-npm run test:isolated
-```
-
-No ejecutes necesariamente todos los specs en un único proceso.
 
 ## Advertencias `LF will be replaced by CRLF`
 
@@ -978,14 +878,16 @@ Puertos esperados:
 ```text
 TuPymeGestiona/
 ├── README.md
-├── Revisar_MySQL.cmd
 ├── Cargar_Datos_Demo.cmd
+├── database/
+│   ├── 01_create_database.sql
+│   └── 02_poblar_demo.ps1
 ├── backend/
 ├── frontend/
-├── scripts/
-├── .github/
 ├── .gitignore
 └── .gitattributes
 ```
 
-La intención es mantener el repositorio centrado en código ejecutable, pruebas, tooling y una única fuente de documentación humana: este README.
+La intención es mantener el repositorio centrado en código ejecutable, los
+scripts de base necesarios y una única fuente de documentación humana: este
+README.

@@ -1,24 +1,32 @@
 from django.core.exceptions import ValidationError
 from django.core.paginator import EmptyPage, Paginator
-from django.db.models import Q
+from django.db.models import Q, Sum
 
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from administration.models import PaymentMethod
+from catalog.models import Product, ProductVariant
+from customers.models import Customer
+from inventory.models import InventoryStock
 from orders.models import Order
 from organizations.authorization import has_permission
 from organizations.models import (
     Branch,
     CompanyMembership,
     RoleAssignment,
+    Warehouse,
 )
 
 from .models import Sale
 from .serializers import (
     PaymentCreateSerializer,
     PaymentSerializer,
+    PosSaleCreateSerializer,
+    PosSaleOptionsQuerySerializer,
+    PosSaleReversalSerializer,
     SaleCreateSerializer,
     SaleListQuerySerializer,
     SaleSerializer,
@@ -27,8 +35,10 @@ from .services import (
     SaleIdempotencyConflictError,
     SaleTransitionError,
     cancel_sale,
+    create_pos_sale,
     create_sale,
     record_payment,
+    reverse_pos_sale,
 )
 
 
@@ -121,12 +131,17 @@ def _get_authorized_sales(*, user, company):
     return sales.select_related(
         "company",
         "branch",
+        "warehouse",
+        "customer",
         "order__customer",
+        "order__warehouse",
         "created_by",
         "cancelled_by",
     ).prefetch_related(
         "payments",
+        "payments__payment_method",
         "events__payment",
+        "items",
     )
 
 
@@ -156,6 +171,9 @@ def sale_options_view(request):
         return error_response
 
     company = membership.company
+    query_serializer = PosSaleOptionsQuerySerializer(data=request.query_params)
+    query_serializer.is_valid(raise_exception=True)
+    options_query = query_serializer.validated_data
     assignments = _get_sales_assignments(
         user=request.user,
         company=company,
@@ -164,6 +182,60 @@ def sale_options_view(request):
         assignments=assignments,
         company=company,
     )
+    if options_query.get("branch"):
+        if not branches.filter(pk=options_query["branch"]).exists():
+            return Response(
+                {"detail": "La sucursal no esta en el alcance autorizado."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        branches = branches.filter(pk=options_query["branch"])
+
+    warehouses = (
+        Warehouse.objects.filter(company=company)
+        .filter(Q(branch__in=branches) | Q(branch__isnull=True))
+        if assignments.exists()
+        else Warehouse.objects.none()
+    )
+    if options_query.get("warehouse"):
+        if not warehouses.filter(pk=options_query["warehouse"]).exists():
+            return Response(
+                {"detail": "La bodega no esta en el alcance autorizado."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        selected_warehouse = warehouses.get(pk=options_query["warehouse"])
+    else:
+        selected_warehouse = None
+
+    payment_methods = PaymentMethod.objects.filter(
+        company=company,
+        is_active=True,
+        kind__in=(PaymentMethod.Kind.CASH, PaymentMethod.Kind.TRANSFER),
+    ) if assignments.exists() else PaymentMethod.objects.none()
+    customers = Customer.objects.filter(
+        company=company,
+        status=Customer.Status.ACTIVE,
+    ) if assignments.exists() else Customer.objects.none()
+
+    variants = ProductVariant.objects.none()
+    stock_by_variant = {}
+    if assignments.exists() and selected_warehouse is not None:
+        variants = ProductVariant.objects.filter(
+            product__company=company,
+            product__status=Product.Status.ACTIVE,
+            status=ProductVariant.Status.ACTIVE,
+        ).select_related("product")
+        if options_query.get("search"):
+            search = options_query["search"].strip()
+            variants = variants.filter(
+                Q(sku__icontains=search) | Q(product__name__icontains=search)
+            )
+        stock_by_variant = {
+            stock.variant_id: stock.quantity
+            for stock in InventoryStock.objects.filter(
+                warehouse=selected_warehouse,
+                variant__in=variants,
+            )
+        }
     delivered_orders = Order.objects.none()
 
     if assignments.exists():
@@ -189,6 +261,42 @@ def sale_options_view(request):
                 }
                 for branch in branches.order_by("name", "id")
             ],
+            "warehouses": [
+                {
+                    "id": warehouse.id,
+                    "code": warehouse.code,
+                    "name": warehouse.name,
+                    "branch": warehouse.branch_id,
+                }
+                for warehouse in warehouses.order_by("name", "id")
+            ],
+            "payment_methods": [
+                {
+                    "id": method.id,
+                    "code": method.code,
+                    "name": method.name,
+                    "kind": method.kind,
+                }
+                for method in payment_methods.order_by("sort_order", "name", "id")
+            ],
+            "customers": [
+                {
+                    "id": customer.id,
+                    "code": customer.code,
+                    "name": customer.name,
+                }
+                for customer in customers.order_by("name", "id")
+            ],
+            "variants": [
+                {
+                    "id": variant.id,
+                    "sku": variant.sku,
+                    "name": variant.product.name,
+                    "unit_price": f"{variant.base_price:.2f}",
+                    "stock": f"{stock_by_variant.get(variant.id, 0):.3f}",
+                }
+                for variant in variants.order_by("product__name", "sku", "id")
+            ],
             "delivered_orders": [
                 {
                     "id": order.id,
@@ -202,6 +310,147 @@ def sale_options_view(request):
                 for order in delivered_orders.order_by("-number", "-id")
             ],
         }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def pos_sale_create_view(request):
+    membership, error_response = _resolve_membership(
+        request=request,
+        source=request.data,
+        location="campo",
+    )
+    if error_response is not None:
+        return error_response
+
+    company = membership.company
+    payload = request.data.copy()
+    payload.pop("company", None)
+    serializer = PosSaleCreateSerializer(
+        data=payload,
+        context={"company": company},
+    )
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=SALES_MANAGE_PERMISSION_CODE,
+        branch=data["branch"],
+    ):
+        return Response(
+            {"detail": "No tienes permiso para administrar ventas de esta sucursal."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        sale, payment, created = create_pos_sale(
+            company=company,
+            branch=data["branch"],
+            warehouse=data["warehouse"],
+            customer=data.get("customer"),
+            items=data["items"],
+            payment_method=data["payment_method"],
+            reference=data["reference"],
+            idempotency_key=data["idempotency_key"],
+            created_by=request.user,
+        )
+    except (SaleIdempotencyConflictError, SaleTransitionError) as error:
+        return Response(
+            {"detail": error.detail},
+            status=status.HTTP_409_CONFLICT,
+        )
+    except ValidationError as error:
+        return Response(
+            {"detail": error.message_dict},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    sale = _get_authorized_sales(
+        user=request.user,
+        company=company,
+    ).get(pk=sale.pk)
+    return Response(
+        {
+            "sale": SaleSerializer(sale).data,
+            "payment": PaymentSerializer(payment).data,
+            "idempotent_replay": not created,
+        },
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def sale_reverse_view(request, sale_id):
+    membership, error_response = _resolve_membership(
+        request=request,
+        source=request.data,
+        location="campo",
+    )
+    if error_response is not None:
+        return error_response
+
+    company = membership.company
+    sale = _get_authorized_sales(
+        user=request.user,
+        company=company,
+    ).filter(pk=sale_id).first()
+    if sale is None:
+        return Response(
+            {"detail": "La venta no existe en el alcance autorizado."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    serializer = PosSaleReversalSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    if not has_permission(
+        user=request.user,
+        company=company,
+        permission_code=SALES_MANAGE_PERMISSION_CODE,
+        branch=sale.branch,
+    ):
+        return Response(
+            {"detail": "No tienes permiso para revertir ventas de esta sucursal."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        sale, reversal, changed = reverse_pos_sale(
+            sale=sale,
+            reference=serializer.validated_data["reference"],
+            performed_by=request.user,
+        )
+    except (SaleIdempotencyConflictError, SaleTransitionError) as error:
+        return Response(
+            {"detail": error.detail},
+            status=status.HTTP_409_CONFLICT,
+        )
+    except ValidationError as error:
+        return Response(
+            {"detail": error.message_dict},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    sale = _get_authorized_sales(
+        user=request.user,
+        company=company,
+    ).get(pk=sale.pk)
+    return Response(
+        {
+            "sale": SaleSerializer(sale).data,
+            "reversal": {
+                "id": reversal.id,
+                "amount": f"{reversal.amount:.2f}",
+                "reference": reversal.reference,
+                "performed_by": reversal.performed_by_id,
+                "created_at": reversal.created_at,
+            },
+            "already_reversed": not changed,
+        },
+        status=status.HTTP_201_CREATED if changed else status.HTTP_200_OK,
     )
 
 
@@ -275,6 +524,7 @@ def sale_payment_view(request, sale_id):
             reference=serializer.validated_data["reference"],
             idempotency_key=serializer.validated_data["idempotency_key"],
             performed_by=request.user,
+            payment_method=serializer.validated_data.get("payment_method"),
         )
     except (SaleIdempotencyConflictError, SaleTransitionError) as error:
         return Response(
@@ -377,12 +627,14 @@ def _list_sales(request):
         sales = sales.filter(branch_id=query["branch"])
 
     if query.get("customer"):
-        sales = sales.filter(order__customer_id=query["customer"])
+        sales = sales.filter(customer_id=query["customer"])
 
     if query.get("search"):
         search = query["search"]
         search_filter = (
-            Q(order__customer__code__icontains=search)
+            Q(customer__code__icontains=search)
+            | Q(customer__name__icontains=search)
+            | Q(order__customer__code__icontains=search)
             | Q(order__customer__name__icontains=search)
             | Q(payments__reference__icontains=search)
         )

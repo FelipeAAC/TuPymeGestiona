@@ -65,7 +65,7 @@
 
           @if (report.rows.length) {
             <div class="table-wrap"><table><thead><tr><th>Venta</th><th>Fecha</th><th>Sucursal</th><th>Vendedor</th><th>Cliente</th><th>Estado</th><th>Total</th><th>Abonado</th><th>Saldo</th></tr></thead><tbody>
-              @for (row of report.rows; track row.id) {<tr><td><strong>#{{ row.number }}</strong></td><td>{{ row.date }}</td><td>{{ row.branch }}</td><td>{{ row.seller }}</td><td>{{ row.customer }}</td><td><span class="status-pill" [class]="'status-pill sale-' + row.status.toLowerCase()">{{ saleStatusLabel(row.status) }}</span></td><td class="money">{{ formatMoney(row.total_amount) }}</td><td class="money">{{ formatMoney(row.paid_amount) }}</td><td class="money">{{ formatMoney(row.balance) }}</td></tr>}
+              @for (row of report.rows; track row.id) {<tr><td><strong>#{{ row.number }}</strong><small>{{ row.origin === 'POS' ? 'Venta POS' : 'Pedido' }}</small></td><td>{{ row.date }}</td><td>{{ row.branch }}</td><td>{{ row.seller }}</td><td>{{ row.customer }}</td><td><span class="status-pill" [class]="'status-pill sale-' + row.status.toLowerCase()">{{ saleStatusLabel(row.status) }}</span></td><td class="money">{{ formatMoney(row.total_amount) }}</td><td class="money">{{ formatMoney(row.paid_amount) }}</td><td class="money">{{ formatMoney(row.balance) }}</td></tr>}
             </tbody></table></div>
           }
         }

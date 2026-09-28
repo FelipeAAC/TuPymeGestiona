@@ -305,7 +305,7 @@
           <option [ngValue]="null">Selecciona una venta</option>
           @for (sale of eligibleSales(); track sale.id) {
             <option [ngValue]="sale.id">
-              Venta #{{ sale.number }} · {{ sale.customer_name }} ·
+              {{ sale.origin === 'POS' ? 'POS' : 'Pedido' }} #{{ sale.number }} · {{ sale.customer_name }} ·
               {{ formatMoney(sale.total_amount) }} · {{ sale.status }}
             </option>
           }

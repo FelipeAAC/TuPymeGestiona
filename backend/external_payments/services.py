@@ -6,6 +6,8 @@ from django.conf import settings
 from django.db import transaction
 from django.utils.dateparse import parse_datetime
 
+from administration.models import PaymentMethod
+from administration.services import ensure_company_configuration
 from orders.models import Order
 from portal.models import CustomerPortalAccount
 from sales.models import Sale
@@ -329,12 +331,24 @@ def reconcile_delivered_order(*, order):
     if sale.total_amount != checkout.amount:
         raise MercadoPagoConflictError("El total de la venta no coincide con el pago externo aprobado.")
     if sale.paid_amount == Decimal("0.00"):
+        ensure_company_configuration(order.company)
+        online_method = PaymentMethod.objects.filter(
+            company=order.company,
+            code="ONLINE",
+            kind=PaymentMethod.Kind.ONLINE,
+            is_active=True,
+        ).first()
+        if online_method is None:
+            raise MercadoPagoConflictError(
+                "No existe un metodo de pago ONLINE activo para la empresa."
+            )
         sale, payment, created = record_payment(
             sale=sale,
             amount=checkout.amount,
             reference=f"MP:{remote.provider_payment_id}",
             idempotency_key=f"mp-payment:{remote.provider_payment_id}",
             performed_by=actor,
+            payment_method=online_method,
         )
         if created:
             _create_event(checkout, MercadoPagoEvent.EventType.INTERNAL_PAYMENT_RECORDED, payment=remote, metadata={"sale": sale.id, "internal_payment": payment.id})

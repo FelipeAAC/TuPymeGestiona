@@ -5,6 +5,16 @@ from . import views
 
 urlpatterns = [
     path(
+        "pos/options/",
+        views.sale_options_view,
+        name="pos-sale-options",
+    ),
+    path(
+        "pos/",
+        views.pos_sale_create_view,
+        name="pos-sale-create",
+    ),
+    path(
         "options/",
         views.sale_options_view,
         name="sale-options",
@@ -28,5 +38,10 @@ urlpatterns = [
         "<int:sale_id>/cancel/",
         views.sale_cancel_view,
         name="sale-cancel",
+    ),
+    path(
+        "<int:sale_id>/reverse/",
+        views.sale_reverse_view,
+        name="sale-reverse",
     ),
 ]

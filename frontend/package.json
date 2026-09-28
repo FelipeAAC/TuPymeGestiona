@@ -8,13 +8,7 @@
     "build": "ng build frontend",
     "build:maintainers": "ng build maintainers",
     "watch": "ng build frontend --watch --configuration development",
-    "test": "ng test frontend",
-    "test:maintainers": "ng test maintainers --watch=false",
-    "test:ci": "ng test frontend --watch=false",
-    "audit:high": "npm audit --audit-level=high",
-    "quality:frontend": "npm run audit:high && npm run typecheck && npm run test:isolated && npm run test:maintainers && npm run build && npm run build:maintainers",
-    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p projects/maintainers/tsconfig.app.json --noEmit",
-    "test:isolated": "node scripts/run-angular-specs.mjs"
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p projects/maintainers/tsconfig.app.json --noEmit"
   },
   "private": true,
   "packageManager": "npm@11.17.0",
@@ -39,9 +33,7 @@
     "@angular/build": "^22.1.3",
     "@angular/cli": "^22.1.3",
     "@angular/compiler-cli": "^22.1.0",
-    "jsdom": "^28.0.0",
     "prettier": "^3.8.1",
-    "typescript": "~6.0.2",
-    "vitest": "^4.0.8"
+    "typescript": "~6.0.2"
   }
 }

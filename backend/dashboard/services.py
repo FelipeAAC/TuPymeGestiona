@@ -317,7 +317,8 @@ def _activity(context: DashboardContext) -> list[dict]:
                 SaleEvent.EventType.PAYMENT_RECORDED: "Pago registrado",
                 SaleEvent.EventType.CANCELLED: "Venta anulada",
             }.get(event.event_type, event.get_event_type_display())
-            detail = f"Venta #{event.sale.number} · {event.sale.branch.name}"
+            origin_label = "Venta POS" if event.sale.origin == Sale.Origin.POS else "Venta de pedido"
+            detail = f"{origin_label} #{event.sale.number} · {event.sale.branch.name}"
             if event.amount is not None:
                 detail += f" · {_money(event.amount)}"
             items.append(

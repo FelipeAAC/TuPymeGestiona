@@ -5,10 +5,12 @@ import { finalize, forkJoin, Subscription } from 'rxjs';
 
 import { OrganizationContextService } from '../../core/organization/organization-context.service';
 import {
+  PosSaleCreateRequest,
   Sale,
   SaleEvent,
   SaleEventType,
   SaleListQuery,
+  SaleOptionVariant,
   SaleOptionDeliveredOrder,
   SaleOptionsResponse,
   SalePagination,
@@ -24,6 +26,15 @@ const EMPTY_PAGINATION: SalePagination = {
   next_page: null,
   previous_page: null,
 };
+
+interface PosCartItem {
+  variant: number;
+  sku: string;
+  name: string;
+  unitPrice: number;
+  stock: number;
+  quantity: number;
+}
 
 @Component({
   selector: 'app-sales',
@@ -42,12 +53,18 @@ export class Sales implements OnDestroy {
   private createSubscription: Subscription | null = null;
   private paymentSubscription: Subscription | null = null;
   private cancelSubscription: Subscription | null = null;
+  private posOptionsSubscription: Subscription | null = null;
+  private posCreateSubscription: Subscription | null = null;
+  private reverseSubscription: Subscription | null = null;
   private createIdempotencyKey = '';
   private paymentIdempotencyKey = '';
+  private posIdempotencyKey = '';
 
   readonly selectedMembership = this.organizationContextService.selectedMembership;
   readonly sales = signal<Sale[]>([]);
   readonly options = signal<SaleOptionsResponse | null>(null);
+  readonly posOptions = signal<SaleOptionsResponse | null>(null);
+  readonly posItems = signal<PosCartItem[]>([]);
   readonly pagination = signal<SalePagination>({ ...EMPTY_PAGINATION });
   readonly activeFilters = signal<SaleListQuery>({ ordering: '-number', page_size: 20 });
 
@@ -55,17 +72,24 @@ export class Sales implements OnDestroy {
   readonly isDetailLoading = signal(false);
   readonly isCreating = signal(false);
   readonly isPaymentSaving = signal(false);
+  readonly isPosLoading = signal(false);
+  readonly isPosCreating = signal(false);
+  readonly isReversing = signal(false);
   readonly cancellingSaleId = signal<number | null>(null);
   readonly isCreateOpen = signal(false);
   readonly isPaymentOpen = signal(false);
+  readonly isPosOpen = signal(false);
   readonly isDetailOpen = signal(false);
   readonly paymentSale = signal<Sale | null>(null);
   readonly detailSale = signal<Sale | null>(null);
   readonly cancelCandidate = signal<Sale | null>(null);
+  readonly reverseCandidate = signal<Sale | null>(null);
 
   readonly listErrorMessage = signal('');
   readonly createErrorMessage = signal('');
   readonly paymentErrorMessage = signal('');
+  readonly posErrorMessage = signal('');
+  readonly reverseErrorMessage = signal('');
   readonly detailErrorMessage = signal('');
   readonly actionErrorMessage = signal('');
   readonly successMessage = signal('');
@@ -80,6 +104,12 @@ export class Sales implements OnDestroy {
   readonly paidCount = computed(() => this.sales().filter((sale) => sale.status === 'PAID').length);
   readonly visibleBalance = computed(() =>
     this.sales().reduce((total, sale) => total + Number(sale.balance), 0),
+  );
+  readonly posTotal = computed(() =>
+    this.posItems().reduce((total, item) => total + item.quantity * item.unitPrice, 0),
+  );
+  readonly posItemCount = computed(() =>
+    this.posItems().reduce((total, item) => total + item.quantity, 0),
   );
 
   readonly filterForm = this.formBuilder.group({
@@ -98,6 +128,20 @@ export class Sales implements OnDestroy {
       Validators.required,
       Validators.min(0.01),
     ]),
+    reference: ['', [Validators.required, Validators.maxLength(150)]],
+  });
+
+  readonly posForm = this.formBuilder.group({
+    branchId: this.formBuilder.control<number | null>(null, [Validators.required]),
+    warehouseId: this.formBuilder.control<number | null>(null, [Validators.required]),
+    customerId: this.formBuilder.control<number | null>(null),
+    variantId: this.formBuilder.control<number | null>(null),
+    quantity: this.formBuilder.control<number>(1, [Validators.required, Validators.min(0.001)]),
+    paymentMethodId: this.formBuilder.control<number | null>(null, [Validators.required]),
+    reference: ['', [Validators.required, Validators.maxLength(150)]],
+  });
+
+  readonly reverseForm = this.formBuilder.group({
     reference: ['', [Validators.required, Validators.maxLength(150)]],
   });
 
@@ -242,6 +286,242 @@ export class Sales implements OnDestroy {
         error: (error: HttpErrorResponse) => {
           if (this.selectedMembership()?.company.id === companyId) {
             this.createErrorMessage.set(this.messageForError(error, 'crear la venta'));
+          }
+        },
+      });
+  }
+
+  openPos(): void {
+    const membership = this.selectedMembership();
+    const currentOptions = this.options();
+
+    if (!membership || !this.canManageSales() || this.isLoading()) {
+      return;
+    }
+
+    const branchId = currentOptions?.branches[0]?.id ?? membership.branches[0]?.id ?? null;
+    const warehouse =
+      (currentOptions?.warehouses ?? []).find((candidate) => candidate.branch === branchId) ??
+      currentOptions?.warehouses?.[0];
+    const paymentMethod = (currentOptions?.payment_methods ?? [])[0];
+
+    this.posOptions.set(currentOptions);
+    this.posItems.set([]);
+    this.posForm.reset({
+      branchId,
+      warehouseId: warehouse?.id ?? null,
+      customerId: null,
+      variantId: null,
+      quantity: 1,
+      paymentMethodId: paymentMethod?.id ?? null,
+      reference: '',
+    });
+    this.posErrorMessage.set('');
+    this.posIdempotencyKey = this.newIdempotencyKey('pos', membership.company.id);
+    this.isPosOpen.set(true);
+
+    if (branchId && warehouse?.id) {
+      this.loadPosOptions(membership.company.id, branchId, warehouse.id);
+    }
+  }
+
+  closePos(force = false): void {
+    if (this.isPosCreating() && !force) {
+      return;
+    }
+
+    this.posOptionsSubscription?.unsubscribe();
+    this.posOptionsSubscription = null;
+    this.isPosOpen.set(false);
+    this.isPosLoading.set(false);
+    this.posItems.set([]);
+    this.posOptions.set(null);
+    this.posErrorMessage.set('');
+    this.posIdempotencyKey = '';
+    this.posForm.reset({
+      branchId: null,
+      warehouseId: null,
+      customerId: null,
+      variantId: null,
+      quantity: 1,
+      paymentMethodId: null,
+      reference: '',
+    });
+  }
+
+  refreshPosOptions(): void {
+    const membership = this.selectedMembership();
+    const value = this.posForm.getRawValue();
+
+    if (!membership || !value.branchId || !value.warehouseId || this.isPosLoading()) {
+      return;
+    }
+
+    this.posItems.set([]);
+    this.loadPosOptions(membership.company.id, value.branchId, value.warehouseId);
+  }
+
+  onPosBranchChange(): void {
+    const membership = this.selectedMembership();
+    const branchId = this.posForm.controls.branchId.value;
+    const warehouses = this.posWarehouses().filter(
+      (warehouse) => warehouse.branch === branchId || warehouse.branch === null,
+    );
+    const warehouseId = warehouses[0]?.id ?? null;
+    this.posForm.patchValue({ warehouseId, variantId: null });
+    this.posItems.set([]);
+    if (membership && branchId && warehouseId) {
+      this.loadPosOptions(membership.company.id, branchId, warehouseId);
+    }
+  }
+
+  posWarehouses() {
+    const branchId = this.posForm.controls.branchId.value;
+    return (this.posOptions()?.warehouses ?? this.options()?.warehouses ?? []).filter(
+      (warehouse) => warehouse.branch === branchId || warehouse.branch === null,
+    );
+  }
+
+  posPaymentMethods() {
+    return this.posOptions()?.payment_methods ?? this.options()?.payment_methods ?? [];
+  }
+
+  posCustomers() {
+    return this.posOptions()?.customers ?? this.options()?.customers ?? [];
+  }
+
+  posVariants() {
+    return this.posOptions()?.variants ?? [];
+  }
+
+  selectedPosVariant(): SaleOptionVariant | null {
+    const variantId = this.posForm.controls.variantId.value;
+    return this.posVariants().find((variant) => variant.id === variantId) ?? null;
+  }
+
+  addPosItem(): void {
+    const variant = this.selectedPosVariant();
+    const quantity = this.normalizePosQuantity(
+      Number(this.posForm.controls.quantity.value),
+    );
+
+    if (!variant || !Number.isFinite(quantity) || quantity <= 0) {
+      this.posErrorMessage.set('Selecciona un producto y una cantidad válida.');
+      return;
+    }
+
+    const currentQuantity =
+      this.posItems().find((item) => item.variant === variant.id)?.quantity ?? 0;
+    const stock = Number(variant.stock);
+
+    if (currentQuantity + quantity > stock) {
+      this.posErrorMessage.set(`La cantidad supera el stock disponible de ${variant.sku}.`);
+      return;
+    }
+
+    this.posItems.update((items) => {
+      const existing = items.find((item) => item.variant === variant.id);
+      if (existing) {
+        return items.map((item) =>
+          item.variant === variant.id
+            ? { ...item, quantity: this.normalizePosQuantity(item.quantity + quantity) }
+            : item,
+        );
+      }
+
+      return [
+        ...items,
+        {
+          variant: variant.id,
+          sku: variant.sku,
+          name: variant.name,
+          unitPrice: Number(variant.unit_price),
+          stock,
+          quantity,
+        },
+      ];
+    });
+    this.posErrorMessage.set('');
+    this.posForm.patchValue({ variantId: null, quantity: 1 });
+  }
+
+  private normalizePosQuantity(value: number): number {
+    return Math.round(value * 1000) / 1000;
+  }
+
+  removePosItem(variantId: number): void {
+    this.posItems.update((items) => items.filter((item) => item.variant !== variantId));
+  }
+
+  createPosSale(): void {
+    const membership = this.selectedMembership();
+    const value = this.posForm.getRawValue();
+
+    if (!membership || !this.canManageSales() || this.isPosCreating()) {
+      return;
+    }
+
+    if (
+      this.posForm.invalid ||
+      !value.branchId ||
+      !value.warehouseId ||
+      !value.paymentMethodId ||
+      this.posItems().length === 0
+    ) {
+      this.posForm.markAllAsTouched();
+      this.posErrorMessage.set(
+        'Completa sucursal, bodega, medio de pago y agrega al menos un producto.',
+      );
+      return;
+    }
+
+    const companyId = membership.company.id;
+    const payload: PosSaleCreateRequest = {
+      branch: value.branchId,
+      warehouse: value.warehouseId,
+      customer: value.customerId ?? null,
+      items: this.posItems().map((item) => ({
+        variant: item.variant,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+      })),
+      payment_method: value.paymentMethodId,
+      reference: value.reference.trim(),
+      idempotency_key: (this.posIdempotencyKey ||= this.newIdempotencyKey('pos', companyId)),
+    };
+
+    this.posCreateSubscription?.unsubscribe();
+    this.posErrorMessage.set('');
+    this.successMessage.set('');
+    this.isPosCreating.set(true);
+
+    this.posCreateSubscription = this.salesService
+      .createPosSale(companyId, payload)
+      .pipe(
+        finalize(() => {
+          if (this.selectedMembership()?.company.id === companyId) {
+            this.isPosCreating.set(false);
+          }
+        }),
+      )
+      .subscribe({
+        next: (response) => {
+          if (this.selectedMembership()?.company.id !== companyId) {
+            return;
+          }
+
+          this.closePos(true);
+          this.updateSaleEverywhere(response.sale);
+          this.successMessage.set(
+            response.idempotent_replay
+              ? `Venta POS #${response.sale.number} recuperada sin duplicarla.`
+              : `Venta POS #${response.sale.number} creada y pagada.`,
+          );
+          this.loadWorkspace(companyId);
+        },
+        error: (error: HttpErrorResponse) => {
+          if (this.selectedMembership()?.company.id === companyId) {
+            this.posErrorMessage.set(this.messageForError(error, 'crear la venta POS'));
           }
         },
       });
@@ -396,6 +676,79 @@ export class Sales implements OnDestroy {
       });
   }
 
+  requestReverse(sale: Sale): void {
+    if (!this.canReverse(sale)) {
+      return;
+    }
+
+    this.reverseErrorMessage.set('');
+    this.reverseForm.reset({ reference: '' });
+    this.reverseCandidate.set(sale);
+  }
+
+  closeReverseConfirmation(): void {
+    if (!this.isReversing()) {
+      this.reverseCandidate.set(null);
+      this.reverseErrorMessage.set('');
+      this.reverseForm.reset({ reference: '' });
+    }
+  }
+
+  confirmReverse(): void {
+    const membership = this.selectedMembership();
+    const sale = this.reverseCandidate();
+
+    if (!membership || !sale || !this.canReverse(sale) || this.isReversing()) {
+      return;
+    }
+
+    if (this.reverseForm.invalid) {
+      this.reverseForm.markAllAsTouched();
+      this.reverseErrorMessage.set('Ingresa una referencia para dejar trazabilidad de la reversa.');
+      return;
+    }
+
+    const companyId = membership.company.id;
+    const reference = this.reverseForm.controls.reference.value.trim();
+    this.reverseSubscription?.unsubscribe();
+    this.reverseErrorMessage.set('');
+    this.actionErrorMessage.set('');
+    this.successMessage.set('');
+    this.isReversing.set(true);
+
+    this.reverseSubscription = this.salesService
+      .reversePosSale(companyId, sale.id, reference)
+      .pipe(
+        finalize(() => {
+          if (this.selectedMembership()?.company.id === companyId) {
+            this.isReversing.set(false);
+          }
+        }),
+      )
+      .subscribe({
+        next: (response) => {
+          if (this.selectedMembership()?.company.id !== companyId) {
+            return;
+          }
+
+          this.reverseCandidate.set(null);
+          this.reverseForm.reset({ reference: '' });
+          this.updateSaleEverywhere(response.sale);
+          this.successMessage.set(
+            response.already_reversed
+              ? `La venta POS #${response.sale.number} ya estaba revertida.`
+              : `Venta POS #${response.sale.number} revertida correctamente.`,
+          );
+          this.loadSales(companyId, this.pagination().page);
+        },
+        error: (error: HttpErrorResponse) => {
+          if (this.selectedMembership()?.company.id === companyId) {
+            this.reverseErrorMessage.set(this.messageForError(error, 'revertir la venta POS'));
+          }
+        },
+      });
+  }
+
   openDetail(sale: Sale): void {
     const membership = this.selectedMembership();
 
@@ -458,6 +811,40 @@ export class Sales implements OnDestroy {
     return this.canManageSales() && sale.status === 'PENDING' && Number(sale.paid_amount) === 0;
   }
 
+  canReverse(sale: Sale): boolean {
+    return (
+      this.canManageSales() &&
+      sale.origin === 'POS' &&
+      sale.status === 'PAID' &&
+      Number(sale.paid_amount) > 0
+    );
+  }
+
+  isPosSale(sale: Sale): boolean {
+    return sale.origin === 'POS';
+  }
+
+  saleOriginLabel(sale: Sale): string {
+    return this.isPosSale(sale) ? 'Venta POS' : 'Pedido';
+  }
+
+  customerLabel(sale: Sale): string {
+    return sale.customer_code && sale.customer_name
+      ? `${sale.customer_code} · ${sale.customer_name}`
+      : 'Consumidor final';
+  }
+
+  warehouseLabel(warehouseId: number | null | undefined): string {
+    if (!warehouseId) {
+      return 'Sin bodega';
+    }
+
+    const warehouse = (this.options()?.warehouses ?? []).find(
+      (candidate) => candidate.id === warehouseId,
+    );
+    return warehouse ? `${warehouse.code} · ${warehouse.name}` : `Bodega ${warehouseId}`;
+  }
+
   statusLabel(status: SaleStatus): string {
     const labels: Record<SaleStatus, string> = {
       PENDING: 'Pendiente',
@@ -490,6 +877,9 @@ export class Sales implements OnDestroy {
     }
 
     if (event.event_type === 'CANCELLED') {
+      if (event.amount !== null && event.amount !== undefined) {
+        return `Reversión registrada: ${this.formatMoney(event.amount)} · ${event.reference}`;
+      }
       return 'Anulación registrada sin pagos asociados.';
     }
 
@@ -515,6 +905,40 @@ export class Sales implements OnDestroy {
       dateStyle: 'medium',
       timeStyle: 'short',
     }).format(date);
+  }
+
+  private loadPosOptions(companyId: number, branchId: number, warehouseId: number): void {
+    this.posOptionsSubscription?.unsubscribe();
+    this.isPosLoading.set(true);
+    this.posErrorMessage.set('');
+
+    this.posOptionsSubscription = this.salesService
+      .getPosOptions(companyId, { branch: branchId, warehouse: warehouseId })
+      .pipe(
+        finalize(() => {
+          if (this.selectedMembership()?.company.id === companyId) {
+            this.isPosLoading.set(false);
+          }
+        }),
+      )
+      .subscribe({
+        next: (response) => {
+          if (this.selectedMembership()?.company.id === companyId) {
+            this.posOptions.set(response);
+            const paymentMethodId = this.posForm.controls.paymentMethodId.value;
+            if (!paymentMethodId && response.payment_methods?.length) {
+              this.posForm.controls.paymentMethodId.setValue(response.payment_methods[0].id);
+            }
+          }
+        },
+        error: (error: HttpErrorResponse) => {
+          if (this.selectedMembership()?.company.id === companyId) {
+            this.posOptions.set(null);
+            this.posItems.set([]);
+            this.posErrorMessage.set(this.messageForError(error, 'cargar las opciones del POS'));
+          }
+        },
+      });
   }
 
   private loadWorkspace(companyId: number): void {
@@ -613,24 +1037,44 @@ export class Sales implements OnDestroy {
     this.isDetailLoading.set(false);
     this.isCreating.set(false);
     this.isPaymentSaving.set(false);
+    this.isPosLoading.set(false);
+    this.isPosCreating.set(false);
+    this.isReversing.set(false);
     this.cancellingSaleId.set(null);
     this.isCreateOpen.set(false);
     this.isPaymentOpen.set(false);
+    this.isPosOpen.set(false);
     this.isDetailOpen.set(false);
     this.paymentSale.set(null);
     this.detailSale.set(null);
     this.cancelCandidate.set(null);
+    this.reverseCandidate.set(null);
+    this.posItems.set([]);
+    this.posOptions.set(null);
     this.listErrorMessage.set('');
     this.createErrorMessage.set('');
     this.paymentErrorMessage.set('');
+    this.posErrorMessage.set('');
+    this.reverseErrorMessage.set('');
     this.detailErrorMessage.set('');
     this.actionErrorMessage.set('');
     this.successMessage.set('');
     this.createIdempotencyKey = '';
     this.paymentIdempotencyKey = '';
+    this.posIdempotencyKey = '';
     this.resetFilterForm();
     this.createForm.reset({ orderId: null });
     this.paymentForm.reset({ amount: null, reference: '' });
+    this.posForm.reset({
+      branchId: null,
+      warehouseId: null,
+      customerId: null,
+      variantId: null,
+      quantity: 1,
+      paymentMethodId: null,
+      reference: '',
+    });
+    this.reverseForm.reset({ reference: '' });
   }
 
   private resetFilterForm(): void {
@@ -642,7 +1086,7 @@ export class Sales implements OnDestroy {
     });
   }
 
-  private newIdempotencyKey(kind: 'sale' | 'payment', companyId: number): string {
+  private newIdempotencyKey(kind: 'sale' | 'payment' | 'pos', companyId: number): string {
     const randomPart =
       typeof globalThis.crypto?.randomUUID === 'function'
         ? globalThis.crypto.randomUUID()
@@ -709,11 +1153,17 @@ export class Sales implements OnDestroy {
     this.createSubscription?.unsubscribe();
     this.paymentSubscription?.unsubscribe();
     this.cancelSubscription?.unsubscribe();
+    this.posOptionsSubscription?.unsubscribe();
+    this.posCreateSubscription?.unsubscribe();
+    this.reverseSubscription?.unsubscribe();
     this.workspaceSubscription = null;
     this.listSubscription = null;
     this.detailSubscription = null;
     this.createSubscription = null;
     this.paymentSubscription = null;
     this.cancelSubscription = null;
+    this.posOptionsSubscription = null;
+    this.posCreateSubscription = null;
+    this.reverseSubscription = null;
   }
 }

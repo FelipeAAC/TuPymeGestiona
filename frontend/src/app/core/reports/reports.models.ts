@@ -50,6 +50,8 @@ export interface SalesReportQuery {
 export interface SalesReportRow {
   id: number;
   number: number;
+  origin?: 'ORDER' | 'POS';
+  order_number?: number | null;
   date: string;
   branch: string;
   branch_code: string;
