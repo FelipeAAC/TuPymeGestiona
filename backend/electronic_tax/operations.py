@@ -1,5 +1,3 @@
-import hashlib
-import json
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -10,13 +8,11 @@ from django.db.models import Count
 from django.utils import timezone
 
 from .models import (
-    ElectronicTaxArtifact,
     ElectronicTaxDocument,
     ElectronicTaxExchange,
     ElectronicTaxOperationalAlert,
     ElectronicTaxStatusCheckTask,
     FolioAuthorization,
-    FolioReservation,
     TaxCompanyProfile,
 )
 from .services import refresh_document_status
@@ -399,44 +395,3 @@ def process_status_check_tasks(*, limit=20, execute=False, provider=None, now=No
             task.save(update_fields=("state", "due_at", "updated_at"))
             result["rescheduled"] += 1
     return result
-
-
-def integrity_snapshot(*, company=None):
-    documents = ElectronicTaxDocument.objects.all()
-    reservations = FolioReservation.objects.all()
-    artifacts = ElectronicTaxArtifact.objects.all()
-    if company is not None:
-        documents = documents.filter(company=company)
-        reservations = reservations.filter(company=company)
-        artifacts = artifacts.filter(document__company=company)
-    problems = []
-    for document in documents.filter(folio__isnull=False).select_related("folio_authorization"):
-        if not FolioReservation.objects.filter(document=document, folio=document.folio, type_code=document.type_code).exists():
-            problems.append({"code": "MISSING_FOLIO_RESERVATION", "document_id": document.id})
-    for reservation in reservations.select_related("document", "authorization"):
-        if reservation.folio < reservation.authorization.start_folio or reservation.folio > reservation.authorization.end_folio:
-            problems.append({"code": "FOLIO_OUT_OF_RANGE", "reservation_id": reservation.id})
-    manifest_rows = list(
-        documents.order_by("id").values_list(
-            "id", "company_id", "type_code", "folio", "state", "snapshot_hash", "xml_hash"
-        )
-    )
-    artifact_rows = list(
-        artifacts.order_by("id").values_list("id", "document_id", "kind", "content_hash")
-    )
-    digest_payload = json.dumps(
-        {"documents": manifest_rows, "artifacts": artifact_rows},
-        sort_keys=True,
-        separators=(",", ":"),
-        default=str,
-    ).encode("utf-8")
-    return {
-        "database_vendor": connection.vendor,
-        "company_id": company.id if company is not None else None,
-        "documents": len(manifest_rows),
-        "artifacts": len(artifact_rows),
-        "reservations": reservations.count(),
-        "problems": problems,
-        "integrity_digest_sha256": hashlib.sha256(digest_payload).hexdigest(),
-        "generated_at": timezone.now().isoformat(),
-    }

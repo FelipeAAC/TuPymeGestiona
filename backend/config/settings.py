@@ -20,7 +20,9 @@ def env_list(name: str, default: str = "") -> list[str]:
 
 
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
-DEBUG = env_bool("DJANGO_DEBUG", True)
+# Fail closed when the deployment environment does not provide an explicit
+# value. Local development can still opt in through backend/.env.
+DEBUG = env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 
 INSTALLED_APPS = [

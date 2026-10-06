@@ -51,6 +51,10 @@ Una persona puede:
 
 ## Cómo levantar el proyecto localmente
 
+Los comandos de esta sección parten de la raíz `TuPymeGestiona` y usan
+`pushd`/`popd` para evitar errores de ruta. Cada aplicación debe ejecutarse en
+su propia terminal.
+
 ### 1. Requisitos previos
 
 Se recomienda disponer de:
@@ -59,7 +63,7 @@ Se recomienda disponer de:
 - **Python 3.13** o una versión compatible con Django 6.1;
 - **MySQL** para la base de datos real/local del proyecto;
 - **Node.js 22.22.3+, 24.15.0+** o una release posterior soportada por Angular 22;
-- **npm 11.17.0**, declarado en `frontend/package.json` y activado explícitamente en CI;
+- **npm 11.17.0**, declarado en `frontend/package.json` para instalaciones reproducibles;
 - **Git**.
 - **PowerShell 5.1+** (incluido en Windows) para los scripts de preparación y carga.
 
@@ -89,9 +93,10 @@ git checkout develop-v2
 Desde la raíz:
 
 ```cmd
-cd backend
+pushd backend
 py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+popd
 ```
 
 Crear `backend/.env`. Este archivo es local y no debe versionarse.
@@ -134,8 +139,10 @@ el identificador del SQL y usa el mismo valor en `DB_NAME` dentro de
 `backend/.env`. Después aplica las migraciones:
 
 ```cmd
+pushd backend
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py migrate
+popd
 ```
 
 ### Base existente
@@ -143,9 +150,10 @@ el identificador del SQL y usa el mismo valor en `DB_NAME` dentro de
 Si ya tienes una base MySQL utilizada durante el desarrollo, **no apliques migraciones a ciegas**. Revisa primero el plan y realiza un backup:
 
 ```cmd
-cd backend
+pushd backend
 .\.venv\Scripts\python.exe manage.py showmigrations
 .\.venv\Scripts\python.exe manage.py migrate --plan
+popd
 ```
 
 Si el plan muestra migraciones pendientes, aplícalas después del backup con
@@ -154,8 +162,9 @@ Si el plan muestra migraciones pendientes, aplícalas después del backup con
 ### 4. Levantar Django
 
 ```cmd
-cd backend
+pushd backend
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+popd
 ```
 
 Backend:
@@ -169,14 +178,17 @@ http://127.0.0.1:8000
 En otra terminal:
 
 ```cmd
-cd frontend
+pushd frontend
 npm ci
+popd
 ```
 
 ### 6. Levantar aplicación principal
 
 ```cmd
+pushd frontend
 npm start
+popd
 ```
 
 Disponible en:
@@ -205,8 +217,9 @@ Rutas útiles:
 En una tercera terminal:
 
 ```cmd
-cd frontend
+pushd frontend
 npm run start:maintainers
+popd
 ```
 
 Disponible en:
@@ -215,7 +228,7 @@ Disponible en:
 http://localhost:4300
 ```
 
-La aplicación `maintainers` tiene entrada, `sourceRoot`, tests, servidor y bundle propios, pero comparte el mismo backend Django, sesión, permisos, contexto de empresa y MySQL.
+La aplicación `maintainers` tiene entrada, `sourceRoot`, servidor y bundle propios, pero comparte el mismo backend Django, sesión, permisos, contexto de empresa y MySQL.
 
 ---
 
@@ -292,7 +305,9 @@ Portal Cliente ⇄ Gestión PYME
 
 sin cerrar sesión.
 
-En esta etapa de prototipo la PYME se habilita inmediatamente. Una versión productiva debería añadir verificación de identidad del representante, RUT, razón social, contacto y existencia comercial.
+En el alcance actual la PYME se habilita inmediatamente. Un despliegue que
+requiera validación comercial puede añadir verificación de identidad del
+representante, RUT, razón social, contacto y existencia comercial.
 
 ---
 
@@ -383,15 +398,17 @@ Build:
 frontend/dist/maintainers
 ```
 
-Esta separación proporciona la estructura técnica prevista para RF24. La aceptación completa requiere ejecutar las dos aplicaciones y comprobar sus mantenedores, permisos, flujos y relación con la documentación formal.
+Esta separación proporciona la estructura técnica prevista para RF24. Para
+usarla localmente, levanta ambas aplicaciones y comprueba los mantenedores,
+permisos y flujos con la base demo.
 
 ## Código legado eliminado
 
 La implementación histórica ubicada en `panel/`, su SQLite y bytecode Python versionado fueron eliminados durante la limpieza del repositorio. Ya no forman parte de la arquitectura ni de los pasos de ejecución.
 
-La documentación técnica dispersa también fue consolidada en este `README.md`.
-Los únicos archivos operativos adicionales son los scripts versionados de
-creación y carga de la base MySQL.
+La documentación técnica dispersa fue consolidada en este `README.md`.
+Se conservan los scripts de creación y carga MySQL y los comandos que ejecutan
+operaciones reales de correo y facturación electrónica.
 
 ---
 
@@ -462,7 +479,7 @@ Los flujos críticos de pedido, inventario, venta y pago no dependen únicamente
 
 ## Datos demo
 
-Para poder explorar visualmente el sistema con información realista existe:
+Desde la raíz del repositorio, para cargar ejemplos locales ejecuta:
 
 ```cmd
 Cargar_Datos_Demo.cmd
@@ -552,8 +569,8 @@ Cargar_Datos_Demo.cmd --seed prueba2 --companies 3 --products 30 --customers 50 
 ```
 
 El seed es determinista e idempotente para un mismo identificador: si detecta el dataset completo, no vuelve a duplicarlo.
-Si necesitas cargar ejemplos POS en una base que ya tiene un seed anterior,
-usa un identificador nuevo con `-Seed`.
+Para una presentación limpia, usa una base nueva. Cambiar el seed no limpia
+la base existente y puede coincidir con identificadores empresariales ya creados.
 
 El comando se bloquea con `DEBUG=False`; está pensado únicamente para una
 instancia local o de presentación.
@@ -578,7 +595,7 @@ Principales ajustes:
 - eliminación de scaffolding vacío de Django;
 - `noUnusedLocals` y `noUnusedParameters` activos en TypeScript;
 - eliminación de una inyección Angular no utilizada;
-- `DJANGO_SECRET_KEY` explícita para CI;
+- `DJANGO_SECRET_KEY` explícita y `DJANGO_DEBUG` cerrado por defecto;
 - configuración MySQL endurecida;
 - CSRF preparado para puertos 4200 y 4300;
 - reducción de consultas N+1 del Portal Cliente;
@@ -593,11 +610,11 @@ No se realizaron cambios invasivos en modelos o contratos públicos únicamente 
 
 ## Verificación de instalación
 
-Después de instalar dependencias o cambiar variables de entorno, valida la
+Desde la raíz del repositorio, después de instalar dependencias o cambiar variables de entorno, valida la
 configuración y genera ambos bundles de producción:
 
 ```cmd
-cd backend
+pushd backend
 .\.venv\Scripts\python.exe -m pip check
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
@@ -606,6 +623,7 @@ cd ..\frontend
 npm run typecheck
 npm run build
 npm run build:maintainers
+popd
 ```
 
 Para una presentación, confirma manualmente el recorrido de registro/login,
@@ -636,15 +654,27 @@ El sistema dispone actualmente de:
 
 ## Pendiente para cierre real/controlado
 
-1. Realizar backup MySQL.
-2. Confirmar el estado con `showmigrations` y `migrate --plan`.
-3. Aplicar migraciones pendientes en un paso controlado.
-4. Cargar datos demo para exploración visual.
-5. Probar manualmente compra, venta POS y reversa antes de la presentación.
-6. Ejecutar E2E manual completo.
-7. Activar Mercado Pago Sandbox con secretos externos.
-8. Activar SMTP real de forma controlada.
-9. Activar/validar SII solamente con certificados y credenciales autorizadas.
+El flujo local de presentación incluye registro e inicio de sesión, cambio de
+empresa, catálogo, inventario, pedidos, caja POS, pagos internos, reversas,
+reportes y mantenedores. La base se prepara con migraciones Django y puede
+recibir el dataset demo mediante los scripts descritos arriba.
+
+Mercado Pago, SMTP y SII permanecen desactivados por defecto. Para habilitarlos
+en un entorno real se necesitan credenciales, URLs públicas, certificados o un
+servidor de correo autorizados, además de una validación independiente en sus
+ambientes de prueba o producción.
+
+Para validar cada instalación antes de su uso:
+
+1. Realizar un respaldo MySQL.
+2. Revisar `showmigrations` y `migrate --plan`.
+3. Aplicar únicamente las migraciones pendientes.
+4. Cargar datos demo solo si se trata de una base local de presentación.
+5. Comprobar compra, venta POS y reversa con los usuarios de esa instalación.
+6. Revisar permisos, inventario y reportes en las dos aplicaciones.
+7. Validar Mercado Pago Sandbox si se habilitarán pagos externos.
+8. Configurar y comprobar SMTP si se enviarán correos.
+9. Configurar y validar SII con certificados y credenciales autorizadas si se emitirá DTE.
 
 ---
 
@@ -674,55 +704,37 @@ Principio:
 evento de negocio → outbox persistente → procesador SMTP separado
 ```
 
-Preflight:
+Desde la raíz del repositorio, procesar outbox:
 
 ```cmd
-cd backend
-.\.venv\Scripts\python.exe manage.py transactional_email_preflight
-```
-
-Procesar outbox:
-
-```cmd
-.\.venv\Scripts\python.exe manage.py process_transactional_notifications --limit 100
+.\backend\.venv\Scripts\python.exe backend\manage.py process_transactional_notifications --limit 100
 ```
 
 Recuperar envíos atascados:
 
 ```cmd
-.\.venv\Scripts\python.exe manage.py transactional_email_recover_stale
+.\backend\.venv\Scripts\python.exe backend\manage.py transactional_email_recover_stale
 ```
 
 Un envío `UNCERTAIN` no se reenvía ciegamente para evitar duplicados.
 
 ## Facturación electrónica / SII
 
-Preflight:
+Desde la raíz, actualizar las alertas y encolar consultas de los documentos
+pendientes. Este comando mantiene datos operativos usados por la aplicación:
 
 ```cmd
-cd backend
-.\.venv\Scripts\python.exe manage.py sii_preflight
+.\backend\.venv\Scripts\python.exe backend\manage.py electronic_tax_operational_check
 ```
 
-Comprobación operacional:
+Procesamiento de consultas de estado en modo informativo:
 
 ```cmd
-.\.venv\Scripts\python.exe manage.py electronic_tax_operational_check
+.\backend\.venv\Scripts\python.exe backend\manage.py electronic_tax_process_status_checks
 ```
 
-Integridad:
-
-```cmd
-.\.venv\Scripts\python.exe manage.py electronic_tax_integrity_check --fail-on-problem
-```
-
-Procesamiento de consultas de estado en modo dry-run:
-
-```cmd
-.\.venv\Scripts\python.exe manage.py electronic_tax_process_status_checks
-```
-
-La ejecución remota requiere configuración SII real y autorización explícita.
+Para ejecutar consultas remotas se agrega `--execute` y se requiere
+configuración SII real y autorización explícita.
 
 ---
 
@@ -767,6 +779,8 @@ DJANGO_SECURE_SSL_REDIRECT=true
 
 ## Comandos útiles
 
+Ejecuta cada bloque en una terminal situada en la raíz del repositorio.
+
 ## Revisar estado Git
 
 ```cmd
@@ -777,8 +791,9 @@ git log --oneline -10
 ## Ver migraciones
 
 ```cmd
-cd backend
+pushd backend
 .\.venv\Scripts\python.exe manage.py showmigrations
+popd
 ```
 
 ## Crear la base MySQL
@@ -795,27 +810,32 @@ Cargar_Datos_Demo.cmd
 ## Ejecutar backend
 
 ```cmd
-cd backend
+pushd backend
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+popd
 ```
 
 ## Ejecutar Angular principal
 
 ```cmd
-cd frontend
+pushd frontend
 npm start
+popd
 ```
 
 ## Ejecutar mantenedores
 
 ```cmd
-cd frontend
+pushd frontend
 npm run start:maintainers
+popd
 ```
 
 ---
 
 ## Solución de problemas comunes
+
+Los comandos siguientes parten de la raíz del repositorio.
 
 ## `DJANGO_SECRET_KEY` no existe
 
@@ -840,9 +860,10 @@ DB_PORT
 Luego ejecuta:
 
 ```cmd
-cd backend
+pushd backend
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py showmigrations
+popd
 ```
 
 ## Hay migraciones pendientes
@@ -850,9 +871,10 @@ cd backend
 No cargues datos demo todavía. Revisa:
 
 ```cmd
-cd backend
+pushd backend
 .\.venv\Scripts\python.exe manage.py showmigrations
 .\.venv\Scripts\python.exe manage.py migrate --plan
+popd
 ```
 
 Haz backup antes de aplicar una migración sobre la base real.

@@ -313,22 +313,3 @@ def mark_stale_sending_uncertain(*, now=None):
             )
             count += 1
     return count
-
-
-def preflight_errors():
-    errors = []
-    if not settings.TRANSACTIONAL_EMAIL_ENABLED:
-        errors.append("TRANSACTIONAL_EMAIL_ENABLED debe ser true para envío real.")
-    if not settings.TRANSACTIONAL_EMAIL_FROM:
-        errors.append("TRANSACTIONAL_EMAIL_FROM es obligatorio.")
-    if settings.TRANSACTIONAL_EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
-        if not settings.TRANSACTIONAL_EMAIL_HOST:
-            errors.append("TRANSACTIONAL_EMAIL_HOST es obligatorio para SMTP.")
-        if settings.TRANSACTIONAL_EMAIL_USE_TLS and settings.TRANSACTIONAL_EMAIL_USE_SSL:
-            errors.append("TLS y SSL no pueden habilitarse al mismo tiempo.")
-        if settings.TRANSACTIONAL_EMAIL_REQUIRE_AUTH:
-            if not os.getenv(settings.TRANSACTIONAL_EMAIL_USERNAME_ENV, ""):
-                errors.append(f"Falta la variable secreta {settings.TRANSACTIONAL_EMAIL_USERNAME_ENV}.")
-            if not os.getenv(settings.TRANSACTIONAL_EMAIL_PASSWORD_ENV, ""):
-                errors.append(f"Falta la variable secreta {settings.TRANSACTIONAL_EMAIL_PASSWORD_ENV}.")
-    return errors

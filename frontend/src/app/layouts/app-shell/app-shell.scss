@@ -46,8 +46,7 @@
   gap: 8px;
 }
 
-.sidebar-nav a,
-.nav-placeholder {
+.sidebar-nav a {
   padding: 10px 12px;
   border-radius: 8px;
   color: #4b5563;
@@ -59,10 +58,6 @@
   color: #4338ca;
   background: #eef2ff;
   font-weight: 600;
-}
-
-.nav-placeholder {
-  opacity: 0.55;
 }
 
 .app-main {

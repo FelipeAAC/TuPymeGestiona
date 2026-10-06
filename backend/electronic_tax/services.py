@@ -73,7 +73,7 @@ class DTEFolioUnavailableError(DTEError):
 
 
 class ElectronicTaxProviderPort:
-    """Puerto desacoplado; la implementacion real SII pertenece al slice posterior."""
+    """Interfaz común para proveedores tributarios, incluido el adaptador SII."""
 
     configured = False
 
@@ -93,50 +93,6 @@ class ProviderSendUncertain(Exception):
 
 class NotConfiguredTaxProvider(ElectronicTaxProviderPort):
     configured = False
-
-
-class FakeElectronicTaxProvider(ElectronicTaxProviderPort):
-    """Fake local determinista para pruebas; nunca realiza red ni accede a secretos."""
-
-    configured = True
-
-    def __init__(
-        self,
-        *,
-        track_id="FAKE-TRACK-1",
-        xml_hash="f" * 64,
-        send_uncertain=False,
-        refresh_state=ElectronicTaxDocument.State.ACCEPTED,
-        refresh_code="FAKE_ACCEPTED",
-        refresh_message="Aceptado por fake local",
-    ):
-        self.track_id = track_id
-        self.xml_hash = xml_hash
-        self.send_uncertain = send_uncertain
-        self.refresh_state = refresh_state
-        self.refresh_code = refresh_code
-        self.refresh_message = refresh_message
-        self.sign_calls = 0
-        self.submit_calls = 0
-        self.refresh_calls = 0
-
-    def sign(self, *, document):
-        self.sign_calls += 1
-        return {"xml_hash": self.xml_hash}
-
-    def submit(self, *, document):
-        self.submit_calls += 1
-        if self.send_uncertain:
-            raise ProviderSendUncertain("Resultado remoto desconocido despues del envio simulado.")
-        return {"track_id": self.track_id}
-
-    def refresh_status(self, *, document):
-        self.refresh_calls += 1
-        return {
-            "state": self.refresh_state,
-            "code": self.refresh_code,
-            "message": self.refresh_message,
-        }
 
 
 DEFAULT_PROVIDER = NotConfiguredTaxProvider()

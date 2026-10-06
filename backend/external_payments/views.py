@@ -3,7 +3,7 @@ import json
 import os
 
 from django.conf import settings
-from django.db import IntegrityError
+from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -141,35 +141,64 @@ def webhook_view(request):
         return Response(status=status.HTTP_200_OK)
     notification_id = str(request.data.get("id") or f"request:{request_id}:{data_id}")[:100]
     payload_hash = hashlib.sha256(json.dumps(request.data, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
-    try:
-        receipt, created = MercadoPagoWebhookReceipt.objects.get_or_create(
-            notification_id=notification_id,
-            defaults={"request_id": request_id[:100], "data_id": data_id[:100], "payload_hash": payload_hash},
-        )
-    except IntegrityError:
-        return Response(status=status.HTTP_200_OK)
-    if not created:
+    receipt, _ = MercadoPagoWebhookReceipt.objects.get_or_create(
+        notification_id=notification_id,
+        defaults={"request_id": request_id[:100], "data_id": data_id[:100], "payload_hash": payload_hash},
+    )
+    if receipt.data_id and data_id and receipt.data_id != data_id:
+        return Response({"detail": "La notificación ya está asociada a otro pago."}, status=status.HTTP_409_CONFLICT)
+    if receipt.result == "REJECTED":
+        return Response({"detail": "El pago remoto fue rechazado por inconsistencia."}, status=status.HTTP_409_CONFLICT)
+    # Solo se confirma una notificación terminada; los errores de consulta
+    # y los intentos interrumpidos deben poder procesarse de nuevo.
+    if receipt.result not in {"", "PROVIDER_ERROR"}:
         return Response(status=status.HTTP_200_OK)
     try:
         client = MercadoPagoClient()
         remote = client.get_payment(data_id)
-        checkout, payment, _ = apply_payment_payload(payload=remote, correlation_id=request_id)
-        if checkout:
-            MercadoPagoEvent.objects.create(
-                checkout=checkout,
-                event_type=MercadoPagoEvent.EventType.WEBHOOK_RECEIVED,
-                provider_payment=payment,
-                correlation_id=request_id[:100],
-                metadata={"notification_id": notification_id},
-            )
-        receipt.result = "PROCESSED" if checkout else "IGNORED"
-        receipt.save(update_fields=("result",))
+        with transaction.atomic():
+            # Consultar al proveedor sin bloquear la base. Otra entrega puede
+            # haber terminado mientras esperábamos; comprobar bajo bloqueo.
+            receipt = MercadoPagoWebhookReceipt.objects.select_for_update().get(pk=receipt.pk)
+            if receipt.data_id and data_id and receipt.data_id != data_id:
+                return Response({"detail": "La notificación ya está asociada a otro pago."}, status=status.HTTP_409_CONFLICT)
+            if receipt.result == "REJECTED":
+                return Response({"detail": "El pago remoto fue rechazado por inconsistencia."}, status=status.HTTP_409_CONFLICT)
+            if receipt.result not in {"", "PROVIDER_ERROR"}:
+                return Response(status=status.HTTP_200_OK)
+            checkout, payment, _ = apply_payment_payload(payload=remote, correlation_id=request_id)
+            if checkout:
+                MercadoPagoEvent.objects.create(
+                    checkout=checkout,
+                    event_type=MercadoPagoEvent.EventType.WEBHOOK_RECEIVED,
+                    provider_payment=payment,
+                    correlation_id=request_id[:100],
+                    metadata={"notification_id": notification_id},
+                )
+            receipt.result = "PROCESSED" if checkout else "IGNORED"
+            update_fields = ["result"]
+            if not receipt.data_id and data_id:
+                receipt.data_id = data_id[:100]
+                update_fields.append("data_id")
+            receipt.save(update_fields=update_fields)
     except MercadoPagoConflictError:
-        receipt.result = "REJECTED"
-        receipt.save(update_fields=("result",))
+        with transaction.atomic():
+            receipt = MercadoPagoWebhookReceipt.objects.select_for_update().get(pk=receipt.pk)
+            if receipt.result in {"PROCESSED", "IGNORED"}:
+                return Response(status=status.HTTP_200_OK)
+            if receipt.result != "REJECTED":
+                receipt.result = "REJECTED"
+                receipt.save(update_fields=("result",))
         return Response({"detail": "Pago remoto inconsistente."}, status=status.HTTP_409_CONFLICT)
     except (MercadoPagoNotConfigured, MercadoPagoProviderError):
-        receipt.result = "PROVIDER_ERROR"
-        receipt.save(update_fields=("result",))
+        with transaction.atomic():
+            receipt = MercadoPagoWebhookReceipt.objects.select_for_update().get(pk=receipt.pk)
+            if receipt.result in {"PROCESSED", "IGNORED"}:
+                return Response(status=status.HTTP_200_OK)
+            if receipt.result == "REJECTED":
+                return Response({"detail": "Pago remoto inconsistente."}, status=status.HTTP_409_CONFLICT)
+            if receipt.result != "REJECTED":
+                receipt.result = "PROVIDER_ERROR"
+                receipt.save(update_fields=("result",))
         return Response({"detail": "No fue posible consultar el pago."}, status=status.HTTP_502_BAD_GATEWAY)
     return Response(status=status.HTTP_200_OK)
