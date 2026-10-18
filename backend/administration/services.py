@@ -105,6 +105,12 @@ def role_has_company_only_permissions(role):
     ).exists()
 
 
+def role_has_branch_scoped_permissions(role):
+    return role.permission_links.filter(
+        permission__scope_behavior=Permission.ScopeBehavior.BRANCH_SCOPED,
+    ).exists()
+
+
 def replace_membership_access(*, membership, branch_ids, role_ids):
     branches = list(
         membership.company.branches.filter(id__in=branch_ids).order_by("id")
@@ -118,14 +124,28 @@ def replace_membership_access(*, membership, branch_ids, role_ids):
     if len(roles) != len(set(role_ids)):
         raise ValueError("Uno o mas roles no pertenecen a la empresa.")
 
+    role_scopes = []
+    for role in roles:
+        has_company_scope = role_has_company_only_permissions(role)
+        has_branch_scope = role_has_branch_scoped_permissions(role)
+        if has_company_scope and has_branch_scope:
+            raise ValueError(
+                "Un rol no puede mezclar permisos de empresa y por sucursal."
+            )
+        if has_branch_scope and not branches:
+            raise ValueError(
+                "Los roles con permisos por sucursal requieren al menos una sucursal."
+            )
+        role_scopes.append((role, has_branch_scope))
+
     MembershipBranch.objects.filter(membership=membership).delete()
     MembershipBranch.objects.bulk_create(
         [MembershipBranch(membership=membership, branch=branch) for branch in branches]
     )
 
     RoleAssignment.objects.filter(membership=membership).delete()
-    for role in roles:
-        if role_has_company_only_permissions(role) or not branches:
+    for role, has_branch_scope in role_scopes:
+        if not has_branch_scope:
             RoleAssignment.objects.create(
                 membership=membership,
                 role=role,

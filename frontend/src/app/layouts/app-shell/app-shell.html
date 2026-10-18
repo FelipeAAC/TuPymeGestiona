@@ -1,5 +1,14 @@
 <div class="app-shell">
-  <aside class="sidebar">
+  @if (isMenuOpen()) {
+    <button
+      type="button"
+      class="sidebar-backdrop"
+      aria-label="Cerrar menú"
+      (click)="closeMenu()"
+    ></button>
+  }
+
+  <aside class="sidebar" [class.open]="isMenuOpen()">
     <div class="sidebar-brand">
       <div class="brand-mark">TG</div>
 
@@ -9,36 +18,67 @@
       </div>
     </div>
 
-    <nav class="sidebar-nav" aria-label="Navegación principal">
-      <a routerLink="/app/dashboard" routerLinkActive="active"> Dashboard </a>
-      <a routerLink="/portal"> Ver como cliente </a>
+    <nav id="main-navigation" class="sidebar-nav" aria-label="Navegación principal">
+      <a routerLink="/app/dashboard" routerLinkActive="active" (click)="closeMenu()"> Dashboard </a>
+      <a routerLink="/portal" (click)="closeMenu()"> Ver como cliente </a>
 
-      <a routerLink="/app/products" routerLinkActive="active"> Productos </a>
+      @if (hasPermission('catalog.products.view')) {
+        <a routerLink="/app/products" routerLinkActive="active" (click)="closeMenu()"> Productos </a>
+      }
 
-      <a routerLink="/app/categories" routerLinkActive="active"> Categorías </a>
+      @if (hasPermission('catalog.categories.manage')) {
+        <a routerLink="/app/categories" routerLinkActive="active" (click)="closeMenu()"> Categorías </a>
+      }
 
-      <a routerLink="/app/brands" routerLinkActive="active"> Marcas </a>
+      @if (hasPermission('catalog.brands.manage')) {
+        <a routerLink="/app/brands" routerLinkActive="active" (click)="closeMenu()"> Marcas </a>
+      }
 
-      <a routerLink="/app/suppliers" routerLinkActive="active"> Proveedores </a>
+      @if (hasPermission('catalog.suppliers.manage')) {
+        <a routerLink="/app/suppliers" routerLinkActive="active" (click)="closeMenu()"> Proveedores </a>
+      }
 
-      <a routerLink="/app/warehouses" routerLinkActive="active"> Bodegas </a>
+      @if (hasPermission('organizations.warehouses.manage')) {
+        <a routerLink="/app/warehouses" routerLinkActive="active" (click)="closeMenu()"> Bodegas </a>
+      }
 
-      <a routerLink="/app/inventory" routerLinkActive="active"> Inventario </a>
-      <a routerLink="/app/customers" routerLinkActive="active"> Clientes </a>
-      <a routerLink="/app/orders" routerLinkActive="active"> Pedidos </a>
-      <a routerLink="/app/sales" routerLinkActive="active"> Ventas </a>
-      <a routerLink="/app/electronic-tax" routerLinkActive="active"> Facturación electrónica </a>
+      @if (hasAnyPermission('inventory.stocks.manage', 'inventory.movements.manage', 'inventory.transfers.manage')) {
+        <a routerLink="/app/inventory" routerLinkActive="active" (click)="closeMenu()"> Inventario </a>
+      }
+      @if (hasPermission('customers.manage')) {
+        <a routerLink="/app/customers" routerLinkActive="active" (click)="closeMenu()"> Clientes </a>
+      }
+      @if (hasPermission('orders.manage')) {
+        <a routerLink="/app/orders" routerLinkActive="active" (click)="closeMenu()"> Pedidos </a>
+      }
+      @if (hasPermission('sales.manage')) {
+        <a routerLink="/app/sales" routerLinkActive="active" (click)="closeMenu()"> Ventas </a>
+      }
+      @if (hasAnyPermission('electronic_tax_document.view', 'electronic_tax_folio.manage')) {
+        <a routerLink="/app/electronic-tax" routerLinkActive="active" (click)="closeMenu()"> Facturación electrónica </a>
+      }
       @if (canViewReports()) {
-        <a routerLink="/app/reports" routerLinkActive="active"> Reportes </a>
+        <a routerLink="/app/reports" routerLinkActive="active" (click)="closeMenu()"> Reportes </a>
       }
       @if (canAdminister()) {
-        <a routerLink="/app/administration" routerLinkActive="active"> Administración </a>
+        <a routerLink="/app/administration" routerLinkActive="active" (click)="closeMenu()"> Administración </a>
       }
     </nav>
   </aside>
 
   <div class="app-main">
     <header class="app-header">
+      <button
+        type="button"
+        class="mobile-menu-toggle"
+        [attr.aria-expanded]="isMenuOpen()"
+        aria-controls="main-navigation"
+        aria-label="Abrir menú"
+        (click)="toggleMenu()"
+      >
+        <span aria-hidden="true">☰</span>
+      </button>
+
       <div class="organization-context">
         @if (isOrganizationContextLoading()) {
           <span class="header-context">Cargando empresa...</span>

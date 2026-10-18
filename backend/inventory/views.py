@@ -31,11 +31,10 @@ from inventory.services import (
     create_inventory_transfer,
 )
 
-from organizations.authorization import has_permission
+from organizations.authorization import get_branch_scope, has_permission
 
 from organizations.models import (
     CompanyMembership,
-    RoleAssignment,
     Warehouse,
 )
 
@@ -95,117 +94,52 @@ def _get_active_membership(*, user, company_id):
 
 
 def _get_authorized_stocks(*, user, company):
-
-    assignments = RoleAssignment.objects.filter(
-        membership__user=user,
-        membership__company=company,
-        membership__status=CompanyMembership.Status.ACTIVE,
-        role__permission_links__permission__code=(
-            INVENTORY_STOCKS_MANAGE_PERMISSION_CODE
-        ),
-        role__status="ACTIVE",
-    ).distinct()
-
-    if not assignments.exists():
+    scope = get_branch_scope(
+        user=user,
+        company=company,
+        permission_code=INVENTORY_STOCKS_MANAGE_PERMISSION_CODE,
+    )
+    if not scope.allowed:
         return InventoryStock.objects.none()
 
-    if assignments.filter(
-        branch__isnull=True,
-    ).exists():
-
-        return InventoryStock.objects.filter(
-            warehouse__company=company,
-        )
-
-    branch_ids = assignments.values_list(
-        "branch_id",
-        flat=True,
-    )
-
-    return InventoryStock.objects.filter(
-        warehouse__company=company,
-        warehouse__branch_id__in=branch_ids,
-    )
+    stocks = InventoryStock.objects.filter(warehouse__company=company)
+    if not scope.all_branches:
+        stocks = stocks.filter(warehouse__branch_id__in=scope.branch_ids)
+    return stocks
 
 
 
 def _get_authorized_movements(*, user, company):
-
-    assignments = RoleAssignment.objects.filter(
-        membership__user=user,
-        membership__company=company,
-        membership__status=CompanyMembership.Status.ACTIVE,
-        role__permission_links__permission__code=(
-            INVENTORY_MOVEMENTS_MANAGE_PERMISSION_CODE
-        ),
-        role__status="ACTIVE",
-    ).distinct()
-
-    if not assignments.exists():
+    scope = get_branch_scope(
+        user=user,
+        company=company,
+        permission_code=INVENTORY_MOVEMENTS_MANAGE_PERMISSION_CODE,
+    )
+    if not scope.allowed:
         return InventoryMovement.objects.none()
 
-    if assignments.filter(
-        branch__isnull=True,
-    ).exists():
-
-        return InventoryMovement.objects.filter(
-            warehouse__company=company,
-        )
-
-    branch_ids = assignments.values_list(
-        "branch_id",
-        flat=True,
-    )
-
-    return InventoryMovement.objects.filter(
-        warehouse__company=company,
-        warehouse__branch_id__in=branch_ids,
-    )
+    movements = InventoryMovement.objects.filter(warehouse__company=company)
+    if not scope.all_branches:
+        movements = movements.filter(warehouse__branch_id__in=scope.branch_ids)
+    return movements
 
 
 def _get_authorized_transfers(*, user, company):
-
-    assignments = RoleAssignment.objects.filter(
-        membership__user=user,
-        membership__company=company,
-        membership__status=CompanyMembership.Status.ACTIVE,
-        role__permission_links__permission__code=(
-            INVENTORY_TRANSFERS_MANAGE_PERMISSION_CODE
-        ),
-        role__status="ACTIVE",
-    ).distinct()
-
-
-    if not assignments.exists():
+    scope = get_branch_scope(
+        user=user,
+        company=company,
+        permission_code=INVENTORY_TRANSFERS_MANAGE_PERMISSION_CODE,
+    )
+    if not scope.allowed:
         return InventoryTransfer.objects.none()
 
-
-    if assignments.filter(
-        branch__isnull=True,
-    ).exists():
-
-        return InventoryTransfer.objects.filter(
-            company=company,
+    transfers = InventoryTransfer.objects.filter(company=company)
+    if not scope.all_branches:
+        transfers = transfers.filter(
+            Q(source_warehouse__branch_id__in=scope.branch_ids)
+            | Q(destination_warehouse__branch_id__in=scope.branch_ids)
         )
-
-
-    branch_ids = assignments.values_list(
-        "branch_id",
-        flat=True,
-    )
-
-
-    return InventoryTransfer.objects.filter(
-        company=company,
-    ).filter(
-        Q(
-            source_warehouse__branch_id__in=branch_ids
-        )
-        |
-        Q(
-            destination_warehouse__branch_id__in=branch_ids
-        )
-    )
+    return transfers
 
 
 def _get_warehouse_permission_scope(
@@ -214,33 +148,20 @@ def _get_warehouse_permission_scope(
     company,
     permission_code,
 ):
-
-    assignments = RoleAssignment.objects.filter(
-        membership__user=user,
-        membership__company=company,
-        membership__status=CompanyMembership.Status.ACTIVE,
-        role__permission_links__permission__code=permission_code,
-        role__status="ACTIVE",
-    ).distinct()
-
-    if not assignments.exists():
+    scope = get_branch_scope(
+        user=user,
+        company=company,
+        permission_code=permission_code,
+    )
+    if not scope.allowed:
         return False, set()
 
     warehouses = Warehouse.objects.filter(
         company=company,
     )
 
-    if not assignments.filter(
-        branch__isnull=True,
-    ).exists():
-        branch_ids = assignments.values_list(
-            "branch_id",
-            flat=True,
-        )
-
-        warehouses = warehouses.filter(
-            branch_id__in=branch_ids,
-        )
+    if not scope.all_branches:
+        warehouses = warehouses.filter(branch_id__in=scope.branch_ids)
 
     return True, set(
         warehouses.values_list(

@@ -36,6 +36,23 @@ def _sale_label(row):
     return f"#{row['number']}"
 
 
+def _sale_status_label(status):
+    return {
+        "PENDING": "Pendiente",
+        "PARTIAL": "Pago parcial",
+        "PAID": "Pagada",
+        "CANCELLED": "Anulada",
+    }.get(str(status), str(status))
+
+
+def _stock_level_label(level):
+    return {
+        "OUT": "Sin stock",
+        "CRITICAL": "Crítico",
+        "AVAILABLE": "Disponible",
+    }.get(str(level), str(level))
+
+
 def sales_pdf(*, company_name: str, data: dict) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -67,7 +84,14 @@ def sales_pdf(*, company_name: str, data: dict) -> bytes:
     ]
     table_data = [["Venta", "Fecha", "Sucursal", "Vendedor", "Cliente", "Estado", "Total", "Abonado", "Saldo"]]
     for row in data["rows"]:
-        text_values = [_sale_label(row), row["date"], row["branch"], row["seller"], row["customer"], row["status"]]
+        text_values = [
+            _sale_label(row),
+            row["date"],
+            row["branch"],
+            row["seller"],
+            row["customer"],
+            _sale_status_label(row["status"]),
+        ]
         table_data.append(
             [_literal_paragraph(value, cell_style) for value in text_values]
             + [_money(row["total_amount"]), _money(row["paid_amount"]), _money(row["balance"])]
@@ -126,7 +150,7 @@ def inventory_pdf(*, company_name: str, data: dict) -> bytes:
         table_data.append(
             [_literal_paragraph(value, cell_style) for value in text_values]
             + [row["quantity"], _money(row["unit_price"]), _money(row["reference_value"]),
-               _literal_paragraph(row["stock_level"], cell_style)]
+               _literal_paragraph(_stock_level_label(row["stock_level"]), cell_style)]
         )
     table = Table(table_data, repeatRows=1, colWidths=[30*mm, 28*mm, 30*mm, 42*mm, 28*mm, 22*mm, 24*mm, 25*mm, 24*mm])
     table.setStyle(TableStyle([
@@ -177,7 +201,14 @@ def sales_xlsx(*, company_name: str, data: dict) -> bytes:
     for col, header in enumerate(headers):
         sheet.write_string(6, col, header, header_fmt)
     for idx, row in enumerate(data["rows"], start=7):
-        values = [_sale_label(row), row["date"], row["branch"], row["seller"], row["customer"], row["status"]]
+        values = [
+            _sale_label(row),
+            row["date"],
+            row["branch"],
+            row["seller"],
+            row["customer"],
+            _sale_status_label(row["status"]),
+        ]
         for col, value in enumerate(values):
             sheet.write_string(idx, col, value, text_fmt)
         sheet.write_number(idx, 6, float(row["total_amount"]), money_fmt)
@@ -185,6 +216,12 @@ def sales_xlsx(*, company_name: str, data: dict) -> bytes:
         sheet.write_number(idx, 8, float(row["balance"]), money_fmt)
     sheet.freeze_panes(7, 0)
     sheet.autofilter(6, 0, 6 + len(data["rows"]), len(headers)-1)
+    sheet.set_landscape()
+    sheet.set_paper(9)
+    sheet.fit_to_pages(1, 0)
+    sheet.set_margins(left=0.25, right=0.25, top=0.5, bottom=0.5)
+    sheet.repeat_rows(6)
+    sheet.print_area(0, 0, 6 + len(data["rows"]), len(headers)-1)
     sheet.set_column("A:A", 11); sheet.set_column("B:B", 12); sheet.set_column("C:E", 24)
     sheet.set_column("F:F", 14); sheet.set_column("G:I", 14)
     workbook.close()
@@ -221,9 +258,15 @@ def inventory_xlsx(*, company_name: str, data: dict) -> bytes:
         sheet.write_number(idx, 5, float(row["quantity"]), qty_fmt)
         sheet.write_number(idx, 6, float(row["unit_price"]), money_fmt)
         sheet.write_number(idx, 7, float(row["reference_value"]), money_fmt)
-        sheet.write_string(idx, 8, row["stock_level"], text_fmt)
+        sheet.write_string(idx, 8, _stock_level_label(row["stock_level"]), text_fmt)
     sheet.freeze_panes(7, 0)
     sheet.autofilter(6, 0, 6 + len(data["rows"]), len(headers)-1)
+    sheet.set_landscape()
+    sheet.set_paper(9)
+    sheet.fit_to_pages(1, 0)
+    sheet.set_margins(left=0.25, right=0.25, top=0.5, bottom=0.5)
+    sheet.repeat_rows(6)
+    sheet.print_area(0, 0, 6 + len(data["rows"]), len(headers)-1)
     sheet.set_column("A:D", 24); sheet.set_column("E:E", 18); sheet.set_column("F:H", 16); sheet.set_column("I:I", 14)
     workbook.close()
     return buffer.getvalue()

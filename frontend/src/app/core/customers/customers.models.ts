@@ -11,6 +11,9 @@ export interface Customer {
   tax_id: string;
   email: string;
   phone: string;
+  address: string;
+  commune: string;
+  city: string;
   status: CustomerStatus;
   created_at: string;
   updated_at: string;
@@ -44,6 +47,9 @@ export interface CustomerInput {
   tax_id: string;
   email: string;
   phone: string;
+  address: string;
+  commune: string;
+  city: string;
   status: CustomerStatus;
 }
 

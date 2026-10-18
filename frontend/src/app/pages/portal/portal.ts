@@ -101,9 +101,10 @@ export class Portal implements OnInit {
   }
 
   selectStore(store: PortalStore): void {
-    if (this.selectedStore()?.id !== store.id) {
+    const previousStoreId = this.selectedStore()?.id;
+    if (previousStoreId && previousStoreId !== store.id) {
+      this.persistCartForStore(previousStoreId, this.cart());
       this.cart.set([]);
-      this.persistCart();
     }
     this.selectedStore.set(store);
     this.catalogForm.reset({ search: '', categoryId: 0 });
@@ -271,9 +272,12 @@ export class Portal implements OnInit {
   }
 
   private persistCart(): void {
-    const storeId = this.selectedStore()?.id;
+    this.persistCartForStore(this.selectedStore()?.id, this.cart());
+  }
+
+  private persistCartForStore(storeId: number | undefined, cart: CartLine[]): void {
     if (!storeId) return;
-    localStorage.setItem(`tg-portal-cart-${storeId}`, JSON.stringify(this.cart()));
+    localStorage.setItem(`tg-portal-cart-${storeId}`, JSON.stringify(cart));
   }
 
   private restoreCart(storeId: number): void {

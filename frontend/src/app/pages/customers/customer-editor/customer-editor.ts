@@ -9,6 +9,9 @@ export type CustomerEditorForm = FormGroup<{
   taxId: FormControl<string>;
   email: FormControl<string>;
   phone: FormControl<string>;
+  address: FormControl<string>;
+  commune: FormControl<string>;
+  city: FormControl<string>;
   status: FormControl<CustomerStatus>;
 }>;
 

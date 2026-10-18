@@ -51,12 +51,14 @@ def _recipient_for_order(order):
     return (order.customer.email or "").strip().lower()
 
 
-def _order_payload(order):
+def _order_payload(order, *, recipient_role="customer", recipient_name=None):
     return {
         "company_name": order.company.name,
         "order_id": order.id,
         "order_number": order.number,
         "customer_name": order.customer.name,
+        "recipient_name": recipient_name or order.customer.name,
+        "recipient_role": recipient_role,
         "status": order.status,
         "status_label": ORDER_LABELS.get(order.status, order.status),
         "total": format(order.total, ".2f"),
@@ -96,21 +98,54 @@ def _create_idempotent(**kwargs):
 
 def enqueue_order_status_notification(*, order):
     kind = ORDER_KIND_BY_STATUS.get(order.status)
-    recipient = _recipient_for_order(order)
-    if kind is None or not recipient:
+    if kind is None:
         return None, False
+
     label = ORDER_LABELS.get(order.status, order.status)
-    return _create_idempotent(
-        company=order.company,
-        order=order,
-        kind=kind,
-        recipient_email=recipient,
-        sender_email=_sender_for_company(order.company),
-        subject=f"Pedido #{order.number}: {label}",
-        template_name="order_status_v1",
-        payload=_order_payload(order),
-        idempotency_key=f"order-status:{order.id}:{order.status}",
+    customer_recipient = _recipient_for_order(order)
+    seller = getattr(order, "created_by", None)
+    seller_recipient = (getattr(seller, "email", "") or "").strip().lower()
+    seller_name = (getattr(seller, "get_full_name", lambda: "")() or "").strip()
+    if not seller_name:
+        seller_name = getattr(seller, "username", "") or "Vendedor"
+
+    recipients = (
+        ("customer", customer_recipient, order.customer.name),
+        ("seller", seller_recipient, seller_name),
     )
+    result = (None, False)
+    seen_recipients = set()
+    for recipient_role, recipient, recipient_name in recipients:
+        if not recipient or recipient in seen_recipients:
+            continue
+        seen_recipients.add(recipient)
+        notification, created = _create_idempotent(
+            company=order.company,
+            order=order,
+            kind=kind,
+            recipient_email=recipient,
+            sender_email=_sender_for_company(order.company),
+            subject=(
+                f"Pedido #{order.number}: {label}"
+                if recipient_role == "customer"
+                else f"Aviso interno pedido #{order.number}: {label}"
+            ),
+            template_name="order_status_v1",
+            payload=_order_payload(
+                order,
+                recipient_role=recipient_role,
+                recipient_name=recipient_name,
+            ),
+            idempotency_key=(
+                f"order-status:{order.id}:{order.status}:"
+                f"{recipient_role}:{recipient}"
+            ),
+        )
+        if result[0] is None:
+            result = (notification, created)
+        elif created:
+            result = (result[0], True)
+    return result
 
 
 def enqueue_payment_status_notification(*, checkout, payment=None):

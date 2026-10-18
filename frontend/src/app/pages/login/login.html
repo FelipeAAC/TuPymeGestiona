@@ -80,7 +80,14 @@
           <div class="password-label">
             <label for="password">Contraseña</label>
 
-            <button class="text-button" type="button">¿Olvidaste tu contraseña?</button>
+            <button
+              class="text-button"
+              type="button"
+              [attr.aria-expanded]="recoveryHelpVisible()"
+              (click)="showRecoveryHelp()"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
           </div>
 
           <div class="password-input">
@@ -132,7 +139,9 @@
         <a class="text-button" routerLink="/portal">Explorar tiendas</a>
         <span> · </span>
         ¿Necesitas ayuda para ingresar?
-        <button class="text-button" type="button">Contacta a tu administrador</button>
+        <button class="text-button" type="button" (click)="showRecoveryHelp()">
+          Contacta a tu administrador
+        </button>
       </p>
     </div>
 

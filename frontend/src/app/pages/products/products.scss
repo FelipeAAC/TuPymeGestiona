@@ -113,6 +113,9 @@
 
 .product-form {
   display: grid;
+  gap: 20px;
+  padding: 24px;
+  box-sizing: border-box;
 }
 
 .form-section {
@@ -164,7 +167,8 @@
   }
 
   input,
-  select {
+  select,
+  textarea {
     width: 100%;
     min-height: 42px;
     box-sizing: border-box;
@@ -180,8 +184,14 @@
       box-shadow 120ms ease;
   }
 
+  textarea {
+    min-height: 96px;
+    resize: vertical;
+  }
+
   input:focus,
-  select:focus {
+  select:focus,
+  textarea:focus {
     border-color: #5e9d98;
     box-shadow: 0 0 0 3px rgba(39, 134, 126, 0.1);
   }
@@ -204,7 +214,7 @@
 }
 
 .form-alert {
-  margin: 20px 24px 0;
+  margin: 0;
   padding: 12px 14px;
   border-radius: 9px;
   font-size: 13px;
@@ -225,7 +235,7 @@
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  padding: 20px 24px 24px;
+  padding: 0;
 }
 
 .primary-button {
@@ -275,6 +285,11 @@
   padding: 22px;
 }
 
+.product-card > .form-actions {
+  align-self: start;
+  padding: 0;
+}
+
 .product-main {
   min-width: 0;
 }
@@ -319,6 +334,7 @@
 }
 
 .variants {
+  grid-column: 1 / -1;
   display: grid;
   align-content: start;
   gap: 10px;
@@ -392,14 +408,12 @@
   }
 
   .form-section,
-  .create-panel-header,
-  .form-actions {
+  .create-panel-header {
     padding-left: 18px;
     padding-right: 18px;
   }
 
-  .form-alert {
-    margin-left: 18px;
-    margin-right: 18px;
+  .product-form {
+    padding: 18px;
   }
 }

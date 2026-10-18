@@ -9,13 +9,8 @@ from rest_framework.response import Response
 
 from catalog.models import ProductVariant
 from customers.models import Customer
-from organizations.authorization import has_permission
-from organizations.models import (
-    Branch,
-    CompanyMembership,
-    RoleAssignment,
-    Warehouse,
-)
+from organizations.authorization import get_branch_scope, has_permission
+from organizations.models import Branch, CompanyMembership, Warehouse
 
 from .models import Order
 from .serializers import (
@@ -114,40 +109,22 @@ def _resolve_membership(*, request, source, location):
     return membership, None
 
 
-def _get_order_assignments(*, user, company):
-    return RoleAssignment.objects.filter(
-        membership__user=user,
-        membership__company=company,
-        membership__status=CompanyMembership.Status.ACTIVE,
-        role__company=company,
-        role__permission_links__permission__code=(
-            ORDERS_MANAGE_PERMISSION_CODE
-        ),
-        role__status="ACTIVE",
-    ).distinct()
-
-
 def _get_authorized_orders(*, user, company):
-    assignments = _get_order_assignments(
+    scope = get_branch_scope(
         user=user,
         company=company,
+        permission_code=ORDERS_MANAGE_PERMISSION_CODE,
     )
 
     orders = Order.objects.filter(
         company=company,
     )
 
-    if not assignments.exists():
+    if not scope.allowed:
         return orders.none()
 
-    if not assignments.filter(branch__isnull=True).exists():
-        branch_ids = assignments.values_list(
-            "branch_id",
-            flat=True,
-        )
-        orders = orders.filter(
-            branch_id__in=branch_ids,
-        )
+    if not scope.all_branches:
+        orders = orders.filter(branch_id__in=scope.branch_ids)
 
     return orders.select_related(
         "company",
@@ -174,11 +151,12 @@ def order_options_view(request):
         return error_response
 
     company = membership.company
-    assignments = _get_order_assignments(
+    scope = get_branch_scope(
         user=request.user,
         company=company,
+        permission_code=ORDERS_MANAGE_PERMISSION_CODE,
     )
-    can_manage = assignments.exists()
+    can_manage = scope.allowed
 
     branches = Branch.objects.none()
     warehouses = Warehouse.objects.none()
@@ -188,11 +166,8 @@ def order_options_view(request):
     if can_manage:
         branches = Branch.objects.filter(company=company)
 
-        if not assignments.filter(branch__isnull=True).exists():
-            branch_ids = assignments.values_list(
-                "branch_id",
-                flat=True,
-            )
+        if not scope.all_branches:
+            branch_ids = scope.branch_ids
             branches = branches.filter(id__in=branch_ids)
             warehouses = Warehouse.objects.filter(
                 company=company,

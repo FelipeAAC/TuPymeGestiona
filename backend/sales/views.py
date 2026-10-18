@@ -12,11 +12,10 @@ from catalog.models import Product, ProductVariant
 from customers.models import Customer
 from inventory.models import InventoryStock
 from orders.models import Order
-from organizations.authorization import has_permission
+from organizations.authorization import get_branch_scope, has_permission
 from organizations.models import (
     Branch,
     CompanyMembership,
-    RoleAssignment,
     Warehouse,
 )
 
@@ -104,29 +103,19 @@ def _resolve_membership(*, request, source, location):
     return membership, None
 
 
-def _get_sales_assignments(*, user, company):
-    return RoleAssignment.objects.filter(
-        membership__user=user,
-        membership__company=company,
-        membership__status=CompanyMembership.Status.ACTIVE,
-        role__company=company,
-        role__permission_links__permission__code=(
-            SALES_MANAGE_PERMISSION_CODE
-        ),
-        role__status="ACTIVE",
-    ).distinct()
-
-
 def _get_authorized_sales(*, user, company):
-    assignments = _get_sales_assignments(user=user, company=company)
+    scope = get_branch_scope(
+        user=user,
+        company=company,
+        permission_code=SALES_MANAGE_PERMISSION_CODE,
+    )
     sales = Sale.objects.filter(company=company)
 
-    if not assignments.exists():
+    if not scope.allowed:
         return sales.none()
 
-    if not assignments.filter(branch__isnull=True).exists():
-        branch_ids = assignments.values_list("branch_id", flat=True)
-        sales = sales.filter(branch_id__in=branch_ids)
+    if not scope.all_branches:
+        sales = sales.filter(branch_id__in=scope.branch_ids)
 
     return sales.select_related(
         "company",
@@ -145,19 +134,6 @@ def _get_authorized_sales(*, user, company):
     )
 
 
-def _get_authorized_branches(*, assignments, company):
-    branches = Branch.objects.filter(company=company)
-
-    if not assignments.exists():
-        return branches.none()
-
-    if not assignments.filter(branch__isnull=True).exists():
-        branch_ids = assignments.values_list("branch_id", flat=True)
-        branches = branches.filter(id__in=branch_ids)
-
-    return branches
-
-
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def sale_options_view(request):
@@ -174,14 +150,16 @@ def sale_options_view(request):
     query_serializer = PosSaleOptionsQuerySerializer(data=request.query_params)
     query_serializer.is_valid(raise_exception=True)
     options_query = query_serializer.validated_data
-    assignments = _get_sales_assignments(
+    scope = get_branch_scope(
         user=request.user,
         company=company,
+        permission_code=SALES_MANAGE_PERMISSION_CODE,
     )
-    branches = _get_authorized_branches(
-        assignments=assignments,
-        company=company,
-    )
+    branches = Branch.objects.filter(company=company)
+    if not scope.allowed:
+        branches = branches.none()
+    elif not scope.all_branches:
+        branches = branches.filter(id__in=scope.branch_ids)
     if options_query.get("branch"):
         if not branches.filter(pk=options_query["branch"]).exists():
             return Response(
@@ -193,7 +171,7 @@ def sale_options_view(request):
     warehouses = (
         Warehouse.objects.filter(company=company)
         .filter(Q(branch__in=branches) | Q(branch__isnull=True))
-        if assignments.exists()
+        if scope.allowed
         else Warehouse.objects.none()
     )
     if options_query.get("warehouse"):
@@ -210,15 +188,15 @@ def sale_options_view(request):
         company=company,
         is_active=True,
         kind__in=(PaymentMethod.Kind.CASH, PaymentMethod.Kind.TRANSFER),
-    ) if assignments.exists() else PaymentMethod.objects.none()
+    ) if scope.allowed else PaymentMethod.objects.none()
     customers = Customer.objects.filter(
         company=company,
         status=Customer.Status.ACTIVE,
-    ) if assignments.exists() else Customer.objects.none()
+    ) if scope.allowed else Customer.objects.none()
 
     variants = ProductVariant.objects.none()
     stock_by_variant = {}
-    if assignments.exists() and selected_warehouse is not None:
+    if scope.allowed and selected_warehouse is not None:
         variants = ProductVariant.objects.filter(
             product__company=company,
             product__status=Product.Status.ACTIVE,
@@ -238,7 +216,7 @@ def sale_options_view(request):
         }
     delivered_orders = Order.objects.none()
 
-    if assignments.exists():
+    if scope.allowed:
         delivered_orders = (
             Order.objects.filter(
                 company=company,
@@ -252,7 +230,7 @@ def sale_options_view(request):
 
     return Response(
         {
-            "permissions": {"manage": assignments.exists()},
+            "permissions": {"manage": scope.allowed},
             "branches": [
                 {
                     "id": branch.id,

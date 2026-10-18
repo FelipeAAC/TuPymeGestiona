@@ -90,6 +90,9 @@ export class Customers implements OnDestroy {
     taxId: ['', [Validators.maxLength(50)]],
     email: ['', [Validators.email, Validators.maxLength(254)]],
     phone: ['', [Validators.maxLength(50)]],
+    address: ['', [Validators.maxLength(220)]],
+    commune: ['', [Validators.maxLength(120)]],
+    city: ['', [Validators.maxLength(120)]],
     status: this.formBuilder.control<CustomerStatus>('ACTIVE', [Validators.required]),
   });
 
@@ -175,6 +178,9 @@ export class Customers implements OnDestroy {
       taxId: '',
       email: '',
       phone: '',
+      address: '',
+      commune: '',
+      city: '',
       status: 'ACTIVE',
     });
     this.isEditorOpen.set(true);
@@ -193,6 +199,9 @@ export class Customers implements OnDestroy {
       taxId: customer.tax_id,
       email: customer.email,
       phone: customer.phone,
+      address: customer.address,
+      commune: customer.commune,
+      city: customer.city,
       status: customer.status,
     });
     this.isEditorOpen.set(true);
@@ -212,6 +221,9 @@ export class Customers implements OnDestroy {
       taxId: '',
       email: '',
       phone: '',
+      address: '',
+      commune: '',
+      city: '',
       status: 'ACTIVE',
     });
   }
@@ -235,6 +247,9 @@ export class Customers implements OnDestroy {
       tax_id: value.taxId.trim(),
       email: value.email.trim(),
       phone: value.phone.trim(),
+      address: value.address.trim(),
+      commune: value.commune.trim(),
+      city: value.city.trim(),
       status: value.status,
     };
 

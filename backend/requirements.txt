@@ -12,3 +12,4 @@ Pillow==12.3.0
 pdf417gen==0.8.1
 reportlab==4.4.9
 XlsxWriter==3.2.9
+bcrypt==5.0.0

@@ -498,7 +498,7 @@ export class Orders implements OnDestroy {
         description:
           order.status === 'PREPARED'
             ? 'Preparación completada; el pedido está listo para entrega.'
-            : 'Paso completado antes de la entrega; la API no conserva una hora independiente.',
+            : 'Preparación completada antes de la entrega.',
         timestamp: order.status === 'PREPARED' ? order.updated_at : null,
         tone: 'prepared',
       });

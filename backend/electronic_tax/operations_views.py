@@ -3,9 +3,10 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from organizations.models import CompanyMembership, RoleAssignment
+from organizations.authorization import get_branch_scope
+from organizations.models import CompanyMembership
 
-from .models import ElectronicTaxOperationalAlert
+from .models import ElectronicTaxDocument, ElectronicTaxOperationalAlert
 from .operations import operational_summary
 
 
@@ -53,15 +54,29 @@ def _resolve_membership(*, request):
     return membership, None
 
 
-def _can_view_operations(*, user, company):
-    return RoleAssignment.objects.filter(
-        membership__user=user,
-        membership__company=company,
-        membership__status=CompanyMembership.Status.ACTIVE,
-        role__company=company,
-        role__status="ACTIVE",
-        role__permission_links__permission__code=VIEW_PERMISSION,
-    ).exists()
+def _operation_scope(*, user, company):
+    return get_branch_scope(
+        user=user,
+        company=company,
+        permission_code=VIEW_PERMISSION,
+    )
+
+
+def _visible_alerts(*, company, scope):
+    alerts = ElectronicTaxOperationalAlert.objects.filter(
+        company=company,
+        status=ElectronicTaxOperationalAlert.Status.OPEN,
+    )
+    if scope.all_branches:
+        return alerts
+    document_ids = ElectronicTaxDocument.objects.filter(
+        company=company,
+        branch_id__in=scope.branch_ids,
+    ).values_list("id", flat=True)
+    return alerts.filter(
+        resource_kind="DTE",
+        resource_id__in=[str(document_id) for document_id in document_ids],
+    )
 
 
 @api_view(["GET"])
@@ -70,12 +85,20 @@ def operations_summary_view(request):
     membership, error = _resolve_membership(request=request)
     if error:
         return error
-    if not _can_view_operations(user=request.user, company=membership.company):
+    scope = _operation_scope(user=request.user, company=membership.company)
+    if not scope.allowed:
         return Response(
             {"code": "DTE_PERMISSION_DENIED", "detail": "No tienes permiso para consultar operacion tributaria."},
             status=status.HTTP_403_FORBIDDEN,
         )
-    return Response({"operations": operational_summary(company=membership.company)})
+    return Response(
+        {
+            "operations": operational_summary(
+                company=membership.company,
+                branch_ids=None if scope.all_branches else scope.branch_ids,
+            )
+        }
+    )
 
 
 @api_view(["GET"])
@@ -84,14 +107,16 @@ def operations_alerts_view(request):
     membership, error = _resolve_membership(request=request)
     if error:
         return error
-    if not _can_view_operations(user=request.user, company=membership.company):
+    scope = _operation_scope(user=request.user, company=membership.company)
+    if not scope.allowed:
         return Response(
             {"code": "DTE_PERMISSION_DENIED", "detail": "No tienes permiso para consultar alertas tributarias."},
             status=status.HTTP_403_FORBIDDEN,
         )
-    alerts = ElectronicTaxOperationalAlert.objects.filter(company=membership.company).order_by(
-        "status", "-severity", "code", "id"
-    )[:200]
+    alerts = _visible_alerts(
+        company=membership.company,
+        scope=scope,
+    ).order_by("status", "-severity", "code", "id")[:200]
     return Response(
         {
             "alerts": [

@@ -279,16 +279,24 @@ def scan_all_operations(*, company=None, now=None):
     return [scan_company_operations(company=item, now=now) for item in Company.objects.order_by("id")]
 
 
-def operational_summary(*, company):
+def operational_summary(*, company, branch_ids=None):
+    documents = ElectronicTaxDocument.objects.filter(company=company)
+    branch_limited = branch_ids is not None
+    if branch_limited:
+        documents = documents.filter(branch_id__in=branch_ids)
     document_counts = {
         row["state"]: row["count"]
-        for row in ElectronicTaxDocument.objects.filter(company=company)
+        for row in documents
         .values("state")
         .annotate(count=Count("id"))
         .order_by("state")
     }
     folios = []
-    for authorization in FolioAuthorization.objects.filter(company=company).order_by("type_code", "id"):
+    if not branch_limited:
+        authorizations = FolioAuthorization.objects.filter(company=company).order_by("type_code", "id")
+    else:
+        authorizations = FolioAuthorization.objects.none()
+    for authorization in authorizations:
         folios.append(
             {
                 "authorization_id": authorization.id,
@@ -303,6 +311,13 @@ def operational_summary(*, company):
         status=ElectronicTaxOperationalAlert.Status.OPEN,
     )
     tasks = ElectronicTaxStatusCheckTask.objects.filter(company=company)
+    if branch_limited:
+        visible_document_ids = [str(document_id) for document_id in documents.values_list("id", flat=True)]
+        alerts = alerts.filter(
+            resource_kind="DTE",
+            resource_id__in=visible_document_ids,
+        )
+        tasks = tasks.filter(branch_id__in=branch_ids)
     return {
         "company_id": company.id,
         "database": {"vendor": connection.vendor, "alias": connection.alias},

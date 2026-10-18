@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from catalog.models import Category
 from inventory.models import InventoryStock
+from organizations.authorization import get_branch_scope
 from organizations.models import (
     Branch,
     Company,
@@ -96,27 +97,26 @@ def resolve_report_context(*, user, company_id: int) -> ReportContext:
     )
     can_sales = admin_assignments.filter(branch__isnull=True).exists()
 
-    inventory_assignments = _active_assignments(
+    inventory_scope = get_branch_scope(
         user=user,
         company=company,
         permission_code=INVENTORY_PERMISSION_CODE,
     )
-    can_inventory = can_sales or inventory_assignments.exists()
+    can_inventory = can_sales or inventory_scope.allowed
 
     if can_sales:
         warehouse_ids = frozenset(
             Warehouse.objects.filter(company=company).values_list("id", flat=True)
         )
-    elif inventory_assignments.filter(branch__isnull=True).exists():
+    elif inventory_scope.all_branches:
         warehouse_ids = frozenset(
             Warehouse.objects.filter(company=company).values_list("id", flat=True)
         )
     else:
-        branch_ids = inventory_assignments.values_list("branch_id", flat=True)
         warehouse_ids = frozenset(
             Warehouse.objects.filter(
                 company=company,
-                branch_id__in=branch_ids,
+                branch_id__in=inventory_scope.branch_ids,
             ).values_list("id", flat=True)
         )
 

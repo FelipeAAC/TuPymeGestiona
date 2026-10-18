@@ -4,6 +4,7 @@ from organizations.models import (
     Branch,
     Company,
     CompanyMembership,
+    Permission,
     RoleAssignment,
     Warehouse,
 )
@@ -44,18 +45,32 @@ class OrganizationContextMembershipSerializer(serializers.ModelSerializer):
         )
 
     def get_branches(self, membership):
-        has_company_scope = membership.role_assignments.filter(
+        has_company_admin = membership.role_assignments.filter(
             role__status="ACTIVE",
             branch__isnull=True,
+            role__permission_links__permission__code="administration.manage",
         ).exists()
-        if has_company_scope:
+        if has_company_admin:
             branches = membership.company.branches.filter(is_active=True).order_by("name")
         else:
-            branches = [
-                membership_branch.branch
-                for membership_branch in membership.branch_memberships.all()
-                if membership_branch.branch.is_active
-            ]
+            branch_ids = set(
+                membership.branch_memberships.filter(
+                    branch__is_active=True,
+                ).values_list("branch_id", flat=True)
+            )
+            branch_ids.update(
+                membership.role_assignments.filter(
+                    role__status="ACTIVE",
+                    branch__isnull=False,
+                    role__permission_links__permission__scope_behavior=(
+                        Permission.ScopeBehavior.BRANCH_SCOPED
+                    ),
+                ).values_list("branch_id", flat=True)
+            )
+            branches = membership.company.branches.filter(
+                is_active=True,
+                id__in=branch_ids,
+            ).order_by("name")
         return BranchSerializer(branches, many=True).data
 
     def get_permissions(self, membership):

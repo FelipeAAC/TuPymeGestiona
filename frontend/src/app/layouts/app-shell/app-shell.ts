@@ -20,6 +20,7 @@ export class AppShell implements OnInit {
 
   readonly memberships = this.organizationContextService.memberships;
   readonly selectedMembership = this.organizationContextService.selectedMembership;
+  readonly isMenuOpen = signal(false);
   readonly canAdminister = computed(() =>
     this.selectedMembership()?.permissions?.includes('administration.manage') ?? false,
   );
@@ -36,6 +37,22 @@ export class AppShell implements OnInit {
 
   readonly isLoggingOut = signal(false);
   readonly logoutError = signal('');
+
+  hasPermission(permission: string): boolean {
+    return this.selectedMembership()?.permissions?.includes(permission) ?? false;
+  }
+
+  hasAnyPermission(...permissions: string[]): boolean {
+    return permissions.some((permission) => this.hasPermission(permission));
+  }
+
+  toggleMenu(): void {
+    this.isMenuOpen.update((isOpen) => !isOpen);
+  }
+
+  closeMenu(): void {
+    this.isMenuOpen.set(false);
+  }
 
   ngOnInit(): void {
     this.loadOrganizationContext();

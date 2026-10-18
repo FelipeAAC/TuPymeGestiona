@@ -1,6 +1,6 @@
-Hola {{ customer_name }},
+Hola {{ recipient_name }},
 
-Tu pedido #{{ order_number }} en {{ company_name }} cambió a: {{ status_label }}.
+{% if recipient_role == "seller" %}El pedido #{{ order_number }} de {{ customer_name }} en {{ company_name }} cambió a: {{ status_label }}.{% else %}Tu pedido #{{ order_number }} en {{ company_name }} cambió a: {{ status_label }}.{% endif %}
 Total: ${{ total }} {{ currency }}.
 {% if delivery_address %}Entrega: {{ delivery_address }}{% if delivery_commune %}, {{ delivery_commune }}{% endif %}{% if delivery_city %}, {{ delivery_city }}{% endif %}.{% endif %}
 

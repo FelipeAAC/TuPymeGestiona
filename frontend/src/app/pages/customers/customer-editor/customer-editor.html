@@ -112,6 +112,39 @@
             <option value="INACTIVE">Inactivo</option>
           </select>
         </div>
+
+        <div class="form-field form-field-wide">
+          <label for="customer-address">Dirección</label>
+          <input
+            id="customer-address"
+            type="text"
+            formControlName="address"
+            maxlength="220"
+            placeholder="Calle, número y referencia"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="customer-commune">Comuna</label>
+          <input
+            id="customer-commune"
+            type="text"
+            formControlName="commune"
+            maxlength="120"
+            placeholder="Ej. Santiago"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="customer-city">Ciudad</label>
+          <input
+            id="customer-city"
+            type="text"
+            formControlName="city"
+            maxlength="120"
+            placeholder="Ej. Santiago"
+          />
+        </div>
       </div>
 
       @if (saveErrorMessage()) {

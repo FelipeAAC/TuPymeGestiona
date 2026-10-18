@@ -6,8 +6,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from organizations.authorization import has_permission
-from organizations.models import CompanyMembership, RoleAssignment
+from organizations.authorization import get_branch_scope, has_permission
+from organizations.models import CompanyMembership
 from sales.models import Sale
 
 from .models import ElectronicTaxDocument, ElectronicTaxEvent, FolioAuthorization
@@ -124,25 +124,17 @@ def _idempotency_key(request):
     return key, None
 
 
-def _permission_assignments(*, user, company, permission_code):
-    return RoleAssignment.objects.filter(
-        membership__user=user,
-        membership__company=company,
-        membership__status=CompanyMembership.Status.ACTIVE,
-        role__company=company,
-        role__status="ACTIVE",
-        role__permission_links__permission__code=permission_code,
-    ).distinct()
-
-
 def _authorized_documents(*, user, company, permission_code=VIEW_PERMISSION):
-    assignments = _permission_assignments(user=user, company=company, permission_code=permission_code)
+    scope = get_branch_scope(
+        user=user,
+        company=company,
+        permission_code=permission_code,
+    )
     queryset = ElectronicTaxDocument.objects.filter(company=company)
-    if not assignments.exists():
+    if not scope.allowed:
         return queryset.none()
-    if not assignments.filter(branch__isnull=True).exists():
-        branch_ids = assignments.values_list("branch_id", flat=True)
-        queryset = queryset.filter(branch_id__in=branch_ids)
+    if not scope.all_branches:
+        queryset = queryset.filter(branch_id__in=scope.branch_ids)
     return queryset.select_related("company", "branch", "sale", "created_by").prefetch_related(
         "lines", "references", "events"
     )
@@ -255,8 +247,12 @@ def document_list_create_view(request):
     if error:
         return error
     company = membership.company
-    assignments = _permission_assignments(user=request.user, company=company, permission_code=VIEW_PERMISSION)
-    if not assignments.exists():
+    scope = get_branch_scope(
+        user=request.user,
+        company=company,
+        permission_code=VIEW_PERMISSION,
+    )
+    if not scope.allowed:
         return Response(
             {"code": "DTE_PERMISSION_DENIED", "detail": "No tienes permiso para consultar DTE."},
             status=status.HTTP_403_FORBIDDEN,

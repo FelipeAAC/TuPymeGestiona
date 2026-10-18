@@ -3,11 +3,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from organizations.authorization import has_permission
+from organizations.authorization import get_branch_scope, has_permission
 from organizations.models import (
     CompanyMembership,
-    CompanyRole,
-    RoleAssignment,
     Warehouse,
 )
 from organizations.serializers import (
@@ -86,35 +84,18 @@ def _get_authorized_warehouses(
     user,
     company,
 ):
-    assignments = RoleAssignment.objects.filter(
-        membership__user=user,
-        membership__company=company,
-        membership__status=CompanyMembership.Status.ACTIVE,
-        role__permission_links__permission__code=(
-            WAREHOUSES_MANAGE_PERMISSION_CODE
-        ),
-        role__status=CompanyRole.Status.ACTIVE,
+    scope = get_branch_scope(
+        user=user,
+        company=company,
+        permission_code=WAREHOUSES_MANAGE_PERMISSION_CODE,
     )
-
-    if not assignments.exists():
+    if not scope.allowed:
         return Warehouse.objects.none()
 
-    if assignments.filter(
-        branch__isnull=True,
-    ).exists():
-        return Warehouse.objects.filter(
-            company=company,
-        )
-
-    branch_ids = assignments.values_list(
-        "branch_id",
-        flat=True,
-    )
-
-    return Warehouse.objects.filter(
-        company=company,
-        branch_id__in=branch_ids,
-    )
+    warehouses = Warehouse.objects.filter(company=company)
+    if not scope.all_branches:
+        warehouses = warehouses.filter(branch_id__in=scope.branch_ids)
+    return warehouses
 
 
 def _can_manage_warehouse_branch(

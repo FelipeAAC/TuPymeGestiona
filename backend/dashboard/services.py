@@ -9,7 +9,7 @@ from django.utils import timezone
 from customers.models import Customer
 from inventory.models import InventoryMovement, InventoryStock
 from orders.models import Order
-from organizations.authorization import has_permission
+from organizations.authorization import get_branch_scope, has_permission
 from organizations.models import Company, CompanyMembership, RoleAssignment
 from sales.models import Sale, SaleEvent
 
@@ -63,20 +63,15 @@ def _branch_scope(*, user, company, permission_code, is_admin) -> BranchScope:
     if getattr(user, "is_superuser", False) or is_admin:
         return _full_scope()
 
-    assignments = _active_assignments(
+    scope = get_branch_scope(
         user=user,
         company=company,
         permission_code=permission_code,
     )
-    if not assignments.exists():
-        return BranchScope(False, False, frozenset())
-    if assignments.filter(branch__isnull=True).exists():
-        return _full_scope()
-
     return BranchScope(
-        True,
-        False,
-        frozenset(assignments.values_list("branch_id", flat=True)),
+        scope.allowed,
+        scope.all_branches,
+        scope.branch_ids,
     )
 
 
