@@ -15,3 +15,7 @@ class User(AbstractUser):
         "email address",
         unique=True,
     )
+    platform_admin = models.BooleanField(
+        default=False,
+        help_text="Grants access to the global maintainer tools.",
+    )

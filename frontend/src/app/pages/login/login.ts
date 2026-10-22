@@ -23,7 +23,6 @@ export class Login {
 
   readonly authError = signal('');
   readonly authSuccess = signal('');
-  readonly recoveryHelpVisible = signal(false);
 
   readonly loginForm = this.formBuilder.group({
     identifier: ['', Validators.required],
@@ -43,14 +42,6 @@ export class Login {
     this.showPassword.update((value) => !value);
   }
 
-  showRecoveryHelp(): void {
-    this.authError.set('');
-    this.authSuccess.set(
-      'La recuperación automática no está habilitada en esta instalación local. Contacta al administrador para restablecer tu acceso.',
-    );
-    this.recoveryHelpVisible.set(true);
-  }
-
   onSubmit(): void {
     if (this.loginForm.invalid) {
       this.loginForm.markAllAsTouched();
@@ -63,7 +54,6 @@ export class Login {
 
     this.authError.set('');
     this.authSuccess.set('');
-    this.recoveryHelpVisible.set(false);
     this.isSubmitting.set(true);
 
     this.authService
@@ -74,9 +64,12 @@ export class Login {
         }),
       )
       .subscribe({
-        next: () => {
+        next: (user) => {
           const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
-          const safeReturnUrl = returnUrl?.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : '/portal';
+          const safeReturnUrl =
+            returnUrl?.startsWith('/') && !returnUrl.startsWith('//')
+              ? returnUrl
+              : this.authService.destinationForUser(user);
           void this.router.navigateByUrl(safeReturnUrl);
         },
 

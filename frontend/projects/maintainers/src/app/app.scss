@@ -223,3 +223,17 @@ table {
   .detail-card { grid-template-columns: 1fr; }
   .login-layout { grid-template-columns: 1fr; padding: 18px; }
 }
+
+.company-row, .product-card { cursor: pointer; }
+.company-row { display: flex; align-items: center; justify-content: space-between; gap: 13px; padding: 12px 10px; border: 1px solid transparent; border-bottom-color: #edf2f6; }
+.company-row:hover, .company-row.selected { background: #f0f7fc; border-color: #cde2f1; border-radius: 8px; }
+.company-row div, .product-head div { display: grid; gap: 4px; }
+.company-row span, .product-head span { color: #728494; font-size: .77rem; }
+.product-card { padding: 13px; border: 1px solid #e2ebf2; border-radius: 10px; margin-bottom: 9px; }
+.product-card:hover { border-color: #a9cce4; }
+.product-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.variant { display: flex; justify-content: space-between; gap: 8px; align-items: center; border-top: 1px solid #edf2f6; margin-top: 10px; padding-top: 9px; font-size: .78rem; color: #5d7181; }
+.variant > span:last-child { display: flex; align-items: center; gap: 4px; }
+.global article small, .metrics article small { color: #7890a0; font-size: .72rem; }
+.detail-card div { display: grid; gap: 4px; } .detail-card span { color: #728494; font-size: .74rem; }
+@media (max-width: 620px) { .content { padding: 16px; } .topbar { padding: 15px 16px; } .topbar-actions { align-items: stretch; flex-direction: column; } .topbar-actions label select { min-width: 0; width: 100%; } .sidebar nav { grid-template-columns: 1fr; } .page-heading, .product-head, .variant { flex-direction: column; } .actions { justify-content: flex-start; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .table-wrap { margin-inline: -2px; } }

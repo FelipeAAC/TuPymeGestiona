@@ -1,0 +1,13 @@
+:host { display: contents; }
+.dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(18, 44, 67, .46); }
+.dialog { width: min(680px, 100%); max-height: calc(100vh - 36px); overflow: auto; padding: 22px; border-radius: 16px; background: white; box-shadow: 0 24px 80px rgba(14, 44, 70, .28); }
+header, footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+header { margin-bottom: 17px; } h2 { margin: 2px 0 0; color: #173b5f; font-size: 1.25rem; }
+.icon-button { border: 0; background: transparent; color: #537087; font-size: 1.6rem; padding: 2px 7px; }
+.field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+label { display: grid; gap: 6px; color: #486074; font-size: .8rem; } label.full-width { grid-column: 1 / -1; }
+input, textarea, select { width: 100%; box-sizing: border-box; padding: 10px 11px; border: 1px solid #c6d7e3; border-radius: 8px; font: inherit; color: #193f5d; background: white; }
+select[multiple] { min-height: 110px; } input[type=checkbox] { width: auto; } em { color: #b13c3c; font-style: normal; }
+small { color: #748696; font-size: .72rem; } .validation { color: #aa3535; } .checkbox-row { display: flex; align-items: center; gap: 7px; }
+footer { justify-content: flex-end; margin-top: 20px; }
+@media (max-width: 620px) { .field-grid { grid-template-columns: 1fr; } label.full-width { grid-column: auto; } .dialog { padding: 17px; } }

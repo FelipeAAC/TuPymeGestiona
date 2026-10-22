@@ -17,6 +17,10 @@ export class AppShell implements OnInit {
   private readonly router = inject(Router);
 
   readonly currentUser = this.authService.currentUser;
+  readonly canAccessPortal = computed(() => this.authService.hasAccessMode('CUSTOMER'));
+  readonly hasMultipleAccessModes = computed(
+    () => (this.currentUser()?.access_modes.length ?? 0) > 1,
+  );
 
   readonly memberships = this.organizationContextService.memberships;
   readonly selectedMembership = this.organizationContextService.selectedMembership;

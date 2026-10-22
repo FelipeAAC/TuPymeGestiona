@@ -2,7 +2,13 @@ import { inject, Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { map, Observable, switchMap, tap } from 'rxjs';
 
-import { AuthUser, LoginCredentials, LoginResponse } from './auth.models';
+import {
+  AccessMode,
+  AuthUser,
+  LoginCredentials,
+  LoginResponse,
+  PasswordResetResponse,
+} from './auth.models';
 
 @Injectable({
   providedIn: 'root',
@@ -41,5 +47,39 @@ export class AuthService {
     return this.http
       .post<void>('/api/auth/logout/', {})
       .pipe(tap(() => this.currentUserState.set(null)));
+  }
+
+  requestPasswordReset(email: string): Observable<PasswordResetResponse> {
+    return this.http.get<{ detail: string }>('/api/auth/csrf/').pipe(
+      switchMap(() =>
+        this.http.post<PasswordResetResponse>('/api/auth/password-reset/request/', {
+          email: email.trim(),
+        }),
+      ),
+    );
+  }
+
+  confirmPasswordReset(uid: string, token: string, password: string): Observable<void> {
+    return this.http.get<{ detail: string }>('/api/auth/csrf/').pipe(
+      switchMap(() =>
+        this.http.post<void>('/api/auth/password-reset/confirm/', { uid, token, password }),
+      ),
+    );
+  }
+
+  hasAccessMode(mode: AccessMode): boolean {
+    return this.currentUser()?.access_modes.includes(mode) ?? false;
+  }
+
+  destinationForUser(user: AuthUser): '/portal' | '/app' | '/access-chooser' {
+    const hasCustomer = user.access_modes.includes('CUSTOMER');
+    const hasCompanyAdmin = user.access_modes.includes('COMPANY_ADMIN');
+    const hasPlatformAdmin = user.access_modes.includes('PLATFORM_ADMIN');
+    if ((hasCustomer && hasCompanyAdmin) || (hasPlatformAdmin && user.access_modes.length > 1)) {
+      return '/access-chooser';
+    }
+    if (user.default_app === 'app' || hasCompanyAdmin) return '/app';
+    if (hasPlatformAdmin) return '/access-chooser';
+    return '/portal';
   }
 }

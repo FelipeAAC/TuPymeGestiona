@@ -33,6 +33,9 @@ def validate_public_configuration():
     token = _secret_from_env("MERCADO_PAGO_ACCESS_TOKEN_ENV")
     if not token:
         raise MercadoPagoNotConfigured("Falta el Access Token de prueba de Mercado Pago.")
+    webhook_secret = _secret_from_env("MERCADO_PAGO_WEBHOOK_SECRET_ENV")
+    if not webhook_secret:
+        raise MercadoPagoNotConfigured("Falta la clave secreta del webhook de Mercado Pago.")
     return_base = settings.MERCADO_PAGO_RETURN_BASE_URL.strip().rstrip("/")
     webhook_url = settings.MERCADO_PAGO_WEBHOOK_URL.strip()
     for label, value in (("MERCADO_PAGO_RETURN_BASE_URL", return_base), ("MERCADO_PAGO_WEBHOOK_URL", webhook_url)):

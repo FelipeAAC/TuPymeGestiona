@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "transactional_notifications",
     "reports",
     "dashboard",
+    "maintainers",
 ]
 
 MIDDLEWARE = [
@@ -112,6 +113,12 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
+
+PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", "3600"))
+PASSWORD_RESET_FRONTEND_BASE_URL = os.getenv(
+    "PASSWORD_RESET_FRONTEND_BASE_URL",
+    "http://localhost:4200/reset-password",
+).strip()
 
 # New credentials use BCrypt while existing PBKDF2 credentials remain valid
 # during the migration of the user base.

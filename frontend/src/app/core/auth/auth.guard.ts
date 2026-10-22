@@ -13,3 +13,18 @@ export const authGuard: CanActivateFn = () => {
     catchError(() => of(router.createUrlTree(['/login']))),
   );
 };
+
+export const companyAdminGuard: CanActivateFn = () => {
+  const authService = inject(AuthService);
+  const router = inject(Router);
+
+  return authService.me().pipe(
+    map((response) => {
+      if (response.access_modes.includes('COMPANY_ADMIN')) return true;
+      return response.access_modes.includes('CUSTOMER')
+        ? router.createUrlTree(['/portal'])
+        : router.createUrlTree(['/access-chooser']);
+    }),
+    catchError(() => of(router.createUrlTree(['/login']))),
+  );
+};

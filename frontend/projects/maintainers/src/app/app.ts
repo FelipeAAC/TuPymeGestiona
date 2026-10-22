@@ -4,30 +4,25 @@ import { FormsModule } from '@angular/forms';
 import { forkJoin, Observable } from 'rxjs';
 
 import { MaintainersApi } from './api.service';
+import { FormDialogComponent, FormDialogField } from './form-dialog.component';
 import {
+  AdminCompany,
+  AdminCompanySettings,
   AdministrationOverview,
   AuthUser,
   CatalogState,
   DirectoryState,
-  OrganizationMembership,
+  MaintainerContext,
   Product,
 } from './models';
 
-type Section =
-  | 'summary'
-  | 'organization'
-  | 'users'
-  | 'roles'
-  | 'catalog'
-  | 'suppliers'
-  | 'warehouses'
-  | 'payments'
-  | 'settings';
+type Section = 'summary' | 'organization' | 'users' | 'roles' | 'catalog' | 'suppliers' | 'warehouses' | 'payments' | 'settings';
+type DialogState = { title: string; fields: FormDialogField[]; initialValue: Record<string, unknown>; save: (value: Record<string, unknown>) => void };
 
 @Component({
   selector: 'maintainers-root',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, FormDialogComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -35,8 +30,8 @@ export class MaintainersApp implements OnInit {
   private readonly api = inject(MaintainersApi);
 
   readonly user = signal<AuthUser | null>(null);
-  readonly memberships = signal<OrganizationMembership[]>([]);
-  readonly selectedMembership = signal<OrganizationMembership | null>(null);
+  readonly context = signal<MaintainerContext | null>(null);
+  readonly selectedCompanyId = signal<number | null>(null);
   readonly overview = signal<AdministrationOverview | null>(null);
   readonly catalog = signal<CatalogState>({ categories: [], products: [], brands: [] });
   readonly directories = signal<DirectoryState>({ suppliers: [], warehouses: [] });
@@ -44,478 +39,149 @@ export class MaintainersApp implements OnInit {
   readonly loading = signal(false);
   readonly error = signal('');
   readonly notice = signal('');
+  readonly dialog = signal<DialogState | null>(null);
 
   identifier = '';
   password = '';
   rememberMe = false;
 
-  readonly activeCompanyId = computed(() => this.selectedMembership()?.company.id ?? null);
-  readonly activeCompanyName = computed(() => this.selectedMembership()?.company.name ?? '');
+  readonly companies = computed(() => this.context()?.companies ?? []);
+  readonly selectedCompany = computed(() => this.companies().find((company) => company.id === this.selectedCompanyId()) ?? null);
+  readonly activeCompanyId = computed(() => this.selectedCompanyId());
+  readonly activeCompanyName = computed(() => this.selectedCompany()?.name ?? '');
 
-  ngOnInit(): void {
-    this.restoreSession();
-  }
+  ngOnInit(): void { this.restoreSession(); }
 
   restoreSession(): void {
-    this.loading.set(true);
-    this.error.set('');
+    this.beginLoad();
     this.api.me().subscribe({
       next: (user) => {
+        if (!this.isPlatformAdmin(user)) { this.rejectNonPlatform(); return; }
         this.user.set(user);
-        this.loadMemberships();
+        this.loadContext();
       },
-      error: () => {
-        this.user.set(null);
-        this.loading.set(false);
-      },
+      error: () => { this.user.set(null); this.loading.set(false); },
     });
   }
 
   login(): void {
-    if (!this.identifier.trim() || !this.password) {
-      this.error.set('Ingresa usuario/correo y contraseña.');
-      return;
-    }
+    this.clearStatus();
+    if (!this.identifier.trim() || !this.password) { this.error.set('Ingresa usuario/correo y contraseña.'); return; }
     this.loading.set(true);
-    this.error.set('');
     this.api.login(this.identifier.trim(), this.password, this.rememberMe).subscribe({
       next: (user) => {
-        this.user.set(user);
         this.password = '';
-        this.loadMemberships();
+        if (!this.isPlatformAdmin(user)) { this.rejectNonPlatform(); return; }
+        this.user.set(user);
+        this.loadContext();
       },
-      error: (error: unknown) => {
-        this.loading.set(false);
-        this.error.set(this.describeError(error, 'No fue posible iniciar sesión.'));
-      },
+      error: (error: unknown) => { this.loading.set(false); this.error.set(this.describeError(error, 'No fue posible iniciar sesión.')); },
     });
   }
 
-  logout(): void {
-    this.api.logout().subscribe({
-      next: () => this.clearSession(),
-      error: () => this.clearSession(),
-    });
-  }
+  logout(): void { this.api.logout().subscribe({ next: () => this.clearSession(), error: () => this.clearSession() }); }
+  isPlatformAdmin(user: AuthUser): boolean { return user.access_modes?.includes('PLATFORM_ADMIN') ?? false; }
 
-  selectMembership(rawId: string | number): void {
+  selectCompany(rawId: string | number): void {
     const id = Number(rawId);
-    const membership = this.memberships().find((item) => item.id === id) ?? null;
-    this.selectedMembership.set(membership);
-    if (membership) {
-      this.loadCompanyData(membership.company.id);
-    }
+    if (!Number.isFinite(id)) return;
+    this.selectedCompanyId.set(id);
+    this.loadCompanyData(id);
   }
 
-  setSection(section: Section): void {
-    this.section.set(section);
-  }
-
-  refresh(): void {
-    const companyId = this.activeCompanyId();
-    if (companyId) {
-      this.loadCompanyData(companyId);
-    }
-  }
+  setSection(section: Section): void { this.clearStatus(); this.section.set(section); }
+  refresh(): void { const id = this.activeCompanyId(); if (id) this.loadCompanyData(id); }
 
   createCompany(): void {
-    const name = window.prompt('Nombre comercial de la nueva empresa/tienda:')?.trim();
-    if (!name) return;
-    const rut = window.prompt('RUT:', '')?.trim() ?? '';
-    this.runMutation(
-      this.api.createCompany({ name, legal_name: name, rut, is_active: true }),
-      'Empresa creada.',
-      () => this.loadMemberships(),
-    );
+    this.openDialog('Nueva empresa', [
+      this.text('name', 'Nombre comercial', true), this.text('legal_name', 'Razón social', true), this.text('rut', 'RUT'),
+      this.text('business_activity', 'Giro'), this.email('contact_email', 'Correo de contacto'), this.text('phone', 'Teléfono'),
+      this.text('address', 'Dirección'), this.text('commune', 'Comuna'), this.text('city', 'Ciudad'),
+    ], {}, (value) => this.runMutation(this.api.createCompany(value as Partial<AdminCompany>), 'Empresa creada.', () => { this.closeDialog(); this.loadContext(); }));
   }
 
   editCompany(): void {
-    const current = this.overview()?.company;
-    if (!current) return;
-    const name = window.prompt('Nombre comercial:', current.name)?.trim();
-    if (!name) return;
-    const contactEmail =
-      window.prompt('Correo de contacto:', current.contact_email)?.trim() ?? current.contact_email;
-    this.runMutation(
-      this.api.updateCompany(current.id, { name, contact_email: contactEmail }),
-      'Empresa actualizada.',
-      () => this.refresh(),
-    );
+    const current = this.overview()?.company; if (!current) return;
+    this.openDialog('Editar empresa', [this.text('name', 'Nombre comercial', true), this.text('legal_name', 'Razón social'), this.text('rut', 'RUT'), this.text('business_activity', 'Giro'), this.email('contact_email', 'Correo de contacto'), this.text('phone', 'Teléfono'), this.text('address', 'Dirección'), this.text('commune', 'Comuna'), this.text('city', 'Ciudad'), this.checkbox('is_active', 'Empresa activa')], { ...current }, (value) => this.runMutation(this.api.updateCompany(current.id, value as Partial<AdminCompany>), 'Empresa actualizada.', () => { this.closeDialog(); this.refresh(); }));
   }
 
   createBranch(): void {
-    const companyId = this.activeCompanyId();
-    if (!companyId) return;
-    const code = window.prompt('Código de sucursal:', 'CASA')?.trim();
-    const name = window.prompt('Nombre de sucursal:', 'Casa Matriz')?.trim();
-    if (!code || !name) return;
-    this.runMutation(
-      this.api.createBranch(companyId, { code, name, is_active: true }),
-      'Sucursal creada.',
-      () => this.refresh(),
-    );
+    const id = this.activeCompanyId(); if (!id) return;
+    this.openDialog('Nueva sucursal', [this.text('code', 'Código', true), this.text('name', 'Nombre', true), this.text('address', 'Dirección'), this.text('commune', 'Comuna'), this.text('city', 'Ciudad'), this.text('phone', 'Teléfono'), this.checkbox('is_active', 'Sucursal activa')], { is_active: true }, (value) => this.runMutation(this.api.createBranch(id, value), 'Sucursal creada.', () => { this.closeDialog(); this.refresh(); }));
   }
 
   editBranch(branchId: number): void {
-    const companyId = this.activeCompanyId();
-    const branch = this.overview()?.branches.find((item) => item.id === branchId);
-    if (!companyId || !branch) return;
-    const name = window.prompt('Nombre de sucursal:', branch.name)?.trim();
-    if (!name) return;
-    this.runMutation(
-      this.api.updateBranch(companyId, branchId, { name }),
-      'Sucursal actualizada.',
-      () => this.refresh(),
-    );
+    const id = this.activeCompanyId(); const branch = this.overview()?.branches.find((item) => item.id === branchId); if (!id || !branch) return;
+    this.openDialog('Editar sucursal', [this.text('code', 'Código', true), this.text('name', 'Nombre', true), this.text('address', 'Dirección'), this.text('commune', 'Comuna'), this.text('city', 'Ciudad'), this.text('phone', 'Teléfono'), this.checkbox('is_active', 'Sucursal activa')], { ...branch }, (value) => this.runMutation(this.api.updateBranch(id, branchId, value as any), 'Sucursal actualizada.', () => { this.closeDialog(); this.refresh(); }));
   }
 
   createUser(): void {
-    const companyId = this.activeCompanyId();
-    if (!companyId) return;
-    const username = window.prompt('Nombre de usuario:')?.trim();
-    const email = window.prompt('Correo:')?.trim();
-    const password = window.prompt('Contraseña inicial:') ?? '';
-    if (!username || !email || !password) return;
-    this.runMutation(
-      this.api.createUser(companyId, {
-        username,
-        email,
-        password,
-        status: 'ACTIVE',
-        role_ids: [],
-        branch_ids: [],
-      }),
-      'Usuario creado.',
-      () => this.refresh(),
-    );
+    const id = this.activeCompanyId(); const data = this.overview(); if (!id || !data) return;
+    this.openDialog('Nuevo usuario', [this.text('username', 'Usuario', true), this.email('email', 'Correo', true), this.text('first_name', 'Nombre'), this.text('last_name', 'Apellido'), { key: 'password', label: 'Contraseña inicial', type: 'text', required: true }, this.select('status', 'Estado', ['INVITED', 'ACTIVE', 'SUSPENDED']), this.multi('role_ids', 'Roles', data.roles.map((role) => ({ value: role.id, label: role.name }))), this.multi('branch_ids', 'Sucursales', data.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })))], { status: 'ACTIVE', role_ids: [], branch_ids: [] }, (value) => this.runMutation(this.api.createUser(id, value), 'Usuario creado.', () => { this.closeDialog(); this.refresh(); }));
   }
 
-  toggleUser(membershipId: number): void {
-    const companyId = this.activeCompanyId();
-    const item = this.overview()?.users.find((user) => user.id === membershipId);
-    if (!companyId || !item) return;
-    const status = item.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-    this.runMutation(
-      this.api.updateUser(companyId, membershipId, { status }),
-      'Estado del usuario actualizado.',
-      () => this.refresh(),
-    );
+  editUser(itemId: number): void {
+    const id = this.activeCompanyId(); const data = this.overview(); const item = data?.users.find((user) => user.id === itemId); if (!id || !data || !item) return;
+    this.openDialog('Editar usuario', [this.text('first_name', 'Nombre'), this.text('last_name', 'Apellido'), this.select('status', 'Estado', ['INVITED', 'ACTIVE', 'SUSPENDED', 'LEFT']), this.multi('role_ids', 'Roles', data.roles.map((role) => ({ value: role.id, label: role.name }))), this.multi('branch_ids', 'Sucursales', data.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })))], { ...item }, (value) => this.runMutation(this.api.updateUser(id, itemId, value), 'Usuario actualizado.', () => { this.closeDialog(); this.refresh(); }));
   }
+
+  toggleUser(id: number): void { const item = this.overview()?.users.find((user) => user.id === id); const companyId = this.activeCompanyId(); if (!item || !companyId) return; this.runMutation(this.api.updateUser(companyId, id, { status: item.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE' }), 'Estado del usuario actualizado.', () => this.refresh()); }
 
   createRole(): void {
-    const companyId = this.activeCompanyId();
-    if (!companyId) return;
-    const name = window.prompt('Nombre del rol:')?.trim();
-    if (!name) return;
-    const permissionCodes =
-      window
-        .prompt('Permisos separados por coma (puede quedar vacío):', '')
-        ?.split(',')
-        .map((item) => item.trim())
-        .filter(Boolean) ?? [];
-    this.runMutation(
-      this.api.createRole(companyId, {
-        name,
-        status: 'ACTIVE',
-        permission_codes: permissionCodes,
-      }),
-      'Rol creado.',
-      () => this.refresh(),
-    );
+    const id = this.activeCompanyId(); const data = this.overview(); if (!id || !data) return;
+    this.openDialog('Nuevo rol', [this.text('name', 'Nombre del rol', true), this.select('status', 'Estado', ['ACTIVE', 'INACTIVE']), this.multi('permission_codes', 'Permisos', data.permissions.map((permission) => ({ value: permission.code, label: `${permission.code} · ${permission.scope_behavior}` })))], { status: 'ACTIVE', permission_codes: [] }, (value) => this.runMutation(this.api.createRole(id, value), 'Rol creado.', () => { this.closeDialog(); this.refresh(); }));
   }
 
-  toggleRole(roleId: number): void {
-    const companyId = this.activeCompanyId();
-    const role = this.overview()?.roles.find((item) => item.id === roleId);
-    if (!companyId || !role) return;
-    this.runMutation(
-      this.api.updateRole(companyId, roleId, {
-        status: role.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
-      }),
-      'Estado del rol actualizado.',
-      () => this.refresh(),
-    );
-  }
+  editRole(roleId: number): void { const id = this.activeCompanyId(); const role = this.overview()?.roles.find((item) => item.id === roleId); if (!id || !role) return; this.openDialog('Editar rol', [this.text('name', 'Nombre', true), this.select('status', 'Estado', ['ACTIVE', 'INACTIVE']), this.multi('permission_codes', 'Permisos', this.overview()?.permissions.map((permission) => ({ value: permission.code, label: permission.code })) ?? [])], { ...role }, (value) => this.runMutation(this.api.updateRole(id, roleId, value), 'Rol actualizado.', () => { this.closeDialog(); this.refresh(); })); }
+  toggleRole(roleId: number): void { const id = this.activeCompanyId(); const role = this.overview()?.roles.find((item) => item.id === roleId); if (!id || !role) return; this.runMutation(this.api.updateRole(id, roleId, { status: role.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' }), 'Estado del rol actualizado.', () => this.refresh()); }
 
-  createCategory(): void {
-    const companyId = this.activeCompanyId();
-    if (!companyId) return;
-    const name = window.prompt('Nombre de categoría:')?.trim();
-    if (!name) return;
-    this.runMutation(
-      this.api.createCategory(companyId, name, null),
-      'Categoría creada.',
-      () => this.refresh(),
-    );
-  }
-
-  toggleCategory(categoryId: number): void {
-    const companyId = this.activeCompanyId();
-    const category = this.catalog().categories.find((item) => item.id === categoryId);
-    if (!companyId || !category) return;
-    this.runMutation(
-      this.api.updateCategory(companyId, categoryId, {
-        status: category.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
-      }),
-      'Categoría actualizada.',
-      () => this.refresh(),
-    );
-  }
-
-  createBrand(): void {
-    const companyId = this.activeCompanyId();
-    if (!companyId) return;
-    const name = window.prompt('Nombre de marca:')?.trim();
-    if (!name) return;
-    this.runMutation(this.api.createBrand(companyId, name), 'Marca creada.', () => this.refresh());
-  }
+  createCategory(): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Nueva categoría', [this.text('name', 'Nombre', true), this.select('parent', 'Categoría padre', [{ value: '', label: 'Sin categoría padre' }, ...(this.catalog().categories.map((item) => ({ value: item.id, label: item.name })))] )], { parent: '' }, (value) => this.runMutation(this.api.createCategory(id, String(value['name']), value['parent'] ? Number(value['parent']) : null), 'Categoría creada.', () => { this.closeDialog(); this.refresh(); })); }
+  editCategory(categoryId: number): void { const id = this.activeCompanyId(); const category = this.catalog().categories.find((item) => item.id === categoryId); if (!id || !category) return; this.openDialog('Editar categoría', [this.text('name', 'Nombre', true), this.select('status', 'Estado', ['ACTIVE', 'INACTIVE'])], { ...category }, (value) => this.runMutation(this.api.updateCategory(id, categoryId, value as { name?: string; status?: 'ACTIVE' | 'INACTIVE' }), 'Categoría actualizada.', () => { this.closeDialog(); this.refresh(); })); }
+  toggleCategory(categoryId: number): void { const id = this.activeCompanyId(); const category = this.catalog().categories.find((item) => item.id === categoryId); if (!id || !category) return; this.runMutation(this.api.updateCategory(id, categoryId, { status: category.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' }), 'Categoría actualizada.', () => this.refresh()); }
+  createBrand(): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Nueva marca', [this.text('name', 'Nombre', true)], {}, (value) => this.runMutation(this.api.createBrand(id, String(value['name'])), 'Marca creada.', () => { this.closeDialog(); this.refresh(); })); }
+  editBrand(brandId: number): void { const id = this.activeCompanyId(); const brand = this.catalog().brands.find((item) => item.id === brandId); if (!id || !brand) return; this.openDialog('Editar marca', [this.text('name', 'Nombre', true)], { ...brand }, (value) => this.runMutation(this.api.updateBrand(id, brandId, String(value['name'])), 'Marca actualizada.', () => { this.closeDialog(); this.refresh(); })); }
 
   createProduct(): void {
-    const companyId = this.activeCompanyId();
-    const category = this.catalog().categories.find((item) => item.status === 'ACTIVE');
-    if (!companyId || !category) {
-      this.error.set('Necesitas al menos una categoría activa para crear productos.');
-      return;
-    }
-    const name = window.prompt('Nombre del producto:')?.trim();
-    const sku = window.prompt('SKU de variante:', '')?.trim();
-    const basePrice = window.prompt('Precio base:', '0')?.trim();
-    if (!name || !sku || !basePrice) return;
-    this.runMutation(
-      this.api.createProduct(companyId, {
-        name,
-        description: '',
-        image_url: '',
-        category: category.id,
-        brand: null,
-        variant: { sku, gtin: '', base_price: basePrice },
-      }),
-      'Producto creado.',
-      () => this.refresh(),
-    );
+    const id = this.activeCompanyId(); const categories = this.catalog().categories.filter((item) => item.status === 'ACTIVE'); if (!id || !categories.length) { this.error.set('Necesitas al menos una categoría activa para crear productos.'); return; }
+    this.openDialog('Nuevo producto', [this.text('name', 'Nombre', true), this.text('description', 'Descripción'), this.text('image_url', 'URL de imagen'), this.select('category', 'Categoría', categories.map((item) => ({ value: item.id, label: item.name }))), this.select('brand', 'Marca', [{ value: '', label: 'Sin marca' }, ...this.catalog().brands.map((brand) => ({ value: brand.id, label: brand.name }))]), this.text('sku', 'SKU inicial', true), this.text('gtin', 'GTIN'), this.number('base_price', 'Precio base', 0)], { category: categories[0].id, brand: '', base_price: '0' }, (value) => this.runMutation(this.api.createProduct(id, { name: String(value['name']), description: String(value['description'] ?? ''), image_url: String(value['image_url'] ?? ''), category: Number(value['category']), brand: value['brand'] ? Number(value['brand']) : null, variant: { sku: String(value['sku']), gtin: String(value['gtin'] ?? ''), base_price: String(value['base_price']) } }), 'Producto creado.', () => { this.closeDialog(); this.refresh(); }));
   }
 
-  toggleProduct(product: Product): void {
-    const companyId = this.activeCompanyId();
-    if (!companyId) return;
-    this.runMutation(
-      this.api.updateProduct(companyId, product.id, {
-        status: product.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
-      }),
-      'Producto actualizado.',
-      () => this.refresh(),
-    );
-  }
+  editProduct(product: Product): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Editar producto', [this.text('name', 'Nombre', true), this.text('description', 'Descripción'), this.text('image_url', 'URL de imagen'), this.select('category', 'Categoría', this.catalog().categories.map((item) => ({ value: item.id, label: item.name }))), this.select('brand', 'Marca', [{ value: '', label: 'Sin marca' }, ...this.catalog().brands.map((brand) => ({ value: brand.id, label: brand.name }))]), this.select('status', 'Estado', ['DRAFT', 'ACTIVE', 'INACTIVE'])], { ...product, category: product.category.id, brand: product.brand?.id ?? '' }, (value) => this.runMutation(this.api.updateProduct(id, product.id, { name: value['name'], description: value['description'], image_url: value['image_url'], category: Number(value['category']), brand: value['brand'] ? Number(value['brand']) : null, status: value['status'] }), 'Producto actualizado.', () => { this.closeDialog(); this.refresh(); })); }
+  toggleProduct(product: Product): void { const id = this.activeCompanyId(); if (!id) return; this.runMutation(this.api.toggleProduct(id, product.id, product.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'), 'Estado del producto actualizado.', () => this.refresh()); }
 
-  createSupplier(): void {
-    const companyId = this.activeCompanyId();
-    if (!companyId) return;
-    const name = window.prompt('Nombre del proveedor:')?.trim();
-    if (!name) return;
-    this.runMutation(
-      this.api.createSupplier(companyId, {
-        name,
-        contact_name: '',
-        email: '',
-        phone: '',
-        status: 'ACTIVE',
-      }),
-      'Proveedor creado.',
-      () => this.refresh(),
-    );
-  }
+  createVariant(product: Product): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog(`Nueva variante · ${product.name}`, [this.text('sku', 'SKU', true), this.text('gtin', 'GTIN'), this.number('base_price', 'Precio base', 0), this.select('status', 'Estado', ['DRAFT', 'ACTIVE', 'INACTIVE'])], { status: 'ACTIVE', base_price: '0' }, (value) => this.runMutation(this.api.createVariant(id, product.id, { sku: value['sku'], gtin: value['gtin'], base_price: String(value['base_price']), status: value['status'] }), 'Variante creada.', () => { this.closeDialog(); this.refresh(); })); }
+  editVariant(product: Product, variant: Product['variants'][number]): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog(`Editar variante · ${product.name}`, [this.text('sku', 'SKU', true), this.text('gtin', 'GTIN'), this.number('base_price', 'Precio base', 0), this.select('status', 'Estado', ['DRAFT', 'ACTIVE', 'INACTIVE'])], variant, (value) => this.runMutation(this.api.updateVariant(id, product.id, variant.id, { sku: value['sku'], gtin: value['gtin'], base_price: String(value['base_price']), status: value['status'] }), 'Variante actualizada.', () => { this.closeDialog(); this.refresh(); })); }
+  toggleVariant(product: Product, variant: Product['variants'][number]): void { const id = this.activeCompanyId(); if (!id) return; this.runMutation(this.api.toggleVariant(id, product.id, variant.id, variant.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'), 'Estado de la variante actualizado.', () => this.refresh()); }
 
-  toggleSupplier(supplierId: number): void {
-    const companyId = this.activeCompanyId();
-    const supplier = this.directories().suppliers.find((item) => item.id === supplierId);
-    if (!companyId || !supplier) return;
-    this.runMutation(
-      this.api.updateSupplier(companyId, supplierId, {
-        name: supplier.name,
-        contact_name: supplier.contact_name,
-        email: supplier.email,
-        phone: supplier.phone,
-        status: supplier.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
-      }),
-      'Proveedor actualizado.',
-      () => this.refresh(),
-    );
-  }
+  createSupplier(): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Nuevo proveedor', [this.text('name', 'Nombre', true), this.text('contact_name', 'Contacto'), this.email('email', 'Correo'), this.text('phone', 'Teléfono'), this.select('status', 'Estado', ['ACTIVE', 'INACTIVE'])], { status: 'ACTIVE' }, (value) => this.runMutation(this.api.createSupplier(id, value as any), 'Proveedor creado.', () => { this.closeDialog(); this.refresh(); })); }
+  editSupplier(id: number): void { const companyId = this.activeCompanyId(); const supplier = this.directories().suppliers.find((item) => item.id === id); if (!companyId || !supplier) return; this.openDialog('Editar proveedor', [this.text('name', 'Nombre', true), this.text('contact_name', 'Contacto'), this.email('email', 'Correo'), this.text('phone', 'Teléfono'), this.select('status', 'Estado', ['ACTIVE', 'INACTIVE'])], { ...supplier }, (value) => this.runMutation(this.api.updateSupplier(companyId, id, value as any), 'Proveedor actualizado.', () => { this.closeDialog(); this.refresh(); })); }
+  toggleSupplier(id: number): void { const companyId = this.activeCompanyId(); const supplier = this.directories().suppliers.find((item) => item.id === id); if (!companyId || !supplier) return; this.runMutation(this.api.toggleSupplier(companyId, id, supplier.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'), 'Estado del proveedor actualizado.', () => this.refresh()); }
 
-  createWarehouse(): void {
-    const companyId = this.activeCompanyId();
-    if (!companyId) return;
-    const code = window.prompt('Código de bodega:')?.trim();
-    const name = window.prompt('Nombre de bodega:')?.trim();
-    if (!code || !name) return;
-    this.runMutation(
-      this.api.createWarehouse(companyId, { branch: null, code, name }),
-      'Bodega creada.',
-      () => this.refresh(),
-    );
-  }
+  createWarehouse(): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Nueva bodega', [this.text('code', 'Código', true), this.text('name', 'Nombre', true), this.select('branch', 'Sucursal', [{ value: '', label: 'General' }, ...(this.overview()?.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })) ?? [])])], { branch: '' }, (value) => this.runMutation(this.api.createWarehouse(id, { code: String(value['code']), name: String(value['name']), branch: value['branch'] ? Number(value['branch']) : null }), 'Bodega creada.', () => { this.closeDialog(); this.refresh(); })); }
+  editWarehouse(warehouseId: number): void { const id = this.activeCompanyId(); const warehouse = this.directories().warehouses.find((item) => item.id === warehouseId); if (!id || !warehouse) return; this.openDialog('Editar bodega', [this.text('code', 'Código', true), this.text('name', 'Nombre', true), this.select('branch', 'Sucursal', [{ value: '', label: 'General' }, ...(this.overview()?.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })) ?? [])])], { ...warehouse, branch: warehouse.branch ?? '' }, (value) => this.runMutation(this.api.updateWarehouse(id, warehouseId, { code: String(value['code']), name: String(value['name']), branch: value['branch'] ? Number(value['branch']) : null }), 'Bodega actualizada.', () => { this.closeDialog(); this.refresh(); })); }
 
-  editWarehouse(warehouseId: number): void {
-    const companyId = this.activeCompanyId();
-    const warehouse = this.directories().warehouses.find((item) => item.id === warehouseId);
-    if (!companyId || !warehouse) return;
-    const name = window.prompt('Nombre de bodega:', warehouse.name)?.trim();
-    if (!name) return;
-    this.runMutation(
-      this.api.updateWarehouse(companyId, warehouseId, {
-        branch: warehouse.branch,
-        code: warehouse.code,
-        name,
-      }),
-      'Bodega actualizada.',
-      () => this.refresh(),
-    );
-  }
+  createPaymentMethod(): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Nuevo método de pago', [this.text('code', 'Código', true), this.text('name', 'Nombre visible', true), this.select('kind', 'Tipo', ['CASH', 'TRANSFER', 'ONLINE', 'OTHER']), this.number('sort_order', 'Orden', 0), this.checkbox('is_active', 'Activo')], { kind: 'TRANSFER', sort_order: 0, is_active: true }, (value) => this.runMutation(this.api.createPaymentMethod(id, { code: String(value['code']), name: String(value['name']), kind: value['kind'] as any, sort_order: Number(value['sort_order']), is_active: Boolean(value['is_active']) }), 'Método de pago creado.', () => { this.closeDialog(); this.refresh(); })); }
+  togglePaymentMethod(methodId: number): void { const id = this.activeCompanyId(); const method = this.overview()?.payment_methods.find((item) => item.id === methodId); if (!id || !method) return; this.runMutation(this.api.updatePaymentMethod(id, methodId, { is_active: !method.is_active }), 'Método de pago actualizado.', () => this.refresh()); }
+  toggleOrderStatus(statusId: number): void { const id = this.activeCompanyId(); const status = this.overview()?.order_statuses.find((item) => item.id === statusId); if (!id || !status || status.is_system) return; this.runMutation(this.api.updateOrderStatus(id, statusId, { is_active: !status.is_active }), 'Estado de pedido actualizado.', () => this.refresh()); }
+  editSettings(): void { const id = this.activeCompanyId(); const settings = this.overview()?.settings; if (!id || !settings) return; this.openDialog('Parámetros generales', [this.number('vat_rate', 'IVA', 0), this.text('currency', 'Moneda', true), this.text('timezone', 'Zona horaria', true), this.text('payment_provider', 'Proveedor de pago'), this.checkbox('payment_sandbox_enabled', 'Sandbox activo'), this.email('notification_sender_email', 'Correo remitente')], { ...settings }, (value) => this.runMutation(this.api.updateSettings(id, { ...value, vat_rate: String(value['vat_rate']) } as Partial<AdminCompanySettings>), 'Parámetros actualizados.', () => { this.closeDialog(); this.refresh(); })); }
 
-  createPaymentMethod(): void {
-    const companyId = this.activeCompanyId();
-    if (!companyId) return;
-    const code = window.prompt('Código del método:', 'TRANSFER')?.trim();
-    const name = window.prompt('Nombre visible:', 'Transferencia')?.trim();
-    if (!code || !name) return;
-    this.runMutation(
-      this.api.createPaymentMethod(companyId, {
-        code,
-        name,
-        kind: 'TRANSFER',
-        is_active: true,
-        sort_order: 0,
-      }),
-      'Método de pago creado.',
-      () => this.refresh(),
-    );
-  }
+  submitDialog(value: Record<string, unknown>): void { this.dialog()?.save(value); }
+  closeDialog(): void { this.dialog.set(null); }
 
-  togglePaymentMethod(methodId: number): void {
-    const companyId = this.activeCompanyId();
-    const method = this.overview()?.payment_methods.find((item) => item.id === methodId);
-    if (!companyId || !method) return;
-    this.runMutation(
-      this.api.updatePaymentMethod(companyId, methodId, { is_active: !method.is_active }),
-      'Método de pago actualizado.',
-      () => this.refresh(),
-    );
-  }
+  private openDialog(title: string, fields: FormDialogField[], initialValue: Record<string, unknown>, save: (value: Record<string, unknown>) => void): void { this.clearStatus(); this.dialog.set({ title, fields, initialValue, save }); }
+  private text(key: string, label: string, required = false): FormDialogField { return { key, label, type: 'text', required }; }
+  private email(key: string, label: string, required = false): FormDialogField { return { key, label, type: 'email', required }; }
+  private number(key: string, label: string, min?: number): FormDialogField { return { key, label, type: 'number', min }; }
+  private checkbox(key: string, label: string): FormDialogField { return { key, label, type: 'checkbox' }; }
+  private select(key: string, label: string, values: string[] | { value: string | number; label: string }[]): FormDialogField { return { key, label, type: 'select', options: values.map((value) => typeof value === 'string' ? { value, label: value } : value) }; }
+  private multi(key: string, label: string, options: { value: string | number; label: string }[]): FormDialogField { return { key, label, type: 'multi-select', options }; }
 
-  toggleOrderStatus(statusId: number): void {
-    const companyId = this.activeCompanyId();
-    const status = this.overview()?.order_statuses.find((item) => item.id === statusId);
-    if (!companyId || !status || status.is_system) return;
-    this.runMutation(
-      this.api.updateOrderStatus(companyId, statusId, { is_active: !status.is_active }),
-      'Estado de pedido actualizado.',
-      () => this.refresh(),
-    );
-  }
-
-  editSettings(): void {
-    const companyId = this.activeCompanyId();
-    const settings = this.overview()?.settings;
-    if (!companyId || !settings) return;
-    const sender =
-      window.prompt('Correo remitente:', settings.notification_sender_email)?.trim() ??
-      settings.notification_sender_email;
-    const timezone = window.prompt('Zona horaria:', settings.timezone)?.trim() ?? settings.timezone;
-    this.runMutation(
-      this.api.updateSettings(companyId, {
-        notification_sender_email: sender,
-        timezone,
-      }),
-      'Parámetros actualizados.',
-      () => this.refresh(),
-    );
-  }
-
-  private loadMemberships(): void {
-    this.loading.set(true);
-    this.api.context().subscribe({
-      next: (memberships) => {
-        this.memberships.set(memberships);
-        const active =
-          memberships.find((item) => item.status === 'ACTIVE') ?? memberships[0] ?? null;
-        this.selectedMembership.set(active);
-        if (active) {
-          this.loadCompanyData(active.company.id);
-        } else {
-          this.loading.set(false);
-          this.error.set('El usuario no tiene empresas disponibles.');
-        }
-      },
-      error: (error: unknown) => {
-        this.loading.set(false);
-        this.error.set(this.describeError(error, 'No fue posible cargar las empresas.'));
-      },
-    });
-  }
-
-  private loadCompanyData(companyId: number): void {
-    this.loading.set(true);
-    this.error.set('');
-    this.notice.set('');
-    forkJoin({
-      overview: this.api.overview(companyId),
-      catalog: this.api.catalog(companyId),
-      directories: this.api.directories(companyId),
-    }).subscribe({
-      next: ({ overview, catalog, directories }) => {
-        this.overview.set(overview);
-        this.catalog.set(catalog);
-        this.directories.set(directories);
-        this.loading.set(false);
-      },
-      error: (error: unknown) => {
-        this.overview.set(null);
-        this.loading.set(false);
-        this.error.set(
-          this.describeError(
-            error,
-            'No fue posible cargar los mantenedores. Verifica permisos de administración.',
-          ),
-        );
-      },
-    });
-  }
-
-  private runMutation<T>(observable: Observable<T>, message: string, next: () => void): void {
-    this.loading.set(true);
-    this.error.set('');
-    this.notice.set('');
-    observable.subscribe({
-      next: () => {
-        this.notice.set(message);
-        next();
-      },
-      error: (error: unknown) => {
-        this.loading.set(false);
-        this.error.set(this.describeError(error, 'La operación no pudo completarse.'));
-      },
-    });
-  }
-
-  private clearSession(): void {
-    this.user.set(null);
-    this.memberships.set([]);
-    this.selectedMembership.set(null);
-    this.overview.set(null);
-    this.catalog.set({ categories: [], products: [], brands: [] });
-    this.directories.set({ suppliers: [], warehouses: [] });
-    this.section.set('summary');
-    this.loading.set(false);
-    this.error.set('');
-    this.notice.set('');
-  }
-
-  private describeError(error: unknown, fallback: string): string {
-    if (typeof error === 'object' && error !== null && 'error' in error) {
-      const body = (error as { error?: { detail?: unknown; message?: unknown } }).error;
-      if (typeof body?.detail === 'string') return body.detail;
-      if (typeof body?.message === 'string') return body.message;
-    }
-    return fallback;
-  }
+  private loadContext(): void { this.beginLoad(); this.api.context().subscribe({ next: (context) => { this.context.set(context); const current = this.selectedCompanyId(); const selected = context.companies.find((company) => company.id === current) ?? context.companies[0] ?? null; this.selectedCompanyId.set(selected?.id ?? null); if (selected) this.loadCompanyData(selected.id); else { this.loading.set(false); this.error.set('No hay empresas disponibles.'); } }, error: (error: unknown) => { this.loading.set(false); this.error.set(this.describeError(error, 'No fue posible cargar las empresas.')); } }); }
+  private loadCompanyData(companyId: number): void { this.beginLoad(); forkJoin({ overview: this.api.companyOverview(companyId), catalog: this.api.catalog(companyId), directories: this.api.directories(companyId) }).subscribe({ next: ({ overview, catalog, directories }) => { this.overview.set(overview); this.catalog.set(catalog); this.directories.set(directories); this.loading.set(false); }, error: (error: unknown) => { this.overview.set(null); this.loading.set(false); this.error.set(this.describeError(error, 'No fue posible cargar los mantenedores.')); } }); }
+  private runMutation<T>(observable: Observable<T>, message: string, next: () => void): void { this.beginLoad(); observable.subscribe({ next: () => { this.notice.set(message); next(); }, error: (error: unknown) => { this.loading.set(false); this.error.set(this.describeError(error, 'La operación no pudo completarse.')); } }); }
+  private beginLoad(): void { this.loading.set(true); this.clearStatus(); }
+  private clearStatus(): void { this.error.set(''); this.notice.set(''); }
+  private rejectNonPlatform(): void { this.user.set(null); this.loading.set(false); this.error.set('Esta consola está disponible solo para administradores de plataforma.'); }
+  private clearSession(): void { this.user.set(null); this.context.set(null); this.selectedCompanyId.set(null); this.overview.set(null); this.catalog.set({ categories: [], products: [], brands: [] }); this.directories.set({ suppliers: [], warehouses: [] }); this.dialog.set(null); this.section.set('summary'); this.loading.set(false); this.clearStatus(); }
+  private describeError(error: unknown, fallback: string): string { if (typeof error === 'object' && error !== null && 'error' in error) { const body = (error as { error?: { detail?: unknown; message?: unknown } }).error; if (typeof body?.detail === 'string') return body.detail; if (typeof body?.message === 'string') return body.message; if (body && typeof body === 'object') return Object.values(body).flat().filter((value): value is string => typeof value === 'string').join(' '); } return fallback; }
 }

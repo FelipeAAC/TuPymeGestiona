@@ -1,0 +1,39 @@
+from django.urls import path
+
+from maintainers import views
+
+
+urlpatterns = [
+    path("context/", views.context_view, name="maintainers-context"),
+    path("companies/", views.company_create_view, name="maintainers-company-create"),
+    path("companies/<int:company_id>/", views.company_detail_view, name="maintainers-company-detail"),
+    path("companies/<int:company_id>/overview/", views.overview_view, name="maintainers-company-overview"),
+    path("companies/<int:company_id>/branches/", views.branch_list_create_view, name="maintainers-branch-list-create"),
+    path("companies/<int:company_id>/branches/<int:branch_id>/", views.branch_detail_view, name="maintainers-branch-detail"),
+    path("companies/<int:company_id>/users/", views.user_list_create_view, name="maintainers-user-list-create"),
+    path("companies/<int:company_id>/users/<int:membership_id>/", views.user_detail_view, name="maintainers-user-detail"),
+    path("companies/<int:company_id>/roles/", views.role_list_create_view, name="maintainers-role-list-create"),
+    path("companies/<int:company_id>/roles/<int:role_id>/", views.role_detail_view, name="maintainers-role-detail"),
+    path("companies/<int:company_id>/payment-methods/", views.payment_method_list_create_view, name="maintainers-payment-method-list-create"),
+    path("companies/<int:company_id>/payment-methods/<int:method_id>/", views.payment_method_detail_view, name="maintainers-payment-method-detail"),
+    path("companies/<int:company_id>/order-statuses/<int:status_id>/", views.order_status_detail_view, name="maintainers-order-status-detail"),
+    path("companies/<int:company_id>/settings/", views.settings_view, name="maintainers-settings"),
+    path("companies/<int:company_id>/catalog/", views.catalog_view, name="maintainers-catalog"),
+    path("companies/<int:company_id>/catalog/categories/", views.category_list_create_view, name="maintainers-category-list-create"),
+    path("companies/<int:company_id>/catalog/categories/<int:category_id>/", views.category_detail_view, name="maintainers-category-detail"),
+    path("companies/<int:company_id>/catalog/categories/<int:category_id>/toggle/", views.category_toggle_view, name="maintainers-category-toggle"),
+    path("companies/<int:company_id>/catalog/brands/", views.brand_list_create_view, name="maintainers-brand-list-create"),
+    path("companies/<int:company_id>/catalog/brands/<int:brand_id>/", views.brand_detail_view, name="maintainers-brand-detail"),
+    path("companies/<int:company_id>/catalog/products/", views.product_list_create_view, name="maintainers-product-list-create"),
+    path("companies/<int:company_id>/catalog/products/<int:product_id>/", views.product_detail_view, name="maintainers-product-detail"),
+    path("companies/<int:company_id>/catalog/products/<int:product_id>/toggle/", views.product_toggle_view, name="maintainers-product-toggle"),
+    path("companies/<int:company_id>/catalog/products/<int:product_id>/variants/", views.variant_list_create_view, name="maintainers-variant-list-create"),
+    path("companies/<int:company_id>/catalog/products/<int:product_id>/variants/<int:variant_id>/", views.variant_detail_view, name="maintainers-variant-detail"),
+    path("companies/<int:company_id>/catalog/products/<int:product_id>/variants/<int:variant_id>/toggle/", views.variant_toggle_view, name="maintainers-variant-toggle"),
+    path("companies/<int:company_id>/directories/", views.directories_view, name="maintainers-directories"),
+    path("companies/<int:company_id>/suppliers/", views.supplier_list_create_view, name="maintainers-supplier-list-create"),
+    path("companies/<int:company_id>/suppliers/<int:supplier_id>/", views.supplier_detail_view, name="maintainers-supplier-detail"),
+    path("companies/<int:company_id>/suppliers/<int:supplier_id>/toggle/", views.supplier_toggle_view, name="maintainers-supplier-toggle"),
+    path("companies/<int:company_id>/warehouses/", views.warehouse_list_create_view, name="maintainers-warehouse-list-create"),
+    path("companies/<int:company_id>/warehouses/<int:warehouse_id>/", views.warehouse_detail_view, name="maintainers-warehouse-detail"),
+]

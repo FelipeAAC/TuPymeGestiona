@@ -20,7 +20,12 @@
 
     <nav id="main-navigation" class="sidebar-nav" aria-label="Navegación principal">
       <a routerLink="/app/dashboard" routerLinkActive="active" (click)="closeMenu()"> Dashboard </a>
-      <a routerLink="/portal" (click)="closeMenu()"> Ver como cliente </a>
+      @if (canAccessPortal()) {
+        <a routerLink="/portal" (click)="closeMenu()"> Ver como cliente </a>
+      }
+      @if (hasMultipleAccessModes()) {
+        <a routerLink="/access-chooser" (click)="closeMenu()"> Cambiar experiencia </a>
+      }
 
       @if (hasPermission('catalog.products.view')) {
         <a routerLink="/app/products" routerLinkActive="active" (click)="closeMenu()"> Productos </a>

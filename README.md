@@ -230,6 +230,117 @@ http://localhost:4300
 
 La aplicación `maintainers` tiene entrada, `sourceRoot`, servidor y bundle propios, pero comparte el mismo backend Django, sesión, permisos, contexto de empresa y MySQL.
 
+### Clasificación de cuentas y aplicaciones
+
+El acceso se calcula en el backend a partir de capacidades acumulables. Una
+persona conserva su cuenta y puede adquirir nuevas capacidades; no se crean
+usuarios duplicados por cada tienda o empresa.
+
+| Capacidad | Cómo se obtiene | Aplicación y alcance |
+|---|---|---|
+| `CUSTOMER` | Relación de Portal Cliente activa con una tienda (se crea al registrarse con tienda o al confirmar el primer pedido) | Portal Cliente (`/portal`), catálogos, compras, cuenta e historial |
+| `COMPANY_ADMIN` | Membresía activa con un rol que tenga `administration.manage` | Gestión de las PYMES autorizadas (`/app/*`), siempre aislada por empresa y sucursal |
+| `PLATFORM_ADMIN` | Marcación explícita por un operador mediante `promote_platform_admin` | Aplicación secundaria de mantenedores (`:4300`) y administración transversal de empresas |
+
+Las capacidades no son excluyentes. Si un `CUSTOMER` crea su propia PYME en
+`/portal/seller-onboarding`, conserva el Portal Cliente y además recibe
+`COMPANY_ADMIN` para esa empresa. Una cuenta con más de una capacidad entra al
+selector de aplicación; una cuenta `PLATFORM_ADMIN` abre por defecto la
+aplicación de mantenedores. Ser `is_superuser` por sí solo no concede acceso a
+la aplicación secundaria.
+
+La aplicación de mantenedores nunca se habilita desde el frontend. La ruta
+`/api/maintainers/*` exige una sesión autenticada con `platform_admin=true` y
+sus consultas y mutaciones se vuelven a validar en el backend. La aplicación
+principal no debe mostrar ni abrir mantenedores para cuentas `CUSTOMER` o
+`COMPANY_ADMIN`.
+
+#### Crear y auditar cuentas locales
+
+Registra una cuenta normal desde `/portal/register` o usa el usuario del dataset demo.
+Para darle administración de una PYME, completa el onboarding de vendedor; el
+backend crea la membresía, el rol y sus permisos. Para habilitar un operador
+general existente, ejecuta el comando explícito desde la raíz:
+
+```cmd
+pushd backend
+.\.venv\Scripts\python.exe manage.py promote_platform_admin --email operador@ejemplo.local
+popd
+```
+
+El comando no crea cuentas, no cambia contraseñas y no modifica membresías de
+empresa. Es idempotente y falla si el correo no existe o coincide con más de
+una cuenta. Después de cambiar cuentas, genera un informe de solo lectura para
+detectar capacidades acumuladas, cuentas sin clasificación y superusuarios que
+no fueron promovidos explícitamente:
+
+```cmd
+pushd backend
+.\.venv\Scripts\python.exe manage.py audit_access_modes
+.\.venv\Scripts\python.exe manage.py audit_access_modes --format json > access-modes.json
+popd
+```
+
+`access-modes.json` es una evidencia local temporal; no lo subas si contiene
+correos o datos de clientes.
+
+#### Recuperación de contraseña y outbox local
+
+La recuperación no revela si un correo existe. Configura en `backend/.env` una
+URL de frontend alcanzable por la persona que recibirá el enlace y un plazo
+acorde al entorno:
+
+```text
+PASSWORD_RESET_FRONTEND_BASE_URL=http://localhost:4200/reset-password
+PASSWORD_RESET_TIMEOUT=3600
+TRANSACTIONAL_EMAIL_ENABLED=true
+TRANSACTIONAL_EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+TRANSACTIONAL_EMAIL_FROM=no-reply@localhost
+```
+
+La petición se hace desde `/forgot-password`; el backend crea una notificación
+`PASSWORD_RESET` en el outbox y conserva el enlace cifrado. En local, procesa
+la cola con el backend de consola para ver el mensaje en la terminal de Django:
+
+```cmd
+.\backend\.venv\Scripts\python.exe backend\manage.py process_transactional_notifications --limit 100
+```
+
+Para SMTP real cambia el backend y configura solamente variables de entorno
+para host, puerto, TLS, usuario y contraseña. No guardes esas variables en Git.
+Los envíos que quedaron `SENDING` se marcan `UNCERTAIN`; el comando no los
+reenvía automáticamente para evitar duplicados:
+
+```cmd
+.\backend\.venv\Scripts\python.exe backend\manage.py transactional_email_recover_stale
+```
+
+El enlace vence según `PASSWORD_RESET_TIMEOUT`, solo puede consumirse con la
+contraseña nueva válida y no se guarda el token sin cifrar en la base.
+
+#### Origen local de mantenedores
+
+Levanta el backend y ambas aplicaciones. La aplicación secundaria usa el mismo
+dominio de sesión que la principal, pero su origen local es distinto:
+
+```text
+Principal:   http://localhost:4200
+Mantenedores: http://localhost:4300
+API:         http://127.0.0.1:8000/api
+```
+
+Incluye `http://localhost:4300,http://127.0.0.1:4300` en
+`DJANGO_CSRF_TRUSTED_ORIGINS`. En una demostración con túneles o HTTPS, agrega
+el origen público exacto a `DJANGO_ALLOWED_HOSTS` y
+`DJANGO_CSRF_TRUSTED_ORIGINS`; nunca uses `*` en un entorno compartido.
+
+Las limitaciones deliberadas de esta aplicación son: requiere sesión Django y
+backend activo, no reemplaza un proveedor de identidad externo, no muestra
+credenciales ni secretos de integraciones, y los totales de pedidos/ventas se
+consultan como agregados porque todavía no existe un endpoint de detalle
+transaccional específico para mantenedores. La autorización de cada operación
+continúa siendo responsabilidad del backend.
+
 ---
 
 ## Uso básico
@@ -402,11 +513,17 @@ Esta separación proporciona la estructura técnica prevista para RF24. Para
 usarla localmente, levanta ambas aplicaciones y comprueba los mantenedores,
 permisos y flujos con la base demo.
 
+El procedimiento operativo de cuentas, recuperación de contraseña, outbox y
+la matriz de revisión está resumido en
+[`docs/OPERACION_IDENTIDAD_MANTENEDORES.md`](docs/OPERACION_IDENTIDAD_MANTENEDORES.md).
+
 ## Código legado eliminado
 
 La implementación histórica ubicada en `panel/`, su SQLite y bytecode Python versionado fueron eliminados durante la limpieza del repositorio. Ya no forman parte de la arquitectura ni de los pasos de ejecución.
 
-La documentación técnica dispersa fue consolidada en este `README.md`.
+La documentación técnica de instalación y alcance está consolidada en este
+`README.md`; el procedimiento operativo detallado de identidad y mantenedores
+vive en `docs/OPERACION_IDENTIDAD_MANTENEDORES.md`.
 Se conservan los scripts de creación y carga MySQL y los comandos que ejecutan
 operaciones reales de correo y facturación electrónica.
 
@@ -626,6 +743,23 @@ npm run build:maintainers
 popd
 ```
 
+En una instalación Windows completa, agrega además:
+
+```cmd
+pushd backend
+.\.venv\Scripts\python.exe -m pip check
+popd
+pushd frontend
+npm audit
+popd
+git diff --check
+```
+
+Si el entorno no dispone de MySQL o de la virtualenv Windows, registra esa
+limitación explícitamente y ejecuta al menos los chequeos de sintaxis Python,
+los typechecks/builds de Angular y `npm audit`; esos resultados no sustituyen
+la validación Django contra la base real.
+
 Para una presentación, confirma manualmente el recorrido de registro/login,
 cambio de empresa, catálogo, inventario, pedido, caja POS, reversa, reportes y
 la aplicación de mantenedores. Mercado Pago, SMTP y SII necesitan sus propias
@@ -693,6 +827,31 @@ MERCADO_PAGO_WEBHOOK_URL
 MERCADO_PAGO_USE_SANDBOX_INIT_POINT
 MERCADO_PAGO_ACCEPT_LIVE_MODE
 ```
+
+Para una prueba local reproducible, copia `backend/.env.mercadopago.example`
+como `backend/.env`, crea una aplicación y cuentas de prueba en Mercado Pago
+y reemplaza únicamente los valores de prueba y las dos URLs públicas. El
+Access Token y la clave del webhook deben permanecer solo en `backend/.env`.
+
+La prueba necesita dos túneles HTTPS porque Angular atiende el retorno del
+comprador en el puerto 4200 y Django recibe el webhook en el puerto 8000:
+
+```cmd
+ngrok http 4200
+ngrok http 8000
+```
+
+Después de completar `backend/.env`, valida la configuración sin realizar un
+cobro:
+
+```cmd
+.\backend\.venv\Scripts\python.exe backend\manage.py mercado_pago_sandbox_check
+```
+
+Luego inicia el backend y frontend, abre la URL pública de Angular en una
+ventana incógnito, crea un pedido confirmado y selecciona `Pagar con Mercado
+Pago`. El webhook confirma el estado consultando el pago remoto; el retorno
+visual por sí solo no marca el pedido como pagado.
 
 No guardar tokens en Git ni en parámetros generales de la PYME.
 

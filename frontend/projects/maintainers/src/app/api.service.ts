@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { forkJoin, map, Observable, switchMap } from 'rxjs';
+import { map, Observable, switchMap } from 'rxjs';
 
 import {
   AdminBranch,
@@ -17,7 +17,7 @@ import {
   Category,
   CategoryStatus,
   DirectoryState,
-  OrganizationMembership,
+  MaintainerContext,
   Product,
   ProductStatus,
   Supplier,
@@ -29,15 +29,12 @@ export class MaintainersApi {
   private readonly http = inject(HttpClient);
 
   private csrfHeaders(): HttpHeaders {
-    const token =
-      document.cookie
-        .split('; ')
-        .find((entry) => entry.startsWith('csrftoken='))
-        ?.split('=')[1] ?? '';
+    const token = document.cookie.split('; ').find((entry) => entry.startsWith('csrftoken='))?.split('=')[1] ?? '';
+    return token ? new HttpHeaders({ 'X-CSRFToken': decodeURIComponent(token) }) : new HttpHeaders();
+  }
 
-    return token
-      ? new HttpHeaders({ 'X-CSRFToken': decodeURIComponent(token) })
-      : new HttpHeaders();
+  private options() {
+    return { headers: this.csrfHeaders(), withCredentials: true };
   }
 
   csrf(): Observable<unknown> {
@@ -45,336 +42,141 @@ export class MaintainersApi {
   }
 
   me(): Observable<AuthUser> {
-    return this.http
-      .get<{ user: AuthUser }>('/api/auth/me/', { withCredentials: true })
-      .pipe(map((response) => response.user));
+    return this.http.get<{ user: AuthUser }>('/api/auth/me/', { withCredentials: true }).pipe(map((response) => response.user));
   }
 
   login(identifier: string, password: string, rememberMe: boolean): Observable<AuthUser> {
     return this.csrf().pipe(
-      switchMap(() =>
-        this.http.post<{ user: AuthUser }>(
-          '/api/auth/login/',
-          { identifier, password, remember_me: rememberMe },
-          { headers: this.csrfHeaders(), withCredentials: true },
-        ),
-      ),
+      switchMap(() => this.http.post<{ user: AuthUser }>('/api/auth/login/', { identifier, password, remember_me: rememberMe }, this.options())),
       map((response) => response.user),
     );
   }
 
   logout(): Observable<unknown> {
-    return this.http.post(
-      '/api/auth/logout/',
-      {},
-      { headers: this.csrfHeaders(), withCredentials: true },
-    );
+    return this.http.post('/api/auth/logout/', {}, this.options());
   }
 
-  context(): Observable<OrganizationMembership[]> {
-    return this.http
-      .get<{ memberships: OrganizationMembership[] }>('/api/organizations/context/', {
-        withCredentials: true,
-      })
-      .pipe(map((response) => response.memberships));
+  context(): Observable<MaintainerContext> {
+    return this.http.get<MaintainerContext>('/api/maintainers/context/', { withCredentials: true });
   }
 
-  overview(companyId: number): Observable<AdministrationOverview> {
-    return this.http.get<AdministrationOverview>('/api/administration/overview/', {
-      params: { company: companyId.toString() },
-      withCredentials: true,
-    });
+  companyOverview(companyId: number): Observable<AdministrationOverview> {
+    return this.http.get<AdministrationOverview>(`/api/maintainers/companies/${companyId}/overview/`, { withCredentials: true });
   }
 
   catalog(companyId: number): Observable<CatalogState> {
-    return forkJoin({
-      categories: this.http
-        .get<{ categories: Category[] }>('/api/catalog/categories/manage/', {
-          params: { company: companyId.toString() },
-          withCredentials: true,
-        })
-        .pipe(map((response) => response.categories)),
-      products: this.http
-        .get<{ products: Product[] }>('/api/catalog/products/', {
-          params: { company: companyId.toString() },
-          withCredentials: true,
-        })
-        .pipe(map((response) => response.products)),
-      brands: this.http
-        .get<{ brands: Brand[] }>('/api/catalog/brands/', {
-          params: { company: companyId.toString() },
-          withCredentials: true,
-        })
-        .pipe(map((response) => response.brands)),
-    });
+    return this.http.get<CatalogState>(`/api/maintainers/companies/${companyId}/catalog/`, { withCredentials: true });
   }
 
   directories(companyId: number): Observable<DirectoryState> {
-    return forkJoin({
-      suppliers: this.http
-        .get<{ suppliers: Supplier[] }>('/api/catalog/suppliers/', {
-          params: { company: companyId.toString() },
-          withCredentials: true,
-        })
-        .pipe(map((response) => response.suppliers)),
-      warehouses: this.http
-        .get<{ warehouses: Warehouse[] }>('/api/organizations/warehouses/', {
-          params: { company: companyId.toString() },
-          withCredentials: true,
-        })
-        .pipe(map((response) => response.warehouses)),
-    });
+    return this.http.get<DirectoryState>(`/api/maintainers/companies/${companyId}/directories/`, { withCredentials: true });
   }
 
   createCompany(input: Partial<AdminCompany>): Observable<AdminCompany> {
-    return this.http
-      .post<{ company: AdminCompany }>('/api/administration/companies/', input, {
-        headers: this.csrfHeaders(),
-        withCredentials: true,
-      })
-      .pipe(map((response) => response.company));
+    return this.http.post<{ company: AdminCompany }>('/api/maintainers/companies/', input, this.options()).pipe(map((response) => response.company));
   }
 
   updateCompany(companyId: number, input: Partial<AdminCompany>): Observable<AdminCompany> {
-    return this.http
-      .patch<{ company: AdminCompany }>(
-        `/api/administration/companies/${companyId}/`,
-        input,
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.company));
+    return this.http.patch<{ company: AdminCompany }>(`/api/maintainers/companies/${companyId}/`, input, this.options()).pipe(map((response) => response.company));
   }
 
   createBranch(companyId: number, input: Partial<AdminBranch>): Observable<AdminBranch> {
-    return this.http
-      .post<{ branch: AdminBranch }>(
-        '/api/administration/branches/',
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.branch));
+    return this.http.post<{ branch: AdminBranch }>(`/api/maintainers/companies/${companyId}/branches/`, input, this.options()).pipe(map((response) => response.branch));
   }
 
   updateBranch(companyId: number, branchId: number, input: Partial<AdminBranch>): Observable<AdminBranch> {
-    return this.http
-      .patch<{ branch: AdminBranch }>(
-        `/api/administration/branches/${branchId}/`,
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.branch));
+    return this.http.patch<{ branch: AdminBranch }>(`/api/maintainers/companies/${companyId}/branches/${branchId}/`, input, this.options()).pipe(map((response) => response.branch));
   }
 
   createUser(companyId: number, input: Record<string, unknown>): Observable<AdminUser> {
-    return this.http
-      .post<{ user: AdminUser }>(
-        '/api/administration/users/',
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.user));
+    return this.http.post<{ user: AdminUser }>(`/api/maintainers/companies/${companyId}/users/`, input, this.options()).pipe(map((response) => response.user));
   }
 
   updateUser(companyId: number, membershipId: number, input: Record<string, unknown>): Observable<AdminUser> {
-    return this.http
-      .patch<{ user: AdminUser }>(
-        `/api/administration/users/${membershipId}/`,
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.user));
+    return this.http.patch<{ user: AdminUser }>(`/api/maintainers/companies/${companyId}/users/${membershipId}/`, input, this.options()).pipe(map((response) => response.user));
   }
 
   createRole(companyId: number, input: Record<string, unknown>): Observable<AdminRole> {
-    return this.http
-      .post<{ role: AdminRole }>(
-        '/api/administration/roles/',
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.role));
+    return this.http.post<{ role: AdminRole }>(`/api/maintainers/companies/${companyId}/roles/`, input, this.options()).pipe(map((response) => response.role));
   }
 
   updateRole(companyId: number, roleId: number, input: Record<string, unknown>): Observable<AdminRole> {
-    return this.http
-      .patch<{ role: AdminRole }>(
-        `/api/administration/roles/${roleId}/`,
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.role));
+    return this.http.patch<{ role: AdminRole }>(`/api/maintainers/companies/${companyId}/roles/${roleId}/`, input, this.options()).pipe(map((response) => response.role));
   }
 
   createPaymentMethod(companyId: number, input: Partial<AdminPaymentMethod>): Observable<AdminPaymentMethod> {
-    return this.http
-      .post<{ payment_method: AdminPaymentMethod }>(
-        '/api/administration/payment-methods/',
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.payment_method));
+    return this.http.post<{ payment_method: AdminPaymentMethod }>(`/api/maintainers/companies/${companyId}/payment-methods/`, input, this.options()).pipe(map((response) => response.payment_method));
   }
 
-  updatePaymentMethod(
-    companyId: number,
-    methodId: number,
-    input: Partial<AdminPaymentMethod>,
-  ): Observable<AdminPaymentMethod> {
-    return this.http
-      .patch<{ payment_method: AdminPaymentMethod }>(
-        `/api/administration/payment-methods/${methodId}/`,
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.payment_method));
+  updatePaymentMethod(companyId: number, methodId: number, input: Partial<AdminPaymentMethod>): Observable<AdminPaymentMethod> {
+    return this.http.patch<{ payment_method: AdminPaymentMethod }>(`/api/maintainers/companies/${companyId}/payment-methods/${methodId}/`, input, this.options()).pipe(map((response) => response.payment_method));
   }
 
-  updateOrderStatus(
-    companyId: number,
-    statusId: number,
-    input: Partial<AdminOrderStatus>,
-  ): Observable<AdminOrderStatus> {
-    return this.http
-      .patch<{ order_status: AdminOrderStatus }>(
-        `/api/administration/order-statuses/${statusId}/`,
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.order_status));
+  updateOrderStatus(companyId: number, statusId: number, input: Partial<AdminOrderStatus>): Observable<AdminOrderStatus> {
+    return this.http.patch<{ order_status: AdminOrderStatus }>(`/api/maintainers/companies/${companyId}/order-statuses/${statusId}/`, input, this.options()).pipe(map((response) => response.order_status));
   }
 
-  updateSettings(
-    companyId: number,
-    input: Partial<AdminCompanySettings>,
-  ): Observable<AdminCompanySettings> {
-    return this.http
-      .patch<{ settings: AdminCompanySettings }>(
-        '/api/administration/settings/',
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.settings));
+  updateSettings(companyId: number, input: Partial<AdminCompanySettings>): Observable<AdminCompanySettings> {
+    return this.http.patch<{ settings: AdminCompanySettings }>(`/api/maintainers/companies/${companyId}/settings/`, input, this.options()).pipe(map((response) => response.settings));
   }
 
   createCategory(companyId: number, name: string, parent: number | null): Observable<Category> {
-    return this.http
-      .post<{ category: Omit<Category, 'status'> }>(
-        '/api/catalog/categories/',
-        { company: companyId, name, parent },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => ({ ...response.category, status: 'ACTIVE' as CategoryStatus })));
+    return this.http.post<{ category: Category }>(`/api/maintainers/companies/${companyId}/catalog/categories/`, { name, parent }, this.options()).pipe(map((response) => response.category));
   }
 
-  updateCategory(
-    companyId: number,
-    categoryId: number,
-    input: { name?: string; parent?: number | null; status?: CategoryStatus },
-  ): Observable<Category> {
-    return this.http
-      .patch<{ category: Category }>(
-        `/api/catalog/categories/${categoryId}/`,
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.category));
+  updateCategory(companyId: number, categoryId: number, input: { name?: string; parent?: number | null; status?: CategoryStatus }): Observable<Category> {
+    return this.http.patch<{ category: Category }>(`/api/maintainers/companies/${companyId}/catalog/categories/${categoryId}/`, input, this.options()).pipe(map((response) => response.category));
   }
 
   createBrand(companyId: number, name: string): Observable<Brand> {
-    return this.http
-      .post<{ brand: Brand }>(
-        '/api/catalog/brands/',
-        { company: companyId, name },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.brand));
+    return this.http.post<{ brand: Brand }>(`/api/maintainers/companies/${companyId}/catalog/brands/`, { name }, this.options()).pipe(map((response) => response.brand));
   }
 
-  createProduct(
-    companyId: number,
-    input: {
-      name: string;
-      description: string;
-      image_url: string;
-      category: number;
-      brand: number | null;
-      variant: { sku: string; gtin: string; base_price: string };
-    },
-  ): Observable<Product> {
-    return this.http
-      .post<{ product: Product }>(
-        '/api/catalog/products/',
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.product));
+  updateBrand(companyId: number, brandId: number, name: string): Observable<Brand> {
+    return this.http.patch<{ brand: Brand }>(`/api/maintainers/companies/${companyId}/catalog/brands/${brandId}/`, { name }, this.options()).pipe(map((response) => response.brand));
   }
 
-  updateProduct(
-    companyId: number,
-    productId: number,
-    input: {
-      name?: string;
-      description?: string;
-      image_url?: string;
-      category?: number;
-      brand?: number | null;
-      status?: ProductStatus;
-    },
-  ): Observable<Product> {
-    return this.http
-      .patch<{ product: Product }>(
-        `/api/catalog/products/${productId}/`,
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.product));
+  createProduct(companyId: number, input: { name: string; description: string; image_url: string; category: number; brand: number | null; status?: ProductStatus; variant?: { sku: string; gtin: string; base_price: string } }): Observable<Product> {
+    return this.http.post<{ product: Product }>(`/api/maintainers/companies/${companyId}/catalog/products/`, input, this.options()).pipe(map((response) => response.product));
+  }
+
+  updateProduct(companyId: number, productId: number, input: Record<string, unknown>): Observable<Product> {
+    return this.http.patch<{ product: Product }>(`/api/maintainers/companies/${companyId}/catalog/products/${productId}/`, input, this.options()).pipe(map((response) => response.product));
+  }
+
+  toggleProduct(companyId: number, productId: number, status: ProductStatus): Observable<Product> {
+    return this.http.post<{ product: Product }>(`/api/maintainers/companies/${companyId}/catalog/products/${productId}/toggle/`, { status }, this.options()).pipe(map((response) => response.product));
+  }
+
+  createVariant(companyId: number, productId: number, input: Record<string, unknown>): Observable<Product['variants'][number]> {
+    return this.http.post<{ variant: Product['variants'][number] }>(`/api/maintainers/companies/${companyId}/catalog/products/${productId}/variants/`, input, this.options()).pipe(map((response) => response.variant));
+  }
+
+  updateVariant(companyId: number, productId: number, variantId: number, input: Record<string, unknown>): Observable<Product['variants'][number]> {
+    return this.http.patch<{ variant: Product['variants'][number] }>(`/api/maintainers/companies/${companyId}/catalog/products/${productId}/variants/${variantId}/`, input, this.options()).pipe(map((response) => response.variant));
+  }
+
+  toggleVariant(companyId: number, productId: number, variantId: number, status: ProductStatus): Observable<Product['variants'][number]> {
+    return this.http.post<{ variant: Product['variants'][number] }>(`/api/maintainers/companies/${companyId}/catalog/products/${productId}/variants/${variantId}/toggle/`, { status }, this.options()).pipe(map((response) => response.variant));
   }
 
   createSupplier(companyId: number, input: Omit<Supplier, 'id'>): Observable<Supplier> {
-    return this.http
-      .post<{ supplier: Supplier }>(
-        '/api/catalog/suppliers/',
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.supplier));
+    return this.http.post<{ supplier: Supplier }>(`/api/maintainers/companies/${companyId}/suppliers/`, input, this.options()).pipe(map((response) => response.supplier));
   }
 
-  updateSupplier(companyId: number, supplierId: number, input: Omit<Supplier, 'id'>): Observable<Supplier> {
-    return this.http
-      .patch<{ supplier: Supplier }>(
-        `/api/catalog/suppliers/${supplierId}/`,
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.supplier));
+  updateSupplier(companyId: number, supplierId: number, input: Partial<Supplier>): Observable<Supplier> {
+    return this.http.patch<{ supplier: Supplier }>(`/api/maintainers/companies/${companyId}/suppliers/${supplierId}/`, input, this.options()).pipe(map((response) => response.supplier));
   }
 
-  createWarehouse(
-    companyId: number,
-    input: { branch: number | null; code: string; name: string },
-  ): Observable<Warehouse> {
-    return this.http
-      .post<{ warehouse: Warehouse }>(
-        '/api/organizations/warehouses/',
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.warehouse));
+  toggleSupplier(companyId: number, supplierId: number, status: Supplier['status']): Observable<Supplier> {
+    return this.http.post<{ supplier: Supplier }>(`/api/maintainers/companies/${companyId}/suppliers/${supplierId}/toggle/`, { status }, this.options()).pipe(map((response) => response.supplier));
   }
 
-  updateWarehouse(
-    companyId: number,
-    warehouseId: number,
-    input: { branch: number | null; code: string; name: string },
-  ): Observable<Warehouse> {
-    return this.http
-      .patch<{ warehouse: Warehouse }>(
-        `/api/organizations/warehouses/${warehouseId}/`,
-        { company: companyId, ...input },
-        { headers: this.csrfHeaders(), withCredentials: true },
-      )
-      .pipe(map((response) => response.warehouse));
+  createWarehouse(companyId: number, input: { branch: number | null; code: string; name: string }): Observable<Warehouse> {
+    return this.http.post<{ warehouse: Warehouse }>(`/api/maintainers/companies/${companyId}/warehouses/`, input, this.options()).pipe(map((response) => response.warehouse));
+  }
+
+  updateWarehouse(companyId: number, warehouseId: number, input: { branch: number | null; code: string; name: string }): Observable<Warehouse> {
+    return this.http.patch<{ warehouse: Warehouse }>(`/api/maintainers/companies/${companyId}/warehouses/${warehouseId}/`, input, this.options()).pipe(map((response) => response.warehouse));
   }
 }

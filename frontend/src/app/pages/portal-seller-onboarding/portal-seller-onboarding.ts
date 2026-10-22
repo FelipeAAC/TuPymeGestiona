@@ -5,6 +5,7 @@ import { Router, RouterLink } from '@angular/router';
 import { finalize, map, switchMap } from 'rxjs';
 
 import { AdministrationService } from '../../core/administration/administration.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { OrganizationContextService } from '../../core/organization/organization-context.service';
 
 @Component({
@@ -16,6 +17,7 @@ import { OrganizationContextService } from '../../core/organization/organization
 export class PortalSellerOnboarding {
   private readonly formBuilder = inject(NonNullableFormBuilder);
   private readonly administrationService = inject(AdministrationService);
+  private readonly authService = inject(AuthService);
   private readonly organizationContext = inject(OrganizationContextService);
   private readonly router = inject(Router);
 
@@ -59,8 +61,12 @@ export class PortalSellerOnboarding {
       })
       .pipe(
         switchMap((company) =>
-          this.organizationContext.load().pipe(
-            map((memberships) => ({ company, memberships })),
+          this.authService.me().pipe(
+            switchMap(() =>
+              this.organizationContext.load().pipe(
+                map((memberships) => ({ company, memberships })),
+              ),
+            ),
           ),
         ),
         finalize(() => this.isSubmitting.set(false)),

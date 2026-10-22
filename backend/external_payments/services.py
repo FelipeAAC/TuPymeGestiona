@@ -235,10 +235,11 @@ def _verify_test_mode(payload):
         raise MercadoPagoConflictError("Se rechazó un pago live_mode porque este slice está configurado solo para pruebas.")
 
 
+@transaction.atomic
 def apply_payment_payload(*, payload, correlation_id=""):
     _verify_test_mode(payload)
     external_reference = str(payload.get("external_reference") or "")
-    checkout = MercadoPagoCheckout.objects.filter(external_reference=external_reference).select_related(
+    checkout = MercadoPagoCheckout.objects.select_for_update().filter(external_reference=external_reference).select_related(
         "order", "portal_account__user", "portal_account__customer", "sale"
     ).first()
     if checkout is None:
@@ -249,6 +250,24 @@ def apply_payment_payload(*, payload, correlation_id=""):
     if not provider_payment_id or amount is None:
         raise MercadoPagoConflictError("El pago remoto no contiene identificador o monto válido.")
     payload_hash = _hash(payload)
+    # A provider payment id is globally unique. Never let a replay that carries
+    # a different external reference move an already recorded payment to a
+    # second checkout (that would break tenant isolation and reconciliation).
+    existing_payment = (
+        MercadoPagoRemotePayment.objects.select_for_update()
+        .filter(provider_payment_id=provider_payment_id)
+        .first()
+    )
+    if existing_payment is not None and existing_payment.checkout_id != checkout.id:
+        raise MercadoPagoConflictError("El pago remoto ya está asociado a otro checkout.")
+    expected_status = _map_status(str(payload.get("status") or ""))
+    already_applied = (
+        existing_payment is not None
+        and existing_payment.payload_hash == payload_hash
+        and checkout.last_payment_id == provider_payment_id
+        and checkout.status == expected_status
+        and not (expected_status == MercadoPagoCheckout.Status.APPROVED and checkout.order.status == Order.Status.DELIVERED and checkout.sale_id is None)
+    )
     payment, _ = MercadoPagoRemotePayment.objects.update_or_create(
         provider_payment_id=provider_payment_id,
         defaults={
@@ -276,6 +295,11 @@ def apply_payment_payload(*, payload, correlation_id=""):
     checkout.status = _map_status(payment.status)
     checkout.last_error_code = ""
     checkout.save(update_fields=("provider_status", "provider_status_detail", "last_payment_id", "status", "last_error_code", "updated_at"))
+    if already_applied:
+        # Keep webhook retries idempotent: no duplicate audit event or email.
+        if checkout.status == MercadoPagoCheckout.Status.APPROVED and checkout.order.status == Order.Status.DELIVERED:
+            reconcile_delivered_order(order=checkout.order)
+        return checkout, payment, False
     event_type = {
         MercadoPagoCheckout.Status.APPROVED: MercadoPagoEvent.EventType.PAYMENT_APPROVED,
         MercadoPagoCheckout.Status.REJECTED: MercadoPagoEvent.EventType.PAYMENT_REJECTED,

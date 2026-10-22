@@ -32,6 +32,9 @@ def get_branch_scope(*, user, company, permission_code):
     if not company or not company.pk:
         return BranchPermissionScope(False, False, frozenset())
 
+    if not getattr(company, "is_active", False):
+        return BranchPermissionScope(False, False, frozenset())
+
     if getattr(user, "is_superuser", False):
         return BranchPermissionScope(True, True, frozenset())
 
@@ -42,6 +45,7 @@ def get_branch_scope(*, user, company, permission_code):
     assignments = RoleAssignment.objects.filter(
         membership__user=user,
         membership__company=company,
+        membership__company__is_active=True,
         membership__status=CompanyMembership.Status.ACTIVE,
         role__company=company,
         role__status=CompanyRole.Status.ACTIVE,
@@ -97,11 +101,14 @@ def has_permission(
     if not getattr(user, "is_authenticated", False):
         return False
 
-    if getattr(user, "is_superuser", False):
-        return True
-
     if not company or not company.pk:
         return False
+
+    if not getattr(company, "is_active", False):
+        return False
+
+    if getattr(user, "is_superuser", False):
+        return True
 
     if branch is not None:
         if not branch.pk or branch.company_id != company.pk:
@@ -117,6 +124,7 @@ def has_permission(
     assignments = RoleAssignment.objects.filter(
         membership__user=user,
         membership__company=company,
+        membership__company__is_active=True,
         membership__status=CompanyMembership.Status.ACTIVE,
         role__company=company,
         role__status=CompanyRole.Status.ACTIVE,
@@ -132,14 +140,13 @@ def has_permission(
         return assignments.exists()
 
     if permission.scope_behavior == Permission.ScopeBehavior.BRANCH_SCOPED:
-        if branch is None:
-            return False
-
         scope = get_branch_scope(
             user=user,
             company=company,
             permission_code=permission_code,
         )
+        if branch is None:
+            return scope.all_branches
         return scope.all_branches or branch.pk in scope.branch_ids
 
     return False

@@ -113,6 +113,13 @@ class CompanyMembership(models.Model):
         on_delete=models.PROTECT,
         related_name="company_memberships",
     )
+    primary_for_user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="self_service_company_membership",
+        null=True,
+        blank=True,
+    )
     company = models.ForeignKey(
         Company,
         on_delete=models.PROTECT,

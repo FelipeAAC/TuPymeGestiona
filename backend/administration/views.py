@@ -12,6 +12,7 @@ from organizations.models import (
     Permission,
     normalize_role_name,
 )
+from accounts.access import get_access_context, has_customer_access
 
 from administration.serializers import (
     AdministrationEventSerializer,
@@ -29,12 +30,16 @@ from administration.serializers import (
 )
 from administration.services import (
     ADMIN_PERMISSION_CODE,
+    SelfServiceAccessError,
+    SelfServiceConflictError,
     create_company_for_user,
+    create_self_service_company_for_user,
     ensure_company_configuration,
     get_managed_company,
     log_admin_event,
     replace_membership_access,
     user_can_create_company,
+    user_can_self_service_company,
 )
 
 
@@ -113,24 +118,34 @@ def company_create_view(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def self_service_company_create_view(request):
+    if not has_customer_access(request.user):
+        return Response(
+            {"detail": "Debes tener una cuenta de cliente activa para crear una PYME."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    if not user_can_self_service_company(user=request.user):
+        return Response(
+            {"detail": "Ya tienes una PYME principal asociada a esta cuenta."},
+            status=status.HTTP_409_CONFLICT,
+        )
     serializer = CompanyAdminSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    company = create_company_for_user(
-        user=request.user,
-        company_data=serializer.validated_data,
-    )
-    Branch.objects.create(
-        company=company,
-        code="CASA",
-        name="Casa Matriz",
-        address=company.address,
-        commune=company.commune,
-        city=company.city,
-        phone=company.phone,
-        is_active=True,
-    )
+    company_data = dict(serializer.validated_data)
+    company_data["is_active"] = True
+    try:
+        company = create_self_service_company_for_user(
+            user=request.user,
+            company_data=company_data,
+        )
+    except SelfServiceAccessError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+    except SelfServiceConflictError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
     return Response(
-        {"company": CompanyAdminSerializer(company).data},
+        {
+            "company": CompanyAdminSerializer(company).data,
+            "access_context": get_access_context(request.user),
+        },
         status=status.HTTP_201_CREATED,
     )
 

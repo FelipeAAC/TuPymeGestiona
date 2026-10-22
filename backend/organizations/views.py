@@ -27,6 +27,7 @@ def organization_context_view(request):
     memberships = (
         CompanyMembership.objects.filter(
             user=request.user,
+            company__is_active=True,
             status=CompanyMembership.Status.ACTIVE,
         )
         .select_related("company", "user")
@@ -72,6 +73,7 @@ def _get_active_membership(*, user, company_id):
         CompanyMembership.objects.filter(
             user=user,
             company_id=company_id,
+            company__is_active=True,
             status=CompanyMembership.Status.ACTIVE,
         )
         .select_related("company")
@@ -249,7 +251,7 @@ def _create_warehouse(request):
             status=status.HTTP_403_FORBIDDEN,
         )
 
-    warehouse = serializer.save()
+    warehouse = serializer.save(company=company)
 
     return Response(
         {

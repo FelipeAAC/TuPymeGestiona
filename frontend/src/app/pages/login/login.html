@@ -83,8 +83,7 @@
             <button
               class="text-button"
               type="button"
-              [attr.aria-expanded]="recoveryHelpVisible()"
-              (click)="showRecoveryHelp()"
+              routerLink="/forgot-password"
             >
               ¿Olvidaste tu contraseña?
             </button>
@@ -138,10 +137,8 @@
       <p class="login-help">
         <a class="text-button" routerLink="/portal">Explorar tiendas</a>
         <span> · </span>
-        ¿Necesitas ayuda para ingresar?
-        <button class="text-button" type="button" (click)="showRecoveryHelp()">
-          Contacta a tu administrador
-        </button>
+        ¿No tienes cuenta?
+        <a class="text-button" routerLink="/portal/register">Crear cuenta</a>
       </p>
     </div>
 

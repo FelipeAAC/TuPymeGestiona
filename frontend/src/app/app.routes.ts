@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 
-import { authGuard } from './core/auth/auth.guard';
+import { authGuard, companyAdminGuard } from './core/auth/auth.guard';
 import { permissionGuard } from './core/auth/permission.guard';
 import { portalAuthGuard } from './core/portal/portal-auth.guard';
 
@@ -13,6 +13,22 @@ export const routes: Routes = [
   {
     path: 'portal',
     loadComponent: () => import('./pages/portal/portal').then((module) => module.Portal),
+  },
+  {
+    path: 'access-chooser',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./pages/access-chooser/access-chooser').then((module) => module.AccessChooser),
+  },
+  {
+    path: 'forgot-password',
+    loadComponent: () =>
+      import('./pages/forgot-password/forgot-password').then((module) => module.ForgotPassword),
+  },
+  {
+    path: 'reset-password',
+    loadComponent: () =>
+      import('./pages/reset-password/reset-password').then((module) => module.ResetPassword),
   },
   {
     path: 'portal/register',
@@ -46,7 +62,7 @@ export const routes: Routes = [
   {
     path: 'app',
     loadComponent: () => import('./layouts/app-shell/app-shell').then((module) => module.AppShell),
-    canActivate: [authGuard],
+    canActivate: [authGuard, companyAdminGuard],
     children: [
       {
         path: '',

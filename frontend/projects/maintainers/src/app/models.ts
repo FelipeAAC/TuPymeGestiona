@@ -10,6 +10,7 @@ export interface AuthUser {
   email: string;
   first_name: string;
   last_name: string;
+  access_modes?: Array<'CUSTOMER' | 'COMPANY_ADMIN' | 'PLATFORM_ADMIN'>;
 }
 
 export interface OrganizationMembership {
@@ -18,6 +19,38 @@ export interface OrganizationMembership {
   company: { id: number; name: string };
   branches: Array<{ id: number; code: string; name: string }>;
   permissions?: string[];
+}
+
+export interface MaintainerCompanySummary {
+  id: number;
+  name: string;
+  legal_name: string;
+  rut: string;
+  is_active: boolean;
+  branches_count: number;
+  users_count: number;
+  products_count: number;
+  orders_count: number;
+}
+
+export interface MaintainerSummary {
+  total_companies: number;
+  active_companies: number;
+  total_branches: number;
+  total_users: number;
+  total_products: number;
+  total_orders: number;
+  total_categories: number;
+  total_brands: number;
+  total_suppliers: number;
+  total_warehouses: number;
+  [key: string]: number;
+}
+
+export interface MaintainerContext {
+  user: AuthUser;
+  companies: MaintainerCompanySummary[];
+  summary: MaintainerSummary;
 }
 
 export interface AdminCompany {
@@ -149,6 +182,14 @@ export interface Product {
   }>;
 }
 
+export interface ProductVariant {
+  id: number;
+  sku: string;
+  gtin: string;
+  base_price: string;
+  status: ProductStatus;
+}
+
 export interface Supplier {
   id: number;
   name: string;
@@ -164,12 +205,18 @@ export interface Warehouse {
   branch: number | null;
   code: string;
   name: string;
+  branch_name?: string | null;
 }
 
 export interface CatalogState {
   categories: Category[];
   products: Product[];
   brands: Brand[];
+}
+
+export interface MaintainerDialogOption {
+  value: string | number;
+  label: string;
 }
 
 export interface DirectoryState {

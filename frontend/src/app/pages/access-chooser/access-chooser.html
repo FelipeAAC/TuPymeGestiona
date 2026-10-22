@@ -1,0 +1,34 @@
+<main class="chooser-page">
+  <section class="chooser-card">
+    <span class="brand-mark">TG</span>
+    <span class="eyebrow">Tu acceso</span>
+    <h1>¿Dónde quieres continuar?</h1>
+    <p class="intro">
+      Tu cuenta tiene más de una forma de acceso. Elige la experiencia que necesitas para esta sesión.
+    </p>
+
+    <div class="choices">
+      @if (canShop()) {
+        <button type="button" class="choice" (click)="choose('/portal')">
+          <span class="choice-icon">🛍</span>
+          <span><strong>Explorar tiendas</strong><small>Compra y revisa tus pedidos.</small></span>
+        </button>
+      }
+      @if (canManage()) {
+        <button type="button" class="choice" (click)="choose('/app')">
+          <span class="choice-icon">▦</span>
+          <span><strong>Gestionar mi PYME</strong><small>Ventas, inventario y operaciones.</small></span>
+        </button>
+      }
+    </div>
+
+    @if (isPlatformAdmin()) {
+      <p class="maintainer-note">
+        Esta cuenta también tiene acceso de plataforma. La consola de mantenedores se abre desde su aplicación dedicada.
+      </p>
+      <a class="maintainer-link" href="http://localhost:4300/" target="_blank" rel="noopener">Abrir consola de mantenedores</a>
+    }
+
+    <a routerLink="/login" class="secondary-link">Volver al inicio de sesión</a>
+  </section>
+</main>

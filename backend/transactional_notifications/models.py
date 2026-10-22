@@ -15,6 +15,7 @@ class TransactionalNotification(models.Model):
         PAYMENT_REJECTED = "PAYMENT_REJECTED", "Pago rechazado"
         PAYMENT_CANCELLED = "PAYMENT_CANCELLED", "Pago cancelado"
         PAYMENT_REFUNDED = "PAYMENT_REFUNDED", "Pago devuelto"
+        PASSWORD_RESET = "PASSWORD_RESET", "Restablecimiento de contraseña"
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pendiente"
@@ -28,6 +29,8 @@ class TransactionalNotification(models.Model):
         Company,
         on_delete=models.PROTECT,
         related_name="transactional_notifications",
+        null=True,
+        blank=True,
     )
     order = models.ForeignKey(
         Order,

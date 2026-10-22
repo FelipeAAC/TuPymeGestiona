@@ -1,3 +1,4 @@
+import hashlib
 import os
 from datetime import timedelta
 
@@ -6,6 +7,7 @@ from django.core.mail import EmailMultiAlternatives, get_connection
 from django.db import models, transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
+from cryptography.fernet import Fernet, InvalidToken
 
 from administration.models import CompanySettings
 from external_payments.models import MercadoPagoCheckout
@@ -35,6 +37,33 @@ PAYMENT_LABELS = dict(MercadoPagoCheckout.Status.choices)
 
 class TransactionalEmailConfigurationError(Exception):
     pass
+
+
+def _password_reset_cipher():
+    """Return a process-stable cipher derived from the deployment secret.
+
+    Password-reset links are credentials until they are consumed. The
+    transactional outbox must retain enough information to send a queued
+    message, but it must not persist the raw token. Encrypting the complete
+    link with the application secret keeps the token out of database values,
+    logs and admin listings while still allowing the worker to render it when
+    the notification is delivered.
+    """
+    key = hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest()
+    return Fernet(__import__("base64").urlsafe_b64encode(key))
+
+
+def _encrypt_password_reset_url(reset_url):
+    return _password_reset_cipher().encrypt(str(reset_url).encode("utf-8")).decode("ascii")
+
+
+def _decrypt_password_reset_url(ciphertext):
+    try:
+        return _password_reset_cipher().decrypt(str(ciphertext).encode("ascii")).decode("utf-8")
+    except (InvalidToken, UnicodeDecodeError, ValueError) as exc:
+        raise TransactionalEmailConfigurationError(
+            "El enlace de recuperación almacenado no se puede descifrar."
+        ) from exc
 
 
 def _sender_for_company(company):
@@ -168,6 +197,43 @@ def enqueue_payment_status_notification(*, checkout, payment=None):
     )
 
 
+def enqueue_password_reset_notification(user, reset_url):
+    """Queue an account reset email without attaching it to a tenant or order.
+
+    The reset URL is the only credential-bearing value needed by the outbox
+    renderer. It is kept in the generic JSON payload; the token is never
+    copied into a model column or an idempotency key. A digest of the URL
+    makes retries for the same reset request idempotent without persisting the
+    raw token separately.
+    """
+    recipient = (getattr(user, "email", "") or "").strip().lower()
+    if not recipient:
+        return None, False
+
+    reset_url = str(reset_url)
+    url_digest = hashlib.sha256(reset_url.encode("utf-8")).hexdigest()
+    idempotency_key = f"password-reset:{user.pk}:{url_digest}"
+    return TransactionalNotification.objects.get_or_create(
+        company=None,
+        idempotency_key=idempotency_key,
+        defaults={
+            "kind": TransactionalNotification.Kind.PASSWORD_RESET,
+            "recipient_email": recipient,
+            "sender_email": settings.TRANSACTIONAL_EMAIL_FROM,
+            "subject": "Restablece tu contraseña de TuPymeGestiona",
+            "template_name": "password_reset_v1",
+            "payload": {
+                "recipient_name": user.get_full_name() or user.username,
+                # Keep the payload key stable for the renderer, but persist
+                # only ciphertext. The raw uid/token link exists in memory
+                # only while the worker renders and sends the message.
+                "reset_url": _encrypt_password_reset_url(reset_url),
+                "reset_timeout_minutes": max(1, settings.PASSWORD_RESET_TIMEOUT // 60),
+            },
+        },
+    )
+
+
 def _connection():
     backend = settings.TRANSACTIONAL_EMAIL_BACKEND
     kwargs = {"timeout": settings.TRANSACTIONAL_EMAIL_TIMEOUT}
@@ -187,6 +253,10 @@ def _connection():
 
 def send_notification(notification, *, connection=None):
     context = {"notification": notification, **notification.payload}
+    if notification.kind == TransactionalNotification.Kind.PASSWORD_RESET:
+        context["reset_url"] = _decrypt_password_reset_url(
+            notification.payload.get("reset_url", "")
+        )
     text_body = render_to_string(
         f"transactional_notifications/{notification.template_name}.txt",
         context,

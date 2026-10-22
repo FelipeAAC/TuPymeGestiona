@@ -1,7 +1,8 @@
-from django.db import transaction
+from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 
+from accounts.access import has_company_admin_access, has_customer_access
 from orders.models import Order
-from organizations.authorization import has_permission
 from organizations.models import (
     Company,
     CompanyMembership,
@@ -21,33 +22,44 @@ from administration.models import (
 
 
 ADMIN_PERMISSION_CODE = "administration.manage"
+User = get_user_model()
+
+
+class SelfServiceAccessError(Exception):
+    pass
+
+
+class SelfServiceConflictError(Exception):
+    pass
 
 
 def user_can_manage_company(*, user, company):
     if getattr(user, "is_superuser", False):
         return True
-    return has_permission(
-        user=user,
-        company=company,
-        permission_code=ADMIN_PERMISSION_CODE,
-    )
+    return has_company_admin_access(user, company.id if company is not None else None)
 
 
 def user_can_create_company(*, user):
-    if not getattr(user, "is_authenticated", False):
+    return bool(
+        getattr(user, "is_superuser", False)
+        or has_company_admin_access(user)
+    )
+
+
+def user_can_self_service_company(*, user):
+    """Return whether ``user`` may create their primary self-service company.
+
+    Self-service is available to active portal customers.  The primary marker
+    is independent from administrator-assigned memberships, so a customer who
+    manages another company can still create their own primary company.
+    """
+    if not has_customer_access(user):
         return False
-    if getattr(user, "is_superuser", False):
-        return True
-    return CompanyMembership.objects.filter(
-        user=user,
-        status=CompanyMembership.Status.ACTIVE,
-        role_assignments__role__status=CompanyRole.Status.ACTIVE,
-        role_assignments__role__permission_links__permission__code=ADMIN_PERMISSION_CODE,
-    ).exists()
+    return not CompanyMembership.objects.filter(primary_for_user=user).exists()
 
 
 def get_managed_company(*, user, company_id):
-    company = Company.objects.filter(pk=company_id).first()
+    company = Company.objects.filter(pk=company_id, is_active=True).first()
     if company is None:
         return None
     if not user_can_manage_company(user=user, company=company):
@@ -168,12 +180,13 @@ def membership_has_admin_access(membership):
 
 
 @transaction.atomic
-def create_company_for_user(*, user, company_data):
+def create_company_for_user(*, user, company_data, primary_for_user=None):
     company = Company.objects.create(**company_data)
     membership = CompanyMembership.objects.create(
         user=user,
         company=company,
         status=CompanyMembership.Status.ACTIVE,
+        primary_for_user=primary_for_user,
     )
     role = CompanyRole.objects.create(
         company=company,
@@ -198,5 +211,45 @@ def create_company_for_user(*, user, company_data):
         resource_type="company",
         resource_id=company.id,
         metadata={"name": company.name},
+    )
+    return company
+
+
+@transaction.atomic
+def create_self_service_company_for_user(*, user, company_data):
+    """Create the user's primary company, branch and admin access atomically."""
+    locked_user = User.objects.select_for_update().get(pk=user.pk)
+    if not has_customer_access(locked_user):
+        raise SelfServiceAccessError(
+            "Debes tener una cuenta de cliente activa para crear una PYME."
+        )
+    if CompanyMembership.objects.filter(primary_for_user=locked_user).exists():
+        raise SelfServiceConflictError(
+            "Ya tienes una PYME principal asociada a esta cuenta."
+        )
+
+    try:
+        company = create_company_for_user(
+            user=locked_user,
+            company_data=company_data,
+            primary_for_user=locked_user,
+        )
+    except IntegrityError as exc:
+        if CompanyMembership.objects.filter(primary_for_user=locked_user).exists():
+            raise SelfServiceConflictError(
+                "Ya tienes una PYME principal asociada a esta cuenta."
+            ) from exc
+        raise
+    from organizations.models import Branch
+
+    Branch.objects.create(
+        company=company,
+        code="CASA",
+        name="Casa Matriz",
+        address=company.address,
+        commune=company.commune,
+        city=company.city,
+        phone=company.phone,
+        is_active=True,
     )
     return company

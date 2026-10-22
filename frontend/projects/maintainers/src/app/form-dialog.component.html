@@ -1,0 +1,35 @@
+<div class="dialog-backdrop" role="presentation" (click)="cancel()">
+  <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="title" (click)="$event.stopPropagation()">
+    <header>
+      <div>
+        <p class="eyebrow">MANTENEDORES</p>
+        <h2>{{ title }}</h2>
+      </div>
+      <button type="button" class="icon-button" (click)="cancel()" [disabled]="busy" aria-label="Cerrar">×</button>
+    </header>
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      <div class="field-grid">
+        <label *ngFor="let field of fields" [class.full-width]="field.type === 'textarea' || field.type === 'multi-select'">
+          <span>{{ field.label }} <em *ngIf="field.required">*</em></span>
+          <input *ngIf="field.type === 'text' || field.type === 'email'" [type]="field.type" [formControlName]="field.key" [placeholder]="field.placeholder || ''" />
+          <input *ngIf="field.type === 'number'" type="number" [min]="field.min ?? null" [formControlName]="field.key" [placeholder]="field.placeholder || ''" />
+          <textarea *ngIf="field.type === 'textarea'" [rows]="field.rows || 4" [formControlName]="field.key" [placeholder]="field.placeholder || ''"></textarea>
+          <select *ngIf="field.type === 'select'" [formControlName]="field.key">
+            <option [ngValue]="null">Selecciona una opción</option>
+            <option *ngFor="let option of field.options || []" [ngValue]="option.value">{{ option.label }}</option>
+          </select>
+          <select *ngIf="field.type === 'multi-select'" [formControlName]="field.key" multiple>
+            <option *ngFor="let option of field.options || []" [ngValue]="option.value">{{ option.label }}</option>
+          </select>
+          <span *ngIf="field.type === 'checkbox'" class="checkbox-row"><input type="checkbox" [formControlName]="field.key" /> Activado</span>
+          <small *ngIf="field.hint">{{ field.hint }}</small>
+          <small class="validation" *ngIf="control(field).touched && control(field).invalid">Campo requerido o inválido.</small>
+        </label>
+      </div>
+      <footer>
+        <button type="button" class="secondary" (click)="cancel()" [disabled]="busy">Cancelar</button>
+        <button type="submit" [disabled]="busy">{{ busy ? 'Guardando…' : submitLabel }}</button>
+      </footer>
+    </form>
+  </section>
+</div>
