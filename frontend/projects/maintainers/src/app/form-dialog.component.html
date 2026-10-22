@@ -7,11 +7,12 @@
       </div>
       <button type="button" class="icon-button" (click)="cancel()" [disabled]="busy" aria-label="Cerrar">×</button>
     </header>
+    <div class="dialog-error" *ngIf="error" role="alert">{{ error }}</div>
     <form [formGroup]="form" (ngSubmit)="submit()">
       <div class="field-grid">
         <label *ngFor="let field of fields" [class.full-width]="field.type === 'textarea' || field.type === 'multi-select'">
           <span>{{ field.label }} <em *ngIf="field.required">*</em></span>
-          <input *ngIf="field.type === 'text' || field.type === 'email'" [type]="field.type" [formControlName]="field.key" [placeholder]="field.placeholder || ''" />
+          <input *ngIf="field.type === 'text' || field.type === 'password' || field.type === 'email'" [type]="field.type" [formControlName]="field.key" [placeholder]="field.placeholder || ''" />
           <input *ngIf="field.type === 'number'" type="number" [min]="field.min ?? null" [formControlName]="field.key" [placeholder]="field.placeholder || ''" />
           <textarea *ngIf="field.type === 'textarea'" [rows]="field.rows || 4" [formControlName]="field.key" [placeholder]="field.placeholder || ''"></textarea>
           <select *ngIf="field.type === 'select'" [formControlName]="field.key">

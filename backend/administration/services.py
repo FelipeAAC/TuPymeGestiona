@@ -140,15 +140,16 @@ def replace_membership_access(*, membership, branch_ids, role_ids):
     for role in roles:
         has_company_scope = role_has_company_only_permissions(role)
         has_branch_scope = role_has_branch_scoped_permissions(role)
-        if has_company_scope and has_branch_scope:
-            raise ValueError(
-                "Un rol no puede mezclar permisos de empresa y por sucursal."
-            )
         if has_branch_scope and not branches:
             raise ValueError(
                 "Los roles con permisos por sucursal requieren al menos una sucursal."
             )
-        role_scopes.append((role, has_branch_scope))
+        # A role may legitimately combine company-only and branch-scoped
+        # permissions.  Demo roles such as Ventas, Bodega and Administrador
+        # use this shape.  Assigning the mixed role at company level keeps
+        # company permissions valid while branch-scoped permissions inherit
+        # the membership's selected branches (see get_branch_scope()).
+        role_scopes.append((role, has_company_scope, has_branch_scope))
 
     MembershipBranch.objects.filter(membership=membership).delete()
     MembershipBranch.objects.bulk_create(
@@ -156,8 +157,8 @@ def replace_membership_access(*, membership, branch_ids, role_ids):
     )
 
     RoleAssignment.objects.filter(membership=membership).delete()
-    for role, has_branch_scope in role_scopes:
-        if not has_branch_scope:
+    for role, has_company_scope, has_branch_scope in role_scopes:
+        if has_company_scope or not has_branch_scope:
             RoleAssignment.objects.create(
                 membership=membership,
                 role=role,

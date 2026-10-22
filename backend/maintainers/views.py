@@ -228,17 +228,20 @@ def user_detail_view(request, company_id, membership_id):
     data = serializer.validated_data
     branch_ids = data.get("branch_ids", list(membership.branch_memberships.values_list("branch_id", flat=True)))
     role_ids = data.get("role_ids", list(membership.role_assignments.values_list("role_id", flat=True).distinct()))
-    with transaction.atomic():
-        user = membership.user
-        if "first_name" in data or "last_name" in data:
-            user.first_name = data.get("first_name", user.first_name).strip()
-            user.last_name = data.get("last_name", user.last_name).strip()
-            user.save(update_fields=["first_name", "last_name"])
-        if "status" in data:
-            membership.status = data["status"]
-            membership.save(update_fields=["status", "updated_at"])
-        replace_membership_access(membership=membership, branch_ids=branch_ids, role_ids=role_ids)
-        _save_event(company=company, actor=request.user, event_type="USER_UPDATED", resource_type="membership", resource_id=membership.id)
+    try:
+        with transaction.atomic():
+            user = membership.user
+            if "first_name" in data or "last_name" in data:
+                user.first_name = data.get("first_name", user.first_name).strip()
+                user.last_name = data.get("last_name", user.last_name).strip()
+                user.save(update_fields=["first_name", "last_name"])
+            if "status" in data:
+                membership.status = data["status"]
+                membership.save(update_fields=["status", "updated_at"])
+            replace_membership_access(membership=membership, branch_ids=branch_ids, role_ids=role_ids)
+            _save_event(company=company, actor=request.user, event_type="USER_UPDATED", resource_type="membership", resource_id=membership.id)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     membership.refresh_from_db()
     return Response({"user": MembershipUserSerializer(membership).data})
 

@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, HostListener, Input, Output, SimpleChanges } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
-export type FormDialogFieldType = 'text' | 'email' | 'number' | 'textarea' | 'select' | 'checkbox' | 'multi-select';
+export type FormDialogFieldType = 'text' | 'password' | 'email' | 'number' | 'textarea' | 'select' | 'checkbox' | 'multi-select';
 
 export interface FormDialogOption {
   value: string | number;
@@ -34,6 +34,7 @@ export class FormDialogComponent {
   @Input() initialValue: Record<string, unknown> = {};
   @Input() submitLabel = 'Guardar';
   @Input() busy = false;
+  @Input() error = '';
   @Output() saved = new EventEmitter<Record<string, unknown>>();
   @Output() canceled = new EventEmitter<void>();
 

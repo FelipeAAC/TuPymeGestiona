@@ -271,11 +271,14 @@ class UserCreateSerializer(serializers.Serializer):
                 raise serializers.ValidationError({"email": "El usuario ya pertenece a esta empresa."})
             membership.status = CompanyMembership.Status.ACTIVE
             membership.save(update_fields=["status", "updated_at"])
-        replace_membership_access(
-            membership=membership,
-            branch_ids=validated_data.get("branch_ids", []),
-            role_ids=validated_data.get("role_ids", []),
-        )
+        try:
+            replace_membership_access(
+                membership=membership,
+                branch_ids=validated_data.get("branch_ids", []),
+                role_ids=validated_data.get("role_ids", []),
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
         membership._created_identity = created_identity
         return membership
 

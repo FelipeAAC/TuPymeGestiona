@@ -254,6 +254,70 @@ class MaintainerApiTests(TestCase):
         )
         self.assertEqual(invalid_variant.status_code, 404)
 
+    def test_user_creation_accepts_mixed_scope_role_using_membership_branches(self):
+        self._authenticate(self.platform)
+        branch_permission = Permission.objects.create(
+            code="maintainers.test.branch_scope",
+            scope_behavior=Permission.ScopeBehavior.BRANCH_SCOPED,
+        )
+        mixed_role = CompanyRole.objects.create(
+            company=self.company,
+            name="Rol mixto de prueba",
+            status=CompanyRole.Status.ACTIVE,
+        )
+        CompanyRolePermission.objects.create(role=mixed_role, permission=self.permission)
+        CompanyRolePermission.objects.create(role=mixed_role, permission=branch_permission)
+
+        response = self.client.post(
+            f"/api/maintainers/companies/{self.company.id}/users/",
+            {
+                "email": "mixed-user@example.test",
+                "password": "Strong-password-123!",
+                "role_ids": [mixed_role.id],
+                "branch_ids": [self.branch.id],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        created_user = User.objects.get(email="mixed-user@example.test")
+        membership = CompanyMembership.objects.get(user=created_user, company=self.company)
+        self.assertEqual(
+            list(membership.branch_memberships.values_list("branch_id", flat=True)),
+            [self.branch.id],
+        )
+        self.assertTrue(
+            membership.role_assignments.filter(role=mixed_role, branch__isnull=True).exists()
+        )
+
+    def test_user_creation_rejects_branch_role_without_selected_branch(self):
+        self._authenticate(self.platform)
+        branch_permission = Permission.objects.create(
+            code="maintainers.test.branch_only",
+            scope_behavior=Permission.ScopeBehavior.BRANCH_SCOPED,
+        )
+        branch_role = CompanyRole.objects.create(
+            company=self.company,
+            name="Rol por sucursal de prueba",
+            status=CompanyRole.Status.ACTIVE,
+        )
+        CompanyRolePermission.objects.create(role=branch_role, permission=branch_permission)
+
+        response = self.client.post(
+            f"/api/maintainers/companies/{self.company.id}/users/",
+            {
+                "email": "branchless-user@example.test",
+                "password": "Strong-password-123!",
+                "role_ids": [branch_role.id],
+                "branch_ids": [],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("requieren al menos una sucursal", str(response.data).lower())
+        self.assertFalse(User.objects.filter(email="branchless-user@example.test").exists())
+
     def test_responses_do_not_expose_secrets(self):
         self._authenticate(self.platform)
         CompanySettings.objects.create(company=self.company)

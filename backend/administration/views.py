@@ -233,24 +233,27 @@ def user_detail_view(request, membership_id):
                 status=status.HTTP_409_CONFLICT,
             )
 
-    with transaction.atomic():
-        user = membership.user
-        if "first_name" in data:
-            user.first_name = data["first_name"].strip()
-        if "last_name" in data:
-            user.last_name = data["last_name"].strip()
-        user.save(update_fields=["first_name", "last_name"])
-        if "status" in data:
-            membership.status = data["status"]
-            membership.save(update_fields=["status", "updated_at"])
-        replace_membership_access(membership=membership, branch_ids=branch_ids, role_ids=role_ids)
-        log_admin_event(
-            company=company,
-            actor=request.user,
-            event_type="USER_UPDATED",
-            resource_type="membership",
-            resource_id=membership.id,
-        )
+    try:
+        with transaction.atomic():
+            user = membership.user
+            if "first_name" in data:
+                user.first_name = data["first_name"].strip()
+            if "last_name" in data:
+                user.last_name = data["last_name"].strip()
+            user.save(update_fields=["first_name", "last_name"])
+            if "status" in data:
+                membership.status = data["status"]
+                membership.save(update_fields=["status", "updated_at"])
+            replace_membership_access(membership=membership, branch_ids=branch_ids, role_ids=role_ids)
+            log_admin_event(
+                company=company,
+                actor=request.user,
+                event_type="USER_UPDATED",
+                resource_type="membership",
+                resource_id=membership.id,
+            )
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     membership.refresh_from_db()
     return Response({"user": MembershipUserSerializer(membership).data})
 

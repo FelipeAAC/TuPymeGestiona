@@ -17,7 +17,7 @@ import {
 } from './models';
 
 type Section = 'summary' | 'organization' | 'users' | 'roles' | 'catalog' | 'suppliers' | 'warehouses' | 'payments' | 'settings';
-type DialogState = { title: string; fields: FormDialogField[]; initialValue: Record<string, unknown>; save: (value: Record<string, unknown>) => void };
+type DialogState = { title: string; fields: FormDialogField[]; initialValue: Record<string, unknown>; save: (value: Record<string, unknown>) => void; error?: string };
 
 @Component({
   selector: 'maintainers-root',
@@ -117,12 +117,12 @@ export class MaintainersApp implements OnInit {
 
   createUser(): void {
     const id = this.activeCompanyId(); const data = this.overview(); if (!id || !data) return;
-    this.openDialog('Nuevo usuario', [this.text('username', 'Usuario', true), this.email('email', 'Correo', true), this.text('first_name', 'Nombre'), this.text('last_name', 'Apellido'), { key: 'password', label: 'Contraseña inicial', type: 'text', required: true }, this.select('status', 'Estado', ['INVITED', 'ACTIVE', 'SUSPENDED']), this.multi('role_ids', 'Roles', data.roles.map((role) => ({ value: role.id, label: role.name }))), this.multi('branch_ids', 'Sucursales', data.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })))], { status: 'ACTIVE', role_ids: [], branch_ids: [] }, (value) => this.runMutation(this.api.createUser(id, value), 'Usuario creado.', () => { this.closeDialog(); this.refresh(); }));
+    this.openDialog('Nuevo usuario', [this.text('username', 'Usuario', true), this.email('email', 'Correo', true), this.text('first_name', 'Nombre'), this.text('last_name', 'Apellido'), { key: 'password', label: 'Contraseña inicial', type: 'password', required: true }, this.select('status', 'Estado', ['INVITED', 'ACTIVE', 'SUSPENDED']), this.multi('role_ids', 'Roles', this.roleOptions(data.roles, data.permissions), 'Puedes asignar uno o varios roles. Las sucursales seleccionadas limitan los permisos por sucursal.'), this.multi('branch_ids', 'Sucursales', data.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })), 'Obligatorio cuando alguno de los roles tiene permisos por sucursal.')], { status: 'ACTIVE', role_ids: [], branch_ids: [] }, (value) => this.runMutation(this.api.createUser(id, value), 'Usuario creado.', () => { this.closeDialog(); this.refresh(); }));
   }
 
   editUser(itemId: number): void {
     const id = this.activeCompanyId(); const data = this.overview(); const item = data?.users.find((user) => user.id === itemId); if (!id || !data || !item) return;
-    this.openDialog('Editar usuario', [this.text('first_name', 'Nombre'), this.text('last_name', 'Apellido'), this.select('status', 'Estado', ['INVITED', 'ACTIVE', 'SUSPENDED', 'LEFT']), this.multi('role_ids', 'Roles', data.roles.map((role) => ({ value: role.id, label: role.name }))), this.multi('branch_ids', 'Sucursales', data.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })))], { ...item }, (value) => this.runMutation(this.api.updateUser(id, itemId, value), 'Usuario actualizado.', () => { this.closeDialog(); this.refresh(); }));
+    this.openDialog('Editar usuario', [this.text('first_name', 'Nombre'), this.text('last_name', 'Apellido'), this.select('status', 'Estado', ['INVITED', 'ACTIVE', 'SUSPENDED', 'LEFT']), this.multi('role_ids', 'Roles', this.roleOptions(data.roles, data.permissions), 'Puedes asignar uno o varios roles. Las sucursales seleccionadas limitan los permisos por sucursal.'), this.multi('branch_ids', 'Sucursales', data.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })), 'Obligatorio cuando alguno de los roles tiene permisos por sucursal.')], { ...item }, (value) => this.runMutation(this.api.updateUser(id, itemId, value), 'Usuario actualizado.', () => { this.closeDialog(); this.refresh(); }));
   }
 
   toggleUser(id: number): void { const item = this.overview()?.users.find((user) => user.id === id); const companyId = this.activeCompanyId(); if (!item || !companyId) return; this.runMutation(this.api.updateUser(companyId, id, { status: item.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE' }), 'Estado del usuario actualizado.', () => this.refresh()); }
@@ -168,18 +168,43 @@ export class MaintainersApp implements OnInit {
   submitDialog(value: Record<string, unknown>): void { this.dialog()?.save(value); }
   closeDialog(): void { this.dialog.set(null); }
 
-  private openDialog(title: string, fields: FormDialogField[], initialValue: Record<string, unknown>, save: (value: Record<string, unknown>) => void): void { this.clearStatus(); this.dialog.set({ title, fields, initialValue, save }); }
+  private openDialog(title: string, fields: FormDialogField[], initialValue: Record<string, unknown>, save: (value: Record<string, unknown>) => void): void { this.clearStatus(); this.dialog.set({ title, fields, initialValue, save, error: '' }); }
   private text(key: string, label: string, required = false): FormDialogField { return { key, label, type: 'text', required }; }
   private email(key: string, label: string, required = false): FormDialogField { return { key, label, type: 'email', required }; }
   private number(key: string, label: string, min?: number): FormDialogField { return { key, label, type: 'number', min }; }
   private checkbox(key: string, label: string): FormDialogField { return { key, label, type: 'checkbox' }; }
   private select(key: string, label: string, values: string[] | { value: string | number; label: string }[]): FormDialogField { return { key, label, type: 'select', options: values.map((value) => typeof value === 'string' ? { value, label: value } : value) }; }
-  private multi(key: string, label: string, options: { value: string | number; label: string }[]): FormDialogField { return { key, label, type: 'multi-select', options }; }
+  private multi(key: string, label: string, options: { value: string | number; label: string }[], hint = ''): FormDialogField { return { key, label, type: 'multi-select', options, hint }; }
+  private roleOptions(roles: AdministrationOverview['roles'], permissions: AdministrationOverview['permissions']): { value: number; label: string }[] { return roles.map((role) => ({ value: role.id, label: `${role.name} · ${this.roleScopeLabel(role, permissions)}` })); }
+  private roleScopeLabel(role: AdministrationOverview['roles'][number], permissions: AdministrationOverview['permissions']): string {
+    const scopes = new Set(role.permission_codes.map((code) => permissions.find((permission) => permission.code === code)?.scope_behavior).filter(Boolean));
+    if (scopes.has('COMPANY_ONLY') && scopes.has('BRANCH_SCOPED')) return 'empresa + sucursal';
+    if (scopes.has('BRANCH_SCOPED')) return 'por sucursal';
+    if (scopes.has('COMPANY_ONLY')) return 'empresa';
+    return 'sin permisos';
+  }
 
   private loadContext(): void { this.beginLoad(); this.api.context().subscribe({ next: (context) => { this.context.set(context); const current = this.selectedCompanyId(); const selected = context.companies.find((company) => company.id === current) ?? context.companies[0] ?? null; this.selectedCompanyId.set(selected?.id ?? null); if (selected) this.loadCompanyData(selected.id); else { this.loading.set(false); this.error.set('No hay empresas disponibles.'); } }, error: (error: unknown) => { this.loading.set(false); this.error.set(this.describeError(error, 'No fue posible cargar las empresas.')); } }); }
   private loadCompanyData(companyId: number): void { this.beginLoad(); forkJoin({ overview: this.api.companyOverview(companyId), catalog: this.api.catalog(companyId), directories: this.api.directories(companyId) }).subscribe({ next: ({ overview, catalog, directories }) => { this.overview.set(overview); this.catalog.set(catalog); this.directories.set(directories); this.loading.set(false); }, error: (error: unknown) => { this.overview.set(null); this.loading.set(false); this.error.set(this.describeError(error, 'No fue posible cargar los mantenedores.')); } }); }
-  private runMutation<T>(observable: Observable<T>, message: string, next: () => void): void { this.beginLoad(); observable.subscribe({ next: () => { this.notice.set(message); next(); }, error: (error: unknown) => { this.loading.set(false); this.error.set(this.describeError(error, 'La operación no pudo completarse.')); } }); }
-  private beginLoad(): void { this.loading.set(true); this.clearStatus(); }
+  private runMutation<T>(observable: Observable<T>, message: string, next: () => void): void {
+    this.beginLoad();
+    observable.subscribe({
+      next: () => { this.notice.set(message); next(); },
+      error: (error: unknown) => {
+        this.loading.set(false);
+        const detail = this.describeError(error, 'La operación no pudo completarse.');
+        const current = this.dialog();
+        if (current) this.dialog.set({ ...current, error: detail });
+        else this.error.set(detail);
+      },
+    });
+  }
+  private beginLoad(): void {
+    this.loading.set(true);
+    this.clearStatus();
+    const current = this.dialog();
+    if (current?.error) this.dialog.set({ ...current, error: '' });
+  }
   private clearStatus(): void { this.error.set(''); this.notice.set(''); }
   private rejectNonPlatform(): void { this.user.set(null); this.loading.set(false); this.error.set('Esta consola está disponible solo para administradores de plataforma.'); }
   private clearSession(): void { this.user.set(null); this.context.set(null); this.selectedCompanyId.set(null); this.overview.set(null); this.catalog.set({ categories: [], products: [], brands: [] }); this.directories.set({ suppliers: [], warehouses: [] }); this.dialog.set(null); this.section.set('summary'); this.loading.set(false); this.clearStatus(); }
