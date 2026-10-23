@@ -103,6 +103,7 @@ button {
 
 button.secondary { background: white; color: #245a85; border-color: #c7d7e4; }
 button.link { padding: 4px 6px; background: transparent; color: #2479b8; border-color: transparent; }
+button.danger-link { padding: 4px 6px; background: transparent; color: #a63131; border-color: transparent; }
 
 .metrics {
   display: grid;
@@ -213,6 +214,47 @@ table {
 
 .badge { display: inline-flex; padding: 5px 9px; border-radius: 999px; background: #2a78b6; font-size: .75rem; font-weight: 800; }
 .empty { color: #708293; font-size: .84rem; }
+
+.danger-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 32, 48, .66);
+}
+
+.danger-dialog {
+  width: min(100%, 560px);
+  max-height: min(90vh, 720px);
+  overflow: auto;
+  display: grid;
+  gap: 13px;
+  padding: 24px;
+  background: white;
+  border: 2px solid #b33c3c;
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .28);
+
+  h2 { margin: 0; color: #812b2b; }
+  p { margin: 0; color: #5c6872; line-height: 1.45; }
+  label { display: grid; gap: 7px; color: #4e5962; font-size: .82rem; }
+  input:not([type='checkbox']) { padding: 10px 11px; border: 1px solid #cfb2b2; border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  code { color: #812b2b; font-weight: 800; }
+}
+
+.danger-eyebrow { color: #a63131; }
+.danger-summary, .danger-blockers, .danger-clear { display: grid; gap: 4px; padding: 12px; border-radius: 9px; }
+.danger-summary { background: #f7f9fb; border: 1px solid #e0e6eb; }
+.danger-summary span, .danger-blockers span, .danger-clear span, .danger-blockers small { color: #6b7781; font-size: .78rem; }
+.danger-blockers { background: #fff4e4; border: 1px solid #edcb91; }
+.danger-blockers strong { color: #875a17; }
+.danger-clear { background: #eff9f1; border: 1px solid #bbdfc3; }
+.danger-clear strong { color: #276b38; }
+.danger-check { display: flex !important; grid-template-columns: auto 1fr; align-items: center; gap: 8px !important; }
+.danger-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.danger-button { min-width: 220px; background: #a63131; border-color: #8f2e2e; }
 
 @media (max-width: 900px) {
   .topbar { align-items: flex-start; flex-direction: column; }

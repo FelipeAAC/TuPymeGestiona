@@ -19,3 +19,10 @@ class User(AbstractUser):
         default=False,
         help_text="Grants access to the global maintainer tools.",
     )
+    destructive_admin = models.BooleanField(
+        default=False,
+        help_text=(
+            "Allows permanent deletion of records from the protected "
+            "maintainer workspace. Assign manually and sparingly."
+        ),
+    )

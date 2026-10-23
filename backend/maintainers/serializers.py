@@ -20,6 +20,7 @@ from administration.serializers import (
 )
 from catalog.models import Brand, Category, Product, ProductVariant, Supplier
 from organizations.models import Branch, Company, CompanyMembership, Permission, Warehouse
+from maintainers.models import MaintainerAuditEvent
 
 
 User = get_user_model()
@@ -28,8 +29,37 @@ User = get_user_model()
 class MaintainerUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "username", "email", "first_name", "last_name", "platform_admin")
+        fields = (
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "platform_admin",
+            "destructive_admin",
+        )
         read_only_fields = fields
+
+
+class MaintainerAuditEventSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MaintainerAuditEvent
+        fields = (
+            "id",
+            "event_type",
+            "resource_type",
+            "resource_id",
+            "company_id_snapshot",
+            "actor_name",
+            "metadata",
+            "created_at",
+        )
+        read_only_fields = fields
+
+    def get_actor_name(self, obj):
+        return obj.actor.get_full_name() or obj.actor.email or obj.actor.username
 
 
 class CompanySummarySerializer(serializers.ModelSerializer):
@@ -71,13 +101,14 @@ class MaintainerWarehouseSerializer(serializers.ModelSerializer):
             "branch_name",
             "code",
             "name",
+            "is_active",
         )
 
 
 class WarehouseWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Warehouse
-        fields = ("branch", "code", "name")
+        fields = ("branch", "code", "name", "is_active")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -167,7 +198,8 @@ class MaintainerCategorySerializer(serializers.ModelSerializer):
 class BrandWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Brand
-        fields = ("name",)
+        fields = ("name", "is_active")
+        extra_kwargs = {"is_active": {"required": False}}
 
     def create(self, validated_data):
         return Brand.objects.create(company=self.context["company"], **validated_data)
@@ -277,6 +309,7 @@ __all__ = [
     "CompanySettingsSerializer",
     "CompanySummarySerializer",
     "MaintainerUserSerializer",
+    "MaintainerAuditEventSerializer",
     "MaintainerCategorySerializer",
     "MaintainerWarehouseSerializer",
     "MembershipUserSerializer",

@@ -17,6 +17,7 @@ import {
   Category,
   CategoryStatus,
   DirectoryState,
+  LifecyclePreview,
   MaintainerContext,
   Product,
   ProductStatus,
@@ -96,6 +97,10 @@ export class MaintainersApi {
     return this.http.patch<{ user: AdminUser }>(`/api/maintainers/companies/${companyId}/users/${membershipId}/`, input, this.options()).pipe(map((response) => response.user));
   }
 
+  revokeUserAccess(companyId: number, membershipId: number): Observable<AdminUser> {
+    return this.http.post<{ user: AdminUser }>(`/api/maintainers/companies/${companyId}/users/${membershipId}/revoke/`, {}, this.options()).pipe(map((response) => response.user));
+  }
+
   createRole(companyId: number, input: Record<string, unknown>): Observable<AdminRole> {
     return this.http.post<{ role: AdminRole }>(`/api/maintainers/companies/${companyId}/roles/`, input, this.options()).pipe(map((response) => response.role));
   }
@@ -128,12 +133,12 @@ export class MaintainersApi {
     return this.http.patch<{ category: Category }>(`/api/maintainers/companies/${companyId}/catalog/categories/${categoryId}/`, input, this.options()).pipe(map((response) => response.category));
   }
 
-  createBrand(companyId: number, name: string): Observable<Brand> {
-    return this.http.post<{ brand: Brand }>(`/api/maintainers/companies/${companyId}/catalog/brands/`, { name }, this.options()).pipe(map((response) => response.brand));
+  createBrand(companyId: number, input: { name: string; is_active?: boolean }): Observable<Brand> {
+    return this.http.post<{ brand: Brand }>(`/api/maintainers/companies/${companyId}/catalog/brands/`, input, this.options()).pipe(map((response) => response.brand));
   }
 
-  updateBrand(companyId: number, brandId: number, name: string): Observable<Brand> {
-    return this.http.patch<{ brand: Brand }>(`/api/maintainers/companies/${companyId}/catalog/brands/${brandId}/`, { name }, this.options()).pipe(map((response) => response.brand));
+  updateBrand(companyId: number, brandId: number, input: { name?: string; is_active?: boolean }): Observable<Brand> {
+    return this.http.patch<{ brand: Brand }>(`/api/maintainers/companies/${companyId}/catalog/brands/${brandId}/`, input, this.options()).pipe(map((response) => response.brand));
   }
 
   createProduct(companyId: number, input: { name: string; description: string; image_url: string; category: number; brand: number | null; status?: ProductStatus; variant?: { sku: string; gtin: string; base_price: string } }): Observable<Product> {
@@ -172,11 +177,42 @@ export class MaintainersApi {
     return this.http.post<{ supplier: Supplier }>(`/api/maintainers/companies/${companyId}/suppliers/${supplierId}/toggle/`, { status }, this.options()).pipe(map((response) => response.supplier));
   }
 
-  createWarehouse(companyId: number, input: { branch: number | null; code: string; name: string }): Observable<Warehouse> {
+  createWarehouse(companyId: number, input: { branch: number | null; code: string; name: string; is_active?: boolean }): Observable<Warehouse> {
     return this.http.post<{ warehouse: Warehouse }>(`/api/maintainers/companies/${companyId}/warehouses/`, input, this.options()).pipe(map((response) => response.warehouse));
   }
 
-  updateWarehouse(companyId: number, warehouseId: number, input: { branch: number | null; code: string; name: string }): Observable<Warehouse> {
+  updateWarehouse(companyId: number, warehouseId: number, input: { branch: number | null; code: string; name: string; is_active?: boolean }): Observable<Warehouse> {
     return this.http.patch<{ warehouse: Warehouse }>(`/api/maintainers/companies/${companyId}/warehouses/${warehouseId}/`, input, this.options()).pipe(map((response) => response.warehouse));
+  }
+
+  lifecyclePreview(companyId: number, resourceType: string, resourceId: number): Observable<LifecyclePreview> {
+    return this.http.get<LifecyclePreview>(
+      `/api/maintainers/companies/${companyId}/lifecycle/${resourceType}/${resourceId}/`,
+      { withCredentials: true },
+    );
+  }
+
+  lifecycleAction(companyId: number, resourceType: string, resourceId: number, action: 'activate' | 'deactivate'): Observable<unknown> {
+    return this.http.post(
+      `/api/maintainers/companies/${companyId}/lifecycle/${resourceType}/${resourceId}/`,
+      { action },
+      this.options(),
+    );
+  }
+
+  createDeleteChallenge(companyId: number, resourceType: string, resourceId: number, confirmation: string, reason: string): Observable<{ challenge_id: number; token: string; resource: LifecyclePreview }> {
+    return this.http.post<{ challenge_id: number; token: string; resource: LifecyclePreview }>(
+      `/api/maintainers/companies/${companyId}/lifecycle/${resourceType}/${resourceId}/`,
+      { action: 'challenge', confirmation, reason },
+      this.options(),
+    );
+  }
+
+  executeDeleteChallenge(companyId: number, resourceType: string, resourceId: number, challengeId: number, token: string, confirmation: string): Observable<unknown> {
+    return this.http.post(
+      `/api/maintainers/companies/${companyId}/lifecycle/${resourceType}/${resourceId}/`,
+      { action: 'execute', challenge_id: challengeId, token, confirmation },
+      this.options(),
+    );
   }
 }

@@ -88,6 +88,8 @@ class CurrentUserSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
+            "platform_admin",
+            "destructive_admin",
             "access_modes",
             "default_app",
             "managed_companies",

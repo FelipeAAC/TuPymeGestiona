@@ -16,6 +16,7 @@ def _user_row(user):
         "access_modes": access_modes,
         "ambiguous": len(access_modes) > 1,
         "default_app": context["default_app"],
+        "destructive_admin": bool(user.destructive_admin),
         "email": user.email,
         "id": user.pk,
         "is_active": bool(user.is_active),
@@ -37,6 +38,7 @@ def _build_report():
         "ambiguous": sum(1 for row in rows if row["ambiguous"]),
         "company_admin": sum("COMPANY_ADMIN" in row["access_modes"] for row in rows),
         "customer": sum("CUSTOMER" in row["access_modes"] for row in rows),
+        "destructive_admin": sum(row["destructive_admin"] for row in rows),
         "platform_admin": sum("PLATFORM_ADMIN" in row["access_modes"] for row in rows),
         "superusers": sum(row["is_superuser"] for row in rows),
         "superusers_without_platform_admin": sum(
@@ -75,6 +77,7 @@ class Command(BaseCommand):
             f"CUSTOMER={summary['customer']} "
             f"COMPANY_ADMIN={summary['company_admin']} "
             f"PLATFORM_ADMIN={summary['platform_admin']} "
+            f"DESTRUCTIVE_ADMIN={summary['destructive_admin']} "
             f"ambiguos={summary['ambiguous']} "
             f"sin_capacidad={summary['unclassified']} "
             f"superusuarios_sin_platform_admin={summary['superusers_without_platform_admin']}"

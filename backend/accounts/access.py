@@ -8,10 +8,18 @@ CUSTOMER = "CUSTOMER"
 COMPANY_ADMIN = "COMPANY_ADMIN"
 PLATFORM_ADMIN = "PLATFORM_ADMIN"
 ADMIN_PERMISSION = "administration.manage"
+DESTRUCTIVE_ADMIN = "PLATFORM_DATA_DESTRUCTIVE_ADMIN"
 
 
 def is_platform_admin(user) -> bool:
     return bool(getattr(user, "is_authenticated", False) and getattr(user, "platform_admin", False))
+
+
+def is_destructive_admin(user) -> bool:
+    return bool(
+        is_platform_admin(user)
+        and getattr(user, "destructive_admin", False)
+    )
 
 
 def has_customer_access(user) -> bool:

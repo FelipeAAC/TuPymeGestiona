@@ -16,6 +16,7 @@ from organizations.models import (
 )
 from portal.models import CustomerPortalAccount
 from maintainers.serializers import MaintainerWarehouseSerializer
+from maintainers.models import MaintainerAuditEvent
 
 
 class MaintainerApiTests(TestCase):
@@ -334,3 +335,145 @@ class MaintainerApiTests(TestCase):
             "pfx",
         ):
             self.assertNotIn(secret_name, rendered.lower())
+
+    def test_platform_can_deactivate_and_reactivate_resources(self):
+        self._authenticate(self.platform)
+        path = f"/api/maintainers/companies/{self.company.id}/lifecycle/branch/{self.branch.id}/"
+
+        deactivate = self.client.post(path, {"action": "deactivate"}, format="json")
+        self.assertEqual(deactivate.status_code, 200, deactivate.data)
+        self.branch.refresh_from_db()
+        self.assertFalse(self.branch.is_active)
+
+        reactivate = self.client.post(path, {"action": "activate"}, format="json")
+        self.assertEqual(reactivate.status_code, 200, reactivate.data)
+        self.branch.refresh_from_db()
+        self.assertTrue(self.branch.is_active)
+        self.assertTrue(
+            MaintainerAuditEvent.objects.filter(
+                resource_type="branch",
+                resource_id=str(self.branch.id),
+                event_type="RESOURCE_REACTIVATED",
+            ).exists()
+        )
+
+    def test_only_delegated_destructive_admin_can_delete_clean_resource(self):
+        clean_brand = Brand.objects.create(company=self.company, name="Unused Brand")
+        path = f"/api/maintainers/companies/{self.company.id}/lifecycle/brand/{clean_brand.id}/"
+
+        self._authenticate(self.platform)
+        forbidden = self.client.post(
+            path,
+            {"action": "challenge", "confirmation": f"ELIMINAR BRAND {clean_brand.id}", "reason": "Prueba controlada"},
+            format="json",
+        )
+        self.assertEqual(forbidden.status_code, 403)
+
+        self.platform.destructive_admin = True
+        self.platform.save(update_fields=["destructive_admin"])
+        preview = self.client.get(path)
+        self.assertEqual(preview.status_code, 200)
+        self.assertTrue(preview.data["can_hard_delete"])
+
+        challenge = self.client.post(
+            path,
+            {"action": "challenge", "confirmation": preview.data["confirmation_phrase"], "reason": "Eliminar dato de prueba"},
+            format="json",
+        )
+        self.assertEqual(challenge.status_code, 201, challenge.data)
+        executed = self.client.post(
+            path,
+            {
+                "action": "execute",
+                "challenge_id": challenge.data["challenge_id"],
+                "token": challenge.data["token"],
+                "confirmation": preview.data["confirmation_phrase"],
+            },
+            format="json",
+        )
+        self.assertEqual(executed.status_code, 200, executed.data)
+        self.assertFalse(Brand.objects.filter(pk=clean_brand.id).exists())
+        self.assertTrue(
+            MaintainerAuditEvent.objects.filter(
+                resource_type="brand",
+                resource_id=str(clean_brand.id),
+                event_type="RESOURCE_HARD_DELETED",
+            ).exists()
+        )
+
+    def test_hard_delete_preview_blocks_resources_with_history(self):
+        self.platform.destructive_admin = True
+        self.platform.save(update_fields=["destructive_admin"])
+        self._authenticate(self.platform)
+        path = f"/api/maintainers/companies/{self.company.id}/lifecycle/product/{self.product.id}/"
+        response = self.client.get(path)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["can_hard_delete"])
+        self.assertTrue(response.data["impact"])
+        self.assertEqual(
+            self.client.post(
+                path,
+                {"action": "challenge", "confirmation": response.data["confirmation_phrase"], "reason": "Recurso de prueba con historial"},
+                format="json",
+            ).status_code,
+            409,
+        )
+
+    def test_revoke_user_access_removes_roles_and_branches_but_keeps_identity(self):
+        self._authenticate(self.platform)
+        response = self.client.post(
+            f"/api/maintainers/companies/{self.company.id}/users/{self.membership.id}/revoke/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.membership.refresh_from_db()
+        self.assertEqual(self.membership.status, CompanyMembership.Status.LEFT)
+        self.assertFalse(self.membership.branch_memberships.exists())
+        self.assertFalse(self.membership.role_assignments.exists())
+        self.assertTrue(User.objects.filter(pk=self.company_admin.id).exists())
+
+    def test_empty_company_can_be_deleted_after_generated_configuration_is_cleaned(self):
+        from maintainers.services import prepare_company
+
+        empty = Company.objects.create(name="Empty test company")
+        prepare_company(empty)
+        self.platform.destructive_admin = True
+        self.platform.save(update_fields=["destructive_admin"])
+        self._authenticate(self.platform)
+        path = f"/api/maintainers/companies/{empty.id}/lifecycle/company/{empty.id}/"
+        preview = self.client.get(path)
+        self.assertEqual(preview.status_code, 200)
+        self.assertTrue(preview.data["can_hard_delete"], preview.data)
+        challenge = self.client.post(
+            path,
+            {
+                "action": "challenge",
+                "confirmation": preview.data["confirmation_phrase"],
+                "reason": "Eliminar empresa de prueba vacía",
+            },
+            format="json",
+        )
+        self.assertEqual(challenge.status_code, 201, challenge.data)
+        executed = self.client.post(
+            path,
+            {
+                "action": "execute",
+                "challenge_id": challenge.data["challenge_id"],
+                "token": challenge.data["token"],
+                "confirmation": preview.data["confirmation_phrase"],
+            },
+            format="json",
+        )
+        self.assertEqual(executed.status_code, 200, executed.data)
+        self.assertFalse(Company.objects.filter(pk=empty.id).exists())
+
+    def test_assigned_role_cannot_be_deleted_until_access_is_reassigned(self):
+        self.platform.destructive_admin = True
+        self.platform.save(update_fields=["destructive_admin"])
+        self._authenticate(self.platform)
+        path = f"/api/maintainers/companies/{self.company.id}/lifecycle/role/{self.membership.role_assignments.first().role_id}/"
+        preview = self.client.get(path)
+        self.assertEqual(preview.status_code, 200)
+        self.assertFalse(preview.data["can_hard_delete"])
+        self.assertTrue(any(item["relation"] == "assignments" for item in preview.data["impact"]))

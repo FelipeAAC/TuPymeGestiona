@@ -29,6 +29,7 @@ from maintainers.serializers import (
     CompanyAdminSerializer,
     CompanySettingsSerializer,
     CompanySummarySerializer,
+    MaintainerAuditEventSerializer,
     MaintainerCategorySerializer,
     MaintainerUserSerializer,
     MaintainerWarehouseSerializer,
@@ -44,6 +45,14 @@ from maintainers.serializers import (
     UserCreateSerializer,
     UserUpdateSerializer,
     WarehouseWriteSerializer,
+)
+from maintainers.models import MaintainerAuditEvent
+from maintainers.lifecycle import (
+    LifecycleError,
+    change_state,
+    create_challenge,
+    execute_challenge,
+    preview as lifecycle_preview,
 )
 from catalog.serializers import (
     BrandSummarySerializer,
@@ -246,6 +255,36 @@ def user_detail_view(request, company_id, membership_id):
     return Response({"user": MembershipUserSerializer(membership).data})
 
 
+@api_view(["POST"])
+@permission_classes(PLATFORM_PERMISSIONS)
+def user_revoke_access_view(request, company_id, membership_id):
+    company, error = _company_or_404(company_id)
+    if error:
+        return error
+    membership = company.memberships.select_related("user").filter(pk=membership_id).first()
+    if membership is None:
+        return Response({"detail": "Usuario no encontrado en esta empresa."}, status=status.HTTP_404_NOT_FOUND)
+    if membership.status == CompanyMembership.Status.LEFT:
+        return Response({"detail": "El usuario ya está desvinculado de esta empresa."}, status=status.HTTP_400_BAD_REQUEST)
+    with transaction.atomic():
+        removed_roles = list(membership.role_assignments.values_list("role__name", flat=True).distinct())
+        removed_branches = list(membership.branch_memberships.values_list("branch__name", flat=True))
+        membership.role_assignments.all().delete()
+        membership.branch_memberships.all().delete()
+        membership.status = CompanyMembership.Status.LEFT
+        membership.save(update_fields=["status", "updated_at"])
+        _save_event(
+            company=company,
+            actor=request.user,
+            event_type="USER_ACCESS_REVOKED",
+            resource_type="membership",
+            resource_id=membership.id,
+            metadata={"roles": removed_roles, "branches": removed_branches},
+        )
+    membership.refresh_from_db()
+    return Response({"user": MembershipUserSerializer(membership).data})
+
+
 @api_view(["GET", "POST"])
 @permission_classes(PLATFORM_PERMISSIONS)
 def role_list_create_view(request, company_id):
@@ -364,6 +403,83 @@ def settings_view(request, company_id):
     settings_object = serializer.save()
     _save_event(company=company, actor=request.user, event_type="SETTINGS_UPDATED", resource_type="company_settings", resource_id=settings_object.id)
     return Response({"settings": CompanySettingsSerializer(settings_object).data})
+
+
+@api_view(["GET", "POST"])
+@permission_classes(PLATFORM_PERMISSIONS)
+def lifecycle_view(request, company_id, resource_type, resource_id):
+    """Preview, archive/reactivate, or permanently remove one resource."""
+    try:
+        if request.method == "GET":
+            return Response(
+                lifecycle_preview(
+                    actor=request.user,
+                    company_id=company_id,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                )
+            )
+
+        action = str(request.data.get("action", "")).strip().lower()
+        if action in {"deactivate", "activate"}:
+            resource = change_state(
+                actor=request.user,
+                company_id=company_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                active=action == "activate",
+            )
+            return Response(
+                {
+                    "detail": "Recurso reactivado." if action == "activate" else "Recurso desactivado.",
+                    "resource_id": resource.id,
+                    "resource_type": resource_type,
+                }
+            )
+
+        if action == "challenge":
+            challenge, token, details = create_challenge(
+                actor=request.user,
+                company_id=company_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                confirmation=str(request.data.get("confirmation", "")),
+                reason=str(request.data.get("reason", "")),
+            )
+            return Response(
+                {
+                    "challenge_id": challenge.id,
+                    "token": token,
+                    "expires_at": challenge.expires_at,
+                    "resource": details,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        if action == "execute":
+            deleted = execute_challenge(
+                actor=request.user,
+                challenge_id=int(request.data.get("challenge_id")),
+                token=str(request.data.get("token", "")),
+                confirmation=str(request.data.get("confirmation", "")),
+            )
+            return Response({"detail": "Recurso eliminado permanentemente.", "resource": deleted})
+
+        return Response(
+            {"detail": "Acción no válida. Usa activate, deactivate, challenge o execute."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except (TypeError, ValueError):
+        return Response({"detail": "Los datos de la operación no son válidos."}, status=status.HTTP_400_BAD_REQUEST)
+    except LifecycleError as exc:
+        return Response({"detail": str(exc)}, status=exc.status_code)
+
+
+@api_view(["GET"])
+@permission_classes(PLATFORM_PERMISSIONS)
+def audit_view(request):
+    events = MaintainerAuditEvent.objects.select_related("actor").all()[:100]
+    return Response({"events": MaintainerAuditEventSerializer(events, many=True).data})
 
 
 @api_view(["GET"])

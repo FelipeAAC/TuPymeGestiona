@@ -77,6 +77,7 @@ class BrandSummarySerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "name",
+            "is_active",
         )
 
 

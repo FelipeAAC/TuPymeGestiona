@@ -12,6 +12,7 @@ urlpatterns = [
     path("companies/<int:company_id>/branches/<int:branch_id>/", views.branch_detail_view, name="maintainers-branch-detail"),
     path("companies/<int:company_id>/users/", views.user_list_create_view, name="maintainers-user-list-create"),
     path("companies/<int:company_id>/users/<int:membership_id>/", views.user_detail_view, name="maintainers-user-detail"),
+    path("companies/<int:company_id>/users/<int:membership_id>/revoke/", views.user_revoke_access_view, name="maintainers-user-revoke-access"),
     path("companies/<int:company_id>/roles/", views.role_list_create_view, name="maintainers-role-list-create"),
     path("companies/<int:company_id>/roles/<int:role_id>/", views.role_detail_view, name="maintainers-role-detail"),
     path("companies/<int:company_id>/payment-methods/", views.payment_method_list_create_view, name="maintainers-payment-method-list-create"),
@@ -36,4 +37,10 @@ urlpatterns = [
     path("companies/<int:company_id>/suppliers/<int:supplier_id>/toggle/", views.supplier_toggle_view, name="maintainers-supplier-toggle"),
     path("companies/<int:company_id>/warehouses/", views.warehouse_list_create_view, name="maintainers-warehouse-list-create"),
     path("companies/<int:company_id>/warehouses/<int:warehouse_id>/", views.warehouse_detail_view, name="maintainers-warehouse-detail"),
+    path("audit/", views.audit_view, name="maintainers-audit"),
+    path(
+        "companies/<int:company_id>/lifecycle/<str:resource_type>/<int:resource_id>/",
+        views.lifecycle_view,
+        name="maintainers-lifecycle",
+    ),
 ]

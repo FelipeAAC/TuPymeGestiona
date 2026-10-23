@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { forkJoin, Observable } from 'rxjs';
+import { forkJoin, Observable, switchMap } from 'rxjs';
 
 import { MaintainersApi } from './api.service';
 import { FormDialogComponent, FormDialogField } from './form-dialog.component';
@@ -12,12 +12,24 @@ import {
   AuthUser,
   CatalogState,
   DirectoryState,
+  LifecyclePreview,
   MaintainerContext,
   Product,
 } from './models';
 
 type Section = 'summary' | 'organization' | 'users' | 'roles' | 'catalog' | 'suppliers' | 'warehouses' | 'payments' | 'settings';
 type DialogState = { title: string; fields: FormDialogField[]; initialValue: Record<string, unknown>; save: (value: Record<string, unknown>) => void; error?: string };
+type DangerState = {
+  companyId: number;
+  resourceType: string;
+  resourceId: number;
+  preview: LifecyclePreview;
+  confirmationInput: string;
+  reason: string;
+  acknowledged: boolean;
+  progress: number;
+  error: string;
+};
 
 @Component({
   selector: 'maintainers-root',
@@ -40,6 +52,8 @@ export class MaintainersApp implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly dialog = signal<DialogState | null>(null);
+  readonly danger = signal<DangerState | null>(null);
+  private dangerTimer: number | null = null;
 
   identifier = '';
   password = '';
@@ -91,6 +105,103 @@ export class MaintainersApp implements OnInit {
 
   setSection(section: Section): void { this.clearStatus(); this.section.set(section); }
   refresh(): void { const id = this.activeCompanyId(); if (id) this.loadCompanyData(id); }
+  isDestructiveAdmin(): boolean { return this.user()?.destructive_admin === true; }
+
+  toggleResource(resourceType: string, resourceId: number, currentlyActive: boolean, explicitCompanyId?: number): void {
+    const companyId = explicitCompanyId ?? this.activeCompanyId();
+    if (!companyId) return;
+    this.runMutation(
+      this.api.lifecycleAction(companyId, resourceType, resourceId, currentlyActive ? 'deactivate' : 'activate'),
+      currentlyActive ? 'Recurso desactivado.' : 'Recurso reactivado.',
+      () => resourceType === 'company' ? this.loadContext() : this.refresh(),
+    );
+  }
+
+  openDanger(resourceType: string, resourceId: number, explicitCompanyId?: number): void {
+    const companyId = explicitCompanyId ?? this.activeCompanyId();
+    if (!companyId || !this.isDestructiveAdmin()) {
+      this.error.set('La eliminación permanente está reservada a la cuenta autorizada.');
+      return;
+    }
+    this.loading.set(true);
+    this.clearStatus();
+    this.api.lifecyclePreview(companyId, resourceType, resourceId).subscribe({
+      next: (preview) => {
+        this.loading.set(false);
+        this.danger.set({
+          companyId,
+          resourceType,
+          resourceId,
+          preview,
+          confirmationInput: '',
+          reason: '',
+          acknowledged: false,
+          progress: 0,
+          error: '',
+        });
+      },
+      error: (error: unknown) => {
+        this.loading.set(false);
+        this.error.set(this.describeError(error, 'No fue posible preparar la eliminación.'));
+      },
+    });
+  }
+
+  closeDanger(): void {
+    this.stopDangerHold();
+    this.danger.set(null);
+  }
+
+  dangerReady(): boolean {
+    const danger = this.danger();
+    return Boolean(
+      danger?.preview.can_hard_delete
+      && danger.confirmationInput === danger.preview.confirmation_phrase
+      && danger.reason.trim().length > 0
+      && danger.acknowledged,
+    );
+  }
+
+  updateDangerInput(value: string): void {
+    const danger = this.danger();
+    if (danger) this.danger.set({ ...danger, confirmationInput: value, error: '' });
+  }
+
+  updateDangerAcknowledged(value: boolean): void {
+    const danger = this.danger();
+    if (danger) this.danger.set({ ...danger, acknowledged: value, error: '' });
+  }
+
+  updateDangerReason(value: string): void {
+    const danger = this.danger();
+    if (danger) this.danger.set({ ...danger, reason: value, error: '' });
+  }
+
+  startDangerHold(): void {
+    if (!this.dangerReady() || this.dangerTimer !== null) return;
+    this.dangerTimer = window.setInterval(() => {
+      const danger = this.danger();
+      if (!danger || !this.dangerReady()) {
+        this.stopDangerHold();
+        return;
+      }
+      const progress = Math.min(100, danger.progress + 4);
+      this.danger.set({ ...danger, progress });
+      if (progress >= 100) {
+        this.stopDangerHold(false);
+        this.executeDanger(danger);
+      }
+    }, 200);
+  }
+
+  stopDangerHold(reset = true): void {
+    if (this.dangerTimer !== null) {
+      window.clearInterval(this.dangerTimer);
+      this.dangerTimer = null;
+    }
+    const danger = this.danger();
+    if (reset && danger && danger.progress < 100) this.danger.set({ ...danger, progress: 0 });
+  }
 
   createCompany(): void {
     this.openDialog('Nueva empresa', [
@@ -126,6 +237,20 @@ export class MaintainersApp implements OnInit {
   }
 
   toggleUser(id: number): void { const item = this.overview()?.users.find((user) => user.id === id); const companyId = this.activeCompanyId(); if (!item || !companyId) return; this.runMutation(this.api.updateUser(companyId, id, { status: item.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE' }), 'Estado del usuario actualizado.', () => this.refresh()); }
+  revokeUserAccess(id: number): void {
+    const companyId = this.activeCompanyId();
+    const item = this.overview()?.users.find((user) => user.id === id);
+    if (!companyId || !item) return;
+    const phrase = `DESVINCULAR ${item.email}`;
+    this.openDialog('Quitar acceso a la empresa', [this.text('confirmation', `Escribe ${phrase}`, true)], {}, (value) => {
+      if (String(value['confirmation'] ?? '').trim() !== phrase) {
+        const current = this.dialog();
+        if (current) this.dialog.set({ ...current, error: `Debes escribir exactamente: ${phrase}` });
+        return;
+      }
+      this.runMutation(this.api.revokeUserAccess(companyId, id), 'Acceso de empresa quitado. La cuenta global se conserva.', () => { this.closeDialog(); this.refresh(); });
+    });
+  }
 
   createRole(): void {
     const id = this.activeCompanyId(); const data = this.overview(); if (!id || !data) return;
@@ -138,8 +263,8 @@ export class MaintainersApp implements OnInit {
   createCategory(): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Nueva categoría', [this.text('name', 'Nombre', true), this.select('parent', 'Categoría padre', [{ value: '', label: 'Sin categoría padre' }, ...(this.catalog().categories.map((item) => ({ value: item.id, label: item.name })))] )], { parent: '' }, (value) => this.runMutation(this.api.createCategory(id, String(value['name']), value['parent'] ? Number(value['parent']) : null), 'Categoría creada.', () => { this.closeDialog(); this.refresh(); })); }
   editCategory(categoryId: number): void { const id = this.activeCompanyId(); const category = this.catalog().categories.find((item) => item.id === categoryId); if (!id || !category) return; this.openDialog('Editar categoría', [this.text('name', 'Nombre', true), this.select('status', 'Estado', ['ACTIVE', 'INACTIVE'])], { ...category }, (value) => this.runMutation(this.api.updateCategory(id, categoryId, value as { name?: string; status?: 'ACTIVE' | 'INACTIVE' }), 'Categoría actualizada.', () => { this.closeDialog(); this.refresh(); })); }
   toggleCategory(categoryId: number): void { const id = this.activeCompanyId(); const category = this.catalog().categories.find((item) => item.id === categoryId); if (!id || !category) return; this.runMutation(this.api.updateCategory(id, categoryId, { status: category.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' }), 'Categoría actualizada.', () => this.refresh()); }
-  createBrand(): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Nueva marca', [this.text('name', 'Nombre', true)], {}, (value) => this.runMutation(this.api.createBrand(id, String(value['name'])), 'Marca creada.', () => { this.closeDialog(); this.refresh(); })); }
-  editBrand(brandId: number): void { const id = this.activeCompanyId(); const brand = this.catalog().brands.find((item) => item.id === brandId); if (!id || !brand) return; this.openDialog('Editar marca', [this.text('name', 'Nombre', true)], { ...brand }, (value) => this.runMutation(this.api.updateBrand(id, brandId, String(value['name'])), 'Marca actualizada.', () => { this.closeDialog(); this.refresh(); })); }
+  createBrand(): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Nueva marca', [this.text('name', 'Nombre', true), this.checkbox('is_active', 'Marca activa')], { is_active: true }, (value) => this.runMutation(this.api.createBrand(id, { name: String(value['name']), is_active: Boolean(value['is_active']) }), 'Marca creada.', () => { this.closeDialog(); this.refresh(); })); }
+  editBrand(brandId: number): void { const id = this.activeCompanyId(); const brand = this.catalog().brands.find((item) => item.id === brandId); if (!id || !brand) return; this.openDialog('Editar marca', [this.text('name', 'Nombre', true), this.checkbox('is_active', 'Marca activa')], { ...brand }, (value) => this.runMutation(this.api.updateBrand(id, brandId, { name: String(value['name']), is_active: Boolean(value['is_active']) }), 'Marca actualizada.', () => { this.closeDialog(); this.refresh(); })); }
 
   createProduct(): void {
     const id = this.activeCompanyId(); const categories = this.catalog().categories.filter((item) => item.status === 'ACTIVE'); if (!id || !categories.length) { this.error.set('Necesitas al menos una categoría activa para crear productos.'); return; }
@@ -157,8 +282,8 @@ export class MaintainersApp implements OnInit {
   editSupplier(id: number): void { const companyId = this.activeCompanyId(); const supplier = this.directories().suppliers.find((item) => item.id === id); if (!companyId || !supplier) return; this.openDialog('Editar proveedor', [this.text('name', 'Nombre', true), this.text('contact_name', 'Contacto'), this.email('email', 'Correo'), this.text('phone', 'Teléfono'), this.select('status', 'Estado', ['ACTIVE', 'INACTIVE'])], { ...supplier }, (value) => this.runMutation(this.api.updateSupplier(companyId, id, value as any), 'Proveedor actualizado.', () => { this.closeDialog(); this.refresh(); })); }
   toggleSupplier(id: number): void { const companyId = this.activeCompanyId(); const supplier = this.directories().suppliers.find((item) => item.id === id); if (!companyId || !supplier) return; this.runMutation(this.api.toggleSupplier(companyId, id, supplier.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'), 'Estado del proveedor actualizado.', () => this.refresh()); }
 
-  createWarehouse(): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Nueva bodega', [this.text('code', 'Código', true), this.text('name', 'Nombre', true), this.select('branch', 'Sucursal', [{ value: '', label: 'General' }, ...(this.overview()?.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })) ?? [])])], { branch: '' }, (value) => this.runMutation(this.api.createWarehouse(id, { code: String(value['code']), name: String(value['name']), branch: value['branch'] ? Number(value['branch']) : null }), 'Bodega creada.', () => { this.closeDialog(); this.refresh(); })); }
-  editWarehouse(warehouseId: number): void { const id = this.activeCompanyId(); const warehouse = this.directories().warehouses.find((item) => item.id === warehouseId); if (!id || !warehouse) return; this.openDialog('Editar bodega', [this.text('code', 'Código', true), this.text('name', 'Nombre', true), this.select('branch', 'Sucursal', [{ value: '', label: 'General' }, ...(this.overview()?.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })) ?? [])])], { ...warehouse, branch: warehouse.branch ?? '' }, (value) => this.runMutation(this.api.updateWarehouse(id, warehouseId, { code: String(value['code']), name: String(value['name']), branch: value['branch'] ? Number(value['branch']) : null }), 'Bodega actualizada.', () => { this.closeDialog(); this.refresh(); })); }
+  createWarehouse(): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Nueva bodega', [this.text('code', 'Código', true), this.text('name', 'Nombre', true), this.select('branch', 'Sucursal', [{ value: '', label: 'General' }, ...(this.overview()?.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })) ?? [])]), this.checkbox('is_active', 'Bodega activa')], { branch: '', is_active: true }, (value) => this.runMutation(this.api.createWarehouse(id, { code: String(value['code']), name: String(value['name']), branch: value['branch'] ? Number(value['branch']) : null, is_active: Boolean(value['is_active']) }), 'Bodega creada.', () => { this.closeDialog(); this.refresh(); })); }
+  editWarehouse(warehouseId: number): void { const id = this.activeCompanyId(); const warehouse = this.directories().warehouses.find((item) => item.id === warehouseId); if (!id || !warehouse) return; this.openDialog('Editar bodega', [this.text('code', 'Código', true), this.text('name', 'Nombre', true), this.select('branch', 'Sucursal', [{ value: '', label: 'General' }, ...(this.overview()?.branches.map((branch) => ({ value: branch.id, label: `${branch.code} · ${branch.name}` })) ?? [])]), this.checkbox('is_active', 'Bodega activa')], { ...warehouse, branch: warehouse.branch ?? '', is_active: warehouse.is_active }, (value) => this.runMutation(this.api.updateWarehouse(id, warehouseId, { code: String(value['code']), name: String(value['name']), branch: value['branch'] ? Number(value['branch']) : null, is_active: Boolean(value['is_active']) }), 'Bodega actualizada.', () => { this.closeDialog(); this.refresh(); })); }
 
   createPaymentMethod(): void { const id = this.activeCompanyId(); if (!id) return; this.openDialog('Nuevo método de pago', [this.text('code', 'Código', true), this.text('name', 'Nombre visible', true), this.select('kind', 'Tipo', ['CASH', 'TRANSFER', 'ONLINE', 'OTHER']), this.number('sort_order', 'Orden', 0), this.checkbox('is_active', 'Activo')], { kind: 'TRANSFER', sort_order: 0, is_active: true }, (value) => this.runMutation(this.api.createPaymentMethod(id, { code: String(value['code']), name: String(value['name']), kind: value['kind'] as any, sort_order: Number(value['sort_order']), is_active: Boolean(value['is_active']) }), 'Método de pago creado.', () => { this.closeDialog(); this.refresh(); })); }
   togglePaymentMethod(methodId: number): void { const id = this.activeCompanyId(); const method = this.overview()?.payment_methods.find((item) => item.id === methodId); if (!id || !method) return; this.runMutation(this.api.updatePaymentMethod(id, methodId, { is_active: !method.is_active }), 'Método de pago actualizado.', () => this.refresh()); }
@@ -196,6 +321,39 @@ export class MaintainersApp implements OnInit {
         const current = this.dialog();
         if (current) this.dialog.set({ ...current, error: detail });
         else this.error.set(detail);
+      },
+    });
+  }
+
+  private executeDanger(danger: DangerState): void {
+    this.loading.set(true);
+    this.api.createDeleteChallenge(
+      danger.companyId,
+      danger.resourceType,
+      danger.resourceId,
+      danger.preview.confirmation_phrase,
+      danger.reason,
+    ).pipe(
+      switchMap((challenge) => this.api.executeDeleteChallenge(
+        danger.companyId,
+        danger.resourceType,
+        danger.resourceId,
+        challenge.challenge_id,
+        challenge.token,
+        danger.preview.confirmation_phrase,
+      )),
+    ).subscribe({
+      next: () => {
+        this.loading.set(false);
+        this.closeDanger();
+        this.notice.set('Recurso eliminado permanentemente.');
+        if (danger.resourceType === 'company') this.loadContext();
+        else this.refresh();
+      },
+      error: (error: unknown) => {
+        this.loading.set(false);
+        const current = this.danger();
+        if (current) this.danger.set({ ...current, progress: 0, error: this.describeError(error, 'La eliminación no pudo completarse.') });
       },
     });
   }

@@ -11,6 +11,8 @@ export interface AuthUser {
   first_name: string;
   last_name: string;
   access_modes?: Array<'CUSTOMER' | 'COMPANY_ADMIN' | 'PLATFORM_ADMIN'>;
+  platform_admin?: boolean;
+  destructive_admin?: boolean;
 }
 
 export interface OrganizationMembership {
@@ -90,6 +92,7 @@ export interface AdminRole {
   name: string;
   status: RoleStatus;
   permission_codes: string[];
+  assigned_memberships_count: number;
 }
 
 export interface AdminUser {
@@ -103,6 +106,7 @@ export interface AdminUser {
   branch_ids: number[];
   role_ids: number[];
   role_names: string[];
+  is_customer: boolean;
 }
 
 export interface AdminPaymentMethod {
@@ -163,6 +167,7 @@ export interface Category {
 export interface Brand {
   id: number;
   name: string;
+  is_active: boolean;
 }
 
 export interface Product {
@@ -205,6 +210,7 @@ export interface Warehouse {
   branch: number | null;
   code: string;
   name: string;
+  is_active: boolean;
   branch_name?: string | null;
 }
 
@@ -222,4 +228,29 @@ export interface MaintainerDialogOption {
 export interface DirectoryState {
   suppliers: Supplier[];
   warehouses: Warehouse[];
+}
+
+export interface LifecycleImpact {
+  relation: string;
+  label: string;
+  count: number;
+}
+
+export interface LifecyclePreview {
+  resource_type: string;
+  resource_id: number;
+  label: string;
+  company_id: number;
+  state: {
+    field: string;
+    value: string | boolean;
+    is_active: boolean;
+    can_deactivate: boolean;
+    can_reactivate: boolean;
+  };
+  impact: LifecycleImpact[];
+  can_hard_delete: boolean;
+  destructive_admin: boolean;
+  confirmation_phrase: string;
+  hard_delete_blocked_reason: string;
 }

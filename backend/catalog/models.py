@@ -92,6 +92,7 @@ class Brand(models.Model):
         related_name="brands",
     )
     name = models.CharField(max_length=150)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ["company_id", "name"]

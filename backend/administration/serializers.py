@@ -124,10 +124,11 @@ class PermissionAdminSerializer(serializers.ModelSerializer):
 
 class RoleAdminSerializer(serializers.ModelSerializer):
     permission_codes = serializers.SerializerMethodField()
+    assigned_memberships_count = serializers.SerializerMethodField()
 
     class Meta:
         model = CompanyRole
-        fields = ("id", "name", "status", "permission_codes")
+        fields = ("id", "name", "status", "permission_codes", "assigned_memberships_count")
 
     def get_permission_codes(self, role):
         return list(
@@ -136,6 +137,9 @@ class RoleAdminSerializer(serializers.ModelSerializer):
                 flat=True,
             )
         )
+
+    def get_assigned_memberships_count(self, role):
+        return role.assignments.values("membership_id").distinct().count()
 
 
 class RoleWriteSerializer(serializers.Serializer):
@@ -168,6 +172,7 @@ class MembershipUserSerializer(serializers.ModelSerializer):
     branch_ids = serializers.SerializerMethodField()
     role_ids = serializers.SerializerMethodField()
     role_names = serializers.SerializerMethodField()
+    is_customer = serializers.SerializerMethodField()
 
     class Meta:
         model = CompanyMembership
@@ -182,6 +187,7 @@ class MembershipUserSerializer(serializers.ModelSerializer):
             "branch_ids",
             "role_ids",
             "role_names",
+            "is_customer",
         )
 
     def get_branch_ids(self, membership):
@@ -207,6 +213,12 @@ class MembershipUserSerializer(serializers.ModelSerializer):
                 flat=True,
             ).distinct()
         )
+
+    def get_is_customer(self, membership):
+        return membership.user.portal_accounts.filter(
+            company_id=membership.company_id,
+            status="ACTIVE",
+        ).exists()
 
 
 class UserCreateSerializer(serializers.Serializer):

@@ -100,6 +100,7 @@ class WarehouseSerializer(serializers.ModelSerializer):
             "branch",
             "code",
             "name",
+            "is_active",
         )
 
 
@@ -111,7 +112,9 @@ class WarehouseCreateSerializer(serializers.ModelSerializer):
             "branch",
             "code",
             "name",
+            "is_active",
         )
+        extra_kwargs = {"is_active": {"required": False}}
 
     def validate(self, attrs):
         company = self.context["company"]
@@ -141,7 +144,9 @@ class WarehouseUpdateSerializer(serializers.ModelSerializer):
             "branch",
             "code",
             "name",
+            "is_active",
         )
+        extra_kwargs = {"is_active": {"required": False}}
 
     def validate(self, attrs):
         company = self.context["company"]
