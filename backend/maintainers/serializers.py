@@ -43,6 +43,9 @@ class MaintainerUserSerializer(serializers.ModelSerializer):
 
 class MaintainerAuditEventSerializer(serializers.ModelSerializer):
     actor_name = serializers.SerializerMethodField()
+    company_name = serializers.SerializerMethodField()
+    event_label = serializers.SerializerMethodField()
+    resource_label = serializers.SerializerMethodField()
 
     class Meta:
         model = MaintainerAuditEvent
@@ -52,7 +55,10 @@ class MaintainerAuditEventSerializer(serializers.ModelSerializer):
             "resource_type",
             "resource_id",
             "company_id_snapshot",
+            "company_name",
             "actor_name",
+            "event_label",
+            "resource_label",
             "metadata",
             "created_at",
         )
@@ -60,6 +66,27 @@ class MaintainerAuditEventSerializer(serializers.ModelSerializer):
 
     def get_actor_name(self, obj):
         return obj.actor.get_full_name() or obj.actor.email or obj.actor.username
+
+    def get_company_name(self, obj):
+        metadata = obj.metadata if isinstance(obj.metadata, dict) else {}
+        if metadata.get("company_label"):
+            return str(metadata["company_label"])
+        if not obj.company_id_snapshot:
+            return "Global"
+        company_name = Company.objects.filter(pk=obj.company_id_snapshot).values_list("name", flat=True).first()
+        return company_name or f"Empresa {obj.company_id_snapshot} eliminada"
+
+    def get_event_label(self, obj):
+        return {
+            "RESOURCE_HARD_DELETED": "Eliminación permanente",
+            "RESOURCE_DEACTIVATED": "Recurso desactivado",
+            "RESOURCE_REACTIVATED": "Recurso reactivado",
+            "USER_ACCESS_REVOKED": "Acceso de usuario revocado",
+        }.get(obj.event_type, obj.event_type.replace("_", " ").title())
+
+    def get_resource_label(self, obj):
+        metadata = obj.metadata if isinstance(obj.metadata, dict) else {}
+        return str(metadata.get("label") or f"{obj.resource_type} {obj.resource_id}")
 
 
 class CompanySummarySerializer(serializers.ModelSerializer):

@@ -256,6 +256,11 @@ table {
 .danger-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .danger-button { min-width: 220px; background: #a63131; border-color: #8f2e2e; }
 
+.audit-filters { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 12px; padding: 16px; margin-bottom: 16px; background: #fff; border: 1px solid #dce5ec; border-radius: 12px; }
+.audit-filters label { display: grid; gap: 6px; color: #4e5962; font-size: .78rem; font-weight: 700; }
+.audit-filters input, .audit-filters select { min-width: 0; padding: 9px 10px; border: 1px solid #cbd8e2; border-radius: 8px; }
+.audit-filter-actions { display: flex; }
+
 @media (max-width: 900px) {
   .topbar { align-items: flex-start; flex-direction: column; }
   .topbar-actions { width: 100%; flex-wrap: wrap; }
@@ -264,6 +269,7 @@ table {
   .metrics, .settings-grid, .split { grid-template-columns: 1fr; }
   .detail-card { grid-template-columns: 1fr; }
   .login-layout { grid-template-columns: 1fr; padding: 18px; }
+  .audit-filters { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
 }
 
 .company-row, .product-card { cursor: pointer; }
@@ -278,4 +284,4 @@ table {
 .variant > span:last-child { display: flex; align-items: center; gap: 4px; }
 .global article small, .metrics article small { color: #7890a0; font-size: .72rem; }
 .detail-card div { display: grid; gap: 4px; } .detail-card span { color: #728494; font-size: .74rem; }
-@media (max-width: 620px) { .content { padding: 16px; } .topbar { padding: 15px 16px; } .topbar-actions { align-items: stretch; flex-direction: column; } .topbar-actions label select { min-width: 0; width: 100%; } .sidebar nav { grid-template-columns: 1fr; } .page-heading, .product-head, .variant { flex-direction: column; } .actions { justify-content: flex-start; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .table-wrap { margin-inline: -2px; } }
+@media (max-width: 620px) { .content { padding: 16px; } .topbar { padding: 15px 16px; } .topbar-actions { align-items: stretch; flex-direction: column; } .topbar-actions label select { min-width: 0; width: 100%; } .sidebar nav { grid-template-columns: 1fr; } .page-heading, .product-head, .variant { flex-direction: column; } .actions { justify-content: flex-start; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .table-wrap { margin-inline: -2px; } .audit-filters { grid-template-columns: 1fr; } .audit-filter-actions { align-items: stretch; } .audit-filter-actions button { flex: 1; } }

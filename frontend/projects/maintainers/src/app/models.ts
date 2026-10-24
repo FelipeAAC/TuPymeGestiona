@@ -55,6 +55,28 @@ export interface MaintainerContext {
   summary: MaintainerSummary;
 }
 
+export interface MaintainerAuditEvent {
+  id: number;
+  event_type: string;
+  event_label: string;
+  resource_type: string;
+  resource_id: string;
+  resource_label: string;
+  company_id_snapshot: number | null;
+  company_name: string;
+  actor_name: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface MaintainerAuditResponse {
+  events: MaintainerAuditEvent[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_next: boolean;
+}
+
 export interface AdminCompany {
   id: number;
   name: string;

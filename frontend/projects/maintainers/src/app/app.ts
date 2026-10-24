@@ -13,11 +13,12 @@ import {
   CatalogState,
   DirectoryState,
   LifecyclePreview,
+  MaintainerAuditEvent,
   MaintainerContext,
   Product,
 } from './models';
 
-type Section = 'summary' | 'organization' | 'users' | 'roles' | 'catalog' | 'suppliers' | 'warehouses' | 'payments' | 'settings';
+type Section = 'summary' | 'organization' | 'users' | 'roles' | 'catalog' | 'suppliers' | 'warehouses' | 'payments' | 'settings' | 'audit';
 type DialogState = { title: string; fields: FormDialogField[]; initialValue: Record<string, unknown>; save: (value: Record<string, unknown>) => void; error?: string };
 type DangerState = {
   companyId: number;
@@ -47,6 +48,11 @@ export class MaintainersApp implements OnInit {
   readonly overview = signal<AdministrationOverview | null>(null);
   readonly catalog = signal<CatalogState>({ categories: [], products: [], brands: [] });
   readonly directories = signal<DirectoryState>({ suppliers: [], warehouses: [] });
+  readonly auditEvents = signal<MaintainerAuditEvent[]>([]);
+  readonly auditTotal = signal(0);
+  readonly auditHasNext = signal(false);
+  readonly auditPage = signal(1);
+  readonly auditError = signal('');
   readonly section = signal<Section>('summary');
   readonly loading = signal(false);
   readonly error = signal('');
@@ -58,6 +64,12 @@ export class MaintainersApp implements OnInit {
   identifier = '';
   password = '';
   rememberMe = false;
+  auditActorFilter = '';
+  auditEventFilter = '';
+  auditResourceFilter = '';
+  auditCompanyFilter = '';
+  auditFromFilter = '';
+  auditToFilter = '';
 
   readonly companies = computed(() => this.context()?.companies ?? []);
   readonly selectedCompany = computed(() => this.companies().find((company) => company.id === this.selectedCompanyId()) ?? null);
@@ -103,9 +115,52 @@ export class MaintainersApp implements OnInit {
     this.loadCompanyData(id);
   }
 
-  setSection(section: Section): void { this.clearStatus(); this.section.set(section); }
-  refresh(): void { const id = this.activeCompanyId(); if (id) this.loadCompanyData(id); }
+  setSection(section: Section): void { this.clearStatus(); this.section.set(section); if (section === 'audit') this.loadAudit(); }
+  refresh(): void { const id = this.activeCompanyId(); if (id) this.loadCompanyData(id); this.loadAudit(); }
   isDestructiveAdmin(): boolean { return this.user()?.destructive_admin === true; }
+
+  auditImpact(event: MaintainerAuditEvent): string {
+    const impact = event.metadata?.['impact'];
+    if (!Array.isArray(impact)) return '—';
+    const labels: Record<string, string> = {
+      'payment methods': 'métodos de pago',
+      'company settings': 'configuración general',
+      'company settingss': 'configuración general',
+      'order status configurations': 'estados de pedido',
+      'administration events': 'eventos administrativos',
+    };
+    return impact.map((item) => {
+      if (!item || typeof item !== 'object') return '';
+      const row = item as { count?: unknown; label?: unknown };
+      const rawLabel = String(row.label ?? 'relación');
+      return `${String(row.count ?? 0)} · ${labels[rawLabel.toLowerCase()] ?? rawLabel}`;
+    }).filter(Boolean).join(' · ') || 'Sin relaciones';
+  }
+
+  auditDetails(event: MaintainerAuditEvent): string {
+    const groups = event.metadata?.['deleted_related'];
+    if (!Array.isArray(groups)) return 'Sin detalle adicional';
+    const labels = groups.map((group) => {
+      if (!group || typeof group !== 'object') return '';
+      const row = group as { label?: unknown; items?: unknown[]; truncated?: unknown };
+      const count = Array.isArray(row.items) ? row.items.length : 0;
+      return `${String(row.label ?? 'Relación')}: ${count}${row.truncated ? '+' : ''}`;
+    }).filter(Boolean);
+    return labels.join(' · ') || 'Sin registros relacionados';
+  }
+
+  applyAuditFilters(): void { this.auditPage.set(1); this.loadAudit(); }
+  changeAuditPage(delta: number): void { this.auditPage.update(page => Math.max(1, page + delta)); this.loadAudit(); }
+  clearAuditFilters(): void {
+    this.auditPage.set(1);
+    this.auditActorFilter = '';
+    this.auditEventFilter = '';
+    this.auditResourceFilter = '';
+    this.auditCompanyFilter = '';
+    this.auditFromFilter = '';
+    this.auditToFilter = '';
+    this.loadAudit();
+  }
 
   toggleResource(resourceType: string, resourceId: number, currentlyActive: boolean, explicitCompanyId?: number): void {
     const companyId = explicitCompanyId ?? this.activeCompanyId();
@@ -309,7 +364,38 @@ export class MaintainersApp implements OnInit {
     return 'sin permisos';
   }
 
-  private loadContext(): void { this.beginLoad(); this.api.context().subscribe({ next: (context) => { this.context.set(context); const current = this.selectedCompanyId(); const selected = context.companies.find((company) => company.id === current) ?? context.companies[0] ?? null; this.selectedCompanyId.set(selected?.id ?? null); if (selected) this.loadCompanyData(selected.id); else { this.loading.set(false); this.error.set('No hay empresas disponibles.'); } }, error: (error: unknown) => { this.loading.set(false); this.error.set(this.describeError(error, 'No fue posible cargar las empresas.')); } }); }
+  private loadContext(): void { this.beginLoad(); this.loadAudit(); this.api.context().subscribe({ next: (context) => { this.context.set(context); const current = this.selectedCompanyId(); const selected = context.companies.find((company) => company.id === current) ?? context.companies[0] ?? null; this.selectedCompanyId.set(selected?.id ?? null); if (selected) this.loadCompanyData(selected.id); else { this.loading.set(false); this.error.set('No hay empresas disponibles.'); } }, error: (error: unknown) => { this.loading.set(false); this.error.set(this.describeError(error, 'No fue posible cargar las empresas.')); } }); }
+  private auditEndDate(): string {
+    const end = new Date(`${this.auditToFilter}T00:00:00`);
+    end.setDate(end.getDate() + 1);
+    return end.toISOString();
+  }
+
+  loadAudit(): void {
+    this.auditError.set('');
+    this.api.audit({
+      page: String(this.auditPage()),
+      actor: this.auditActorFilter.trim(),
+      event_type: this.auditEventFilter,
+      resource_type: this.auditResourceFilter,
+      company_id: this.auditCompanyFilter.trim(),
+      from: this.auditFromFilter ? new Date(`${this.auditFromFilter}T00:00:00`).toISOString() : '',
+      to: this.auditToFilter ? this.auditEndDate() : '',
+      page_size: '100',
+    }).subscribe({
+      next: (response) => {
+        this.auditEvents.set(response.events);
+        this.auditTotal.set(response.total);
+        this.auditHasNext.set(response.has_next);
+      },
+      error: (error: unknown) => {
+        this.auditError.set(this.describeError(error, 'No se pudo cargar la auditoría.'));
+        this.auditEvents.set([]);
+        this.auditTotal.set(0);
+        this.auditHasNext.set(false);
+      },
+    });
+  }
   private loadCompanyData(companyId: number): void { this.beginLoad(); forkJoin({ overview: this.api.companyOverview(companyId), catalog: this.api.catalog(companyId), directories: this.api.directories(companyId) }).subscribe({ next: ({ overview, catalog, directories }) => { this.overview.set(overview); this.catalog.set(catalog); this.directories.set(directories); this.loading.set(false); }, error: (error: unknown) => { this.overview.set(null); this.loading.set(false); this.error.set(this.describeError(error, 'No fue posible cargar los mantenedores.')); } }); }
   private runMutation<T>(observable: Observable<T>, message: string, next: () => void): void {
     this.beginLoad();
@@ -365,6 +451,6 @@ export class MaintainersApp implements OnInit {
   }
   private clearStatus(): void { this.error.set(''); this.notice.set(''); }
   private rejectNonPlatform(): void { this.user.set(null); this.loading.set(false); this.error.set('Esta consola está disponible solo para administradores de plataforma.'); }
-  private clearSession(): void { this.user.set(null); this.context.set(null); this.selectedCompanyId.set(null); this.overview.set(null); this.catalog.set({ categories: [], products: [], brands: [] }); this.directories.set({ suppliers: [], warehouses: [] }); this.dialog.set(null); this.section.set('summary'); this.loading.set(false); this.clearStatus(); }
+  private clearSession(): void { this.user.set(null); this.context.set(null); this.selectedCompanyId.set(null); this.overview.set(null); this.catalog.set({ categories: [], products: [], brands: [] }); this.directories.set({ suppliers: [], warehouses: [] }); this.auditEvents.set([]); this.auditTotal.set(0); this.auditHasNext.set(false); this.dialog.set(null); this.section.set('summary'); this.loading.set(false); this.clearStatus(); }
   private describeError(error: unknown, fallback: string): string { if (typeof error === 'object' && error !== null && 'error' in error) { const body = (error as { error?: { detail?: unknown; message?: unknown } }).error; if (typeof body?.detail === 'string') return body.detail; if (typeof body?.message === 'string') return body.message; if (body && typeof body === 'object') return Object.values(body).flat().filter((value): value is string => typeof value === 'string').join(' '); } return fallback; }
 }

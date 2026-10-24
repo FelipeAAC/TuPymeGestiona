@@ -468,6 +468,73 @@ class MaintainerApiTests(TestCase):
         self.assertEqual(executed.status_code, 200, executed.data)
         self.assertFalse(Company.objects.filter(pk=empty.id).exists())
 
+    def test_hard_delete_keeps_detailed_audit_after_company_is_gone(self):
+        from maintainers.services import prepare_company
+
+        empty = Company.objects.create(name="Audited empty company")
+        prepare_company(empty)
+        self.platform.destructive_admin = True
+        self.platform.save(update_fields=["destructive_admin"])
+        self._authenticate(self.platform)
+        path = f"/api/maintainers/companies/{empty.id}/lifecycle/company/{empty.id}/"
+        preview = self.client.get(path)
+        challenge = self.client.post(
+            path,
+            {
+                "action": "challenge",
+                "confirmation": preview.data["confirmation_phrase"],
+                "reason": "Eliminar empresa de auditoría",
+            },
+            format="json",
+        )
+        self.assertEqual(challenge.status_code, 201, challenge.data)
+        executed = self.client.post(
+            path,
+            {
+                "action": "execute",
+                "challenge_id": challenge.data["challenge_id"],
+                "token": challenge.data["token"],
+                "confirmation": preview.data["confirmation_phrase"],
+            },
+            format="json",
+        )
+        self.assertEqual(executed.status_code, 200, executed.data)
+        self.assertFalse(Company.objects.filter(pk=empty.id).exists())
+        event = MaintainerAuditEvent.objects.get(
+            event_type="RESOURCE_HARD_DELETED",
+            resource_type="company",
+            resource_id=str(empty.id),
+        )
+        self.assertEqual(event.actor_id, self.platform.id)
+        self.assertEqual(event.company_id_snapshot, empty.id)
+        self.assertEqual(event.metadata["reason"], "Eliminar empresa de auditoría")
+        self.assertEqual(event.metadata["company_label"], "Audited empty company")
+        self.assertTrue(event.metadata["resource_before"]["name"], event.metadata)
+        self.assertTrue(any(item["relation"] == "payment_methods" for item in event.metadata["deleted_related"]))
+
+    def test_audit_endpoint_filters_and_exposes_human_labels(self):
+        self.platform.destructive_admin = True
+        self.platform.save(update_fields=["destructive_admin"])
+        self._authenticate(self.platform)
+        MaintainerAuditEvent.objects.create(
+            actor=self.platform,
+            company_id_snapshot=self.company.id,
+            event_type="RESOURCE_HARD_DELETED",
+            resource_type="brand",
+            resource_id=str(self.brand.id),
+            metadata={"label": self.brand.name, "company_label": self.company.name, "reason": "Filtro"},
+        )
+        response = self.client.get(
+            "/api/maintainers/audit/",
+            {"event_type": "RESOURCE_HARD_DELETED", "company_id": self.company.id},
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["total"], 1)
+        event = response.data["events"][0]
+        self.assertEqual(event["event_label"], "Eliminación permanente")
+        self.assertEqual(event["company_name"], self.company.name)
+        self.assertEqual(event["resource_label"], self.brand.name)
+
     def test_assigned_role_cannot_be_deleted_until_access_is_reassigned(self):
         self.platform.destructive_admin = True
         self.platform.save(update_fields=["destructive_admin"])

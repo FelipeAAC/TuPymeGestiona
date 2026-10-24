@@ -67,8 +67,11 @@ def get_managed_company(*, user, company_id):
     return company
 
 
+@transaction.atomic
 def log_admin_event(*, company, actor, event_type, resource_type, resource_id="", metadata=None):
-    return AdministrationEvent.objects.create(
+    from maintainers.models import MaintainerAuditEvent
+
+    event = AdministrationEvent.objects.create(
         company=company,
         actor=actor,
         event_type=event_type,
@@ -76,6 +79,16 @@ def log_admin_event(*, company, actor, event_type, resource_type, resource_id=""
         resource_id=str(resource_id or ""),
         metadata=metadata or {},
     )
+
+    MaintainerAuditEvent.objects.create(
+        actor=actor,
+        company_id_snapshot=company.pk,
+        event_type=event_type,
+        resource_type=resource_type,
+        resource_id=str(resource_id or ""),
+        metadata={**(metadata or {}), "company_label": company.name, "administration_event_id": event.pk},
+    )
+    return event
 
 
 def ensure_company_configuration(company):

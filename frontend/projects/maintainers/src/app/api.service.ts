@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { map, Observable, switchMap } from 'rxjs';
 
@@ -18,6 +18,7 @@ import {
   CategoryStatus,
   DirectoryState,
   LifecyclePreview,
+  MaintainerAuditResponse,
   MaintainerContext,
   Product,
   ProductStatus,
@@ -59,6 +60,17 @@ export class MaintainersApi {
 
   context(): Observable<MaintainerContext> {
     return this.http.get<MaintainerContext>('/api/maintainers/context/', { withCredentials: true });
+  }
+
+  audit(filters: Record<string, string> = {}): Observable<MaintainerAuditResponse> {
+    let params = new HttpParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params = params.set(key, value);
+    });
+    return this.http.get<MaintainerAuditResponse>('/api/maintainers/audit/', {
+      params,
+      withCredentials: true,
+    });
   }
 
   companyOverview(companyId: number): Observable<AdministrationOverview> {

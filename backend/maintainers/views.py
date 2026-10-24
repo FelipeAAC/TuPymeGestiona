@@ -1,5 +1,8 @@
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -478,8 +481,70 @@ def lifecycle_view(request, company_id, resource_type, resource_id):
 @api_view(["GET"])
 @permission_classes(PLATFORM_PERMISSIONS)
 def audit_view(request):
-    events = MaintainerAuditEvent.objects.select_related("actor").all()[:100]
-    return Response({"events": MaintainerAuditEventSerializer(events, many=True).data})
+    events = MaintainerAuditEvent.objects.select_related("actor").all()
+    company_id = request.query_params.get("company_id", "").strip()
+    if company_id:
+        try:
+            events = events.filter(company_id_snapshot=int(company_id))
+        except ValueError:
+            return Response({"detail": "company_id debe ser numérico."}, status=status.HTTP_400_BAD_REQUEST)
+
+    actor = request.query_params.get("actor", "").strip()
+    if actor:
+        events = events.filter(
+            Q(actor__email__icontains=actor)
+            | Q(actor__username__icontains=actor)
+            | Q(actor__first_name__icontains=actor)
+            | Q(actor__last_name__icontains=actor)
+        )
+    event_type = request.query_params.get("event_type", "").strip()
+    if event_type:
+        events = events.filter(event_type=event_type)
+    resource_type = request.query_params.get("resource_type", "").strip()
+    if resource_type:
+        events = events.filter(resource_type=resource_type)
+    search = request.query_params.get("q", "").strip()
+    if search:
+        events = events.filter(
+            Q(event_type__icontains=search)
+            | Q(resource_type__icontains=search)
+            | Q(resource_id__icontains=search)
+            | Q(actor__email__icontains=search)
+            | Q(actor__username__icontains=search)
+        )
+
+    for parameter, lookup in (("from", "created_at__gte"), ("to", "created_at__lt")):
+        raw_value = request.query_params.get(parameter, "").strip()
+        if not raw_value:
+            continue
+        parsed = parse_datetime(raw_value)
+        if parsed is None:
+            return Response(
+                {"detail": f"El parámetro {parameter} debe ser una fecha ISO válida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if timezone.is_naive(parsed):
+            parsed = timezone.make_aware(parsed)
+        events = events.filter(**{lookup: parsed})
+
+    try:
+        page = max(1, int(request.query_params.get("page", "1")))
+        page_size = min(200, max(1, int(request.query_params.get("page_size", "50"))))
+    except ValueError:
+        return Response({"detail": "page y page_size deben ser numéricos."}, status=status.HTTP_400_BAD_REQUEST)
+
+    total = events.count()
+    start = (page - 1) * page_size
+    page_events = events.order_by("-created_at", "-id")[start : start + page_size]
+    return Response(
+        {
+            "events": MaintainerAuditEventSerializer(page_events, many=True).data,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "has_next": start + page_size < total,
+        }
+    )
 
 
 @api_view(["GET"])

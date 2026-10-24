@@ -26,6 +26,28 @@ from organizations.models import (
 
 
 CHALLENGE_MINUTES = 5
+AUDIT_ITEM_LIMIT = 200
+
+RELATION_LABELS = {
+    "branches": "sucursales",
+    "memberships": "membresías de empresa",
+    "branch_memberships": "asignaciones de sucursal",
+    "roles": "roles de empresa",
+    "permission_links": "permisos del rol",
+    "assignments": "asignaciones de rol",
+    "categories": "categorías",
+    "brands": "marcas",
+    "products": "productos",
+    "variants": "variantes",
+    "suppliers": "proveedores",
+    "warehouses": "bodegas",
+    "customers": "clientes",
+    "orders": "pedidos",
+    "payment_methods": "métodos de pago",
+    "general_settings": "configuración general",
+    "order_status_configurations": "estados de pedido",
+    "administration_events": "eventos administrativos",
+}
 
 
 RESOURCE_MODELS = {
@@ -150,6 +172,14 @@ def resource_label(resource_type: str, resource) -> str:
     return f"{resource_type} {resource.pk}"
 
 
+def relation_label(relation, related_model) -> str:
+    accessor = relation.get_accessor_name()
+    return RELATION_LABELS.get(
+        accessor,
+        str(related_model._meta.verbose_name_plural).capitalize(),
+    )
+
+
 def confirmation_phrase(resource_type: str, resource_id: int) -> str:
     return f"ELIMINAR {resource_type.upper()} {resource_id}"
 
@@ -173,11 +203,99 @@ def related_impact(resource) -> list[dict[str, int | str]]:
             impact.append(
                 {
                     "relation": relation.get_accessor_name(),
-                    "label": str(related_model._meta.verbose_name_plural),
+                    "label": relation_label(relation, related_model),
                     "count": count,
                 }
             )
     return impact
+
+
+def _safe_value(value):
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _safe_object_label(obj, relation: str) -> str:
+    if relation == "memberships" and hasattr(obj, "user"):
+        return obj.user.get_full_name() or obj.user.email or obj.user.username
+    values = []
+    for field in ("name", "display_name", "code", "sku", "event_type"):
+        value = getattr(obj, field, None)
+        if value not in (None, ""):
+            values.append(str(value))
+            if field in {"name", "display_name", "sku"}:
+                break
+    return " · ".join(values) or f"{obj.__class__.__name__} {obj.pk}"
+
+
+def _safe_object_snapshot(obj, relation: str) -> dict[str, object]:
+    snapshot: dict[str, object] = {
+        "id": obj.pk,
+        "label": _safe_object_label(obj, relation),
+    }
+    for field in (
+        "code",
+        "name",
+        "display_name",
+        "sku",
+        "status",
+        "is_active",
+        "event_type",
+        "resource_type",
+        "resource_id",
+    ):
+        value = getattr(obj, field, None)
+        if value not in (None, ""):
+            snapshot[field] = _safe_value(value)
+    return snapshot
+
+
+def audit_related_snapshot(resource) -> list[dict[str, object]]:
+    """Capture bounded, non-secret summaries before a destructive delete."""
+    snapshots: list[dict[str, object]] = []
+    for relation in resource._meta.related_objects:
+        related_model = relation.related_model
+        accessor = relation.get_accessor_name()
+        field_name = relation.field.name
+        try:
+            if getattr(relation, "one_to_one", False):
+                related = getattr(resource, accessor, None)
+                related_items = [related] if related is not None else []
+                total = len(related_items)
+            else:
+                queryset = related_model._default_manager.filter(**{field_name: resource}).order_by("pk")
+                total = queryset.count()
+                related_items = list(queryset[:AUDIT_ITEM_LIMIT])
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if not total:
+            continue
+        snapshots.append(
+            {
+                "relation": accessor,
+                "label": relation_label(relation, related_model),
+                "count": total,
+                "truncated": total > AUDIT_ITEM_LIMIT,
+                "items": [_safe_object_snapshot(item, accessor) for item in related_items],
+            }
+        )
+    return snapshots
+
+
+def resource_snapshot(resource_type: str, resource) -> dict[str, object]:
+    snapshot = {
+        "id": resource.pk,
+        "resource_type": resource_type,
+        "label": resource_label(resource_type, resource),
+    }
+    for field in ("name", "legal_name", "rut", "code", "sku", "status", "is_active"):
+        value = getattr(resource, field, None)
+        if value not in (None, ""):
+            snapshot[field] = _safe_value(value)
+    return snapshot
 
 
 def _hard_delete_blockers(resource_type: str, impact: list[dict[str, int | str]]):
@@ -368,6 +486,17 @@ def execute_challenge(*, actor, challenge_id: int, token: str, confirmation: str
         raise LifecycleConflict(details["hard_delete_blocked_reason"])
     label = resource_label(challenge.resource_type, resource)
     impact = details["impact"]
+    company = resource if challenge.resource_type == "company" else Company.objects.filter(
+        pk=challenge.company_id_snapshot,
+    ).only("name").first()
+    audit_metadata = {
+        "label": label,
+        "impact": impact,
+        "reason": challenge.reason,
+        "company_label": getattr(company, "name", None) or f"Empresa {challenge.company_id_snapshot}",
+        "resource_before": resource_snapshot(challenge.resource_type, resource),
+        "deleted_related": audit_related_snapshot(resource),
+    }
     try:
         if challenge.resource_type == "company":
             _purge_empty_company(resource)
@@ -384,7 +513,7 @@ def execute_challenge(*, actor, challenge_id: int, token: str, confirmation: str
         event_type="RESOURCE_HARD_DELETED",
         resource_type=challenge.resource_type,
         resource_id=resource_id,
-        metadata={"label": label, "impact": impact, "reason": challenge.reason},
+        metadata=audit_metadata,
     )
     return {
         "resource_type": challenge.resource_type,
