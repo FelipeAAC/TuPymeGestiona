@@ -144,6 +144,7 @@
               <th>Cliente</th>
               <th>Sucursal y bodega</th>
               <th>Estado</th>
+              <th>Pago</th>
               <th>Total</th>
               <th>Actualizado</th>
               <th class="actions-column">Acciones</th>
@@ -169,7 +170,14 @@
                     {{ statusLabel(order.status) }}
                   </span>
                 </td>
-                <td class="money-cell">{{ formatMoney(order.total) }}</td>
+                <td>
+                  <span class="payment-status" [class]="paymentTone(order.payment)">
+                    {{ paymentLabel(order.payment) }}
+                  </span>
+                  @if (order.payment?.last_payment_id) {
+                    <small>MP {{ order.payment?.last_payment_id }}</small>
+                  }
+                </td>                <td class="money-cell">{{ formatMoney(order.total) }}</td>
                 <td>{{ formatDate(order.updated_at) }}</td>
                 <td>
                   <div class="row-actions">
@@ -344,6 +352,22 @@
         }
       </section>
 
+      <section class="payment-summary" aria-label="Estado del pago">
+        <div>
+          <span class="eyebrow">Pago</span>
+          <h3>{{ paymentLabel(order.payment) }}</h3>
+        </div>
+        @if (order.payment; as payment) {
+          <div class="payment-summary-meta">
+            <span>{{ payment.provider_status_detail || 'Estado informado por Mercado Pago' }}</span>
+            @if (payment.last_payment_id) {
+              <small>Operación {{ payment.last_payment_id }}</small>
+            }
+          </div>
+        } @else {
+          <span>Este pedido no tiene un checkout online registrado.</span>
+        }
+      </section>
       @if (order.notes) {
         <div class="notes-box">
           <span>Notas</span>

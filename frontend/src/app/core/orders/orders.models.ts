@@ -2,6 +2,27 @@ export type OrderStatus = 'DRAFT' | 'CONFIRMED' | 'PREPARED' | 'DELIVERED' | 'CA
 
 export type OrderMovementKind = 'CONFIRMATION' | 'CANCELLATION';
 
+export type OrderPaymentStatus =
+  | 'CREATING'
+  | 'READY'
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'CANCELLED'
+  | 'REFUNDED'
+  | 'UNCERTAIN';
+
+export interface OrderPaymentSummary {
+  id: number;
+  status: OrderPaymentStatus;
+  provider_status: string;
+  provider_status_detail: string;
+  last_payment_id: string;
+  amount: string;
+  currency: string;
+  updated_at: string;
+  sale: number | null;
+}
 export interface OrderStockMovement {
   id: number;
   kind: OrderMovementKind;
@@ -37,6 +58,7 @@ export interface Order {
   updated_at: string;
   items: OrderItem[];
   total: string;
+  payment: OrderPaymentSummary | null;
 }
 
 export interface OrderPagination {

@@ -280,6 +280,25 @@ td small,
   white-space: nowrap;
 }
 
+.payment-status {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #526173;
+  background: #eef2f7;
+  font-size: 0.72rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.payment-approved { color: #176246; background: #ddf4ea; }
+.payment-pending,
+.payment-ready,
+.payment-creating,
+.payment-uncertain { color: #8a5a00; background: #fff3d4; }
+.payment-rejected,
+.payment-cancelled { color: #93352f; background: #fee9e7; }
+.payment-refunded { color: #285e8e; background: #e1effc; }
 .status-pill {
   display: inline-flex;
   border-radius: 999px;
@@ -404,6 +423,22 @@ td small,
   background: #f8fafc;
 }
 
+.payment-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 20px 0;
+  border: 1px solid #d5e8e0;
+  border-radius: 16px;
+  padding: 16px;
+  color: #315b50;
+  background: #f0faf6;
+}
+
+.payment-summary h3 { margin: 5px 0 0; color: #176246; }
+.payment-summary-meta { display: grid; gap: 4px; text-align: right; }
+.payment-summary-meta small { color: #668177; }
 .detail-meta span,
 .notes-box span {
   display: block;

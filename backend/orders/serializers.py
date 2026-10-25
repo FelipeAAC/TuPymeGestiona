@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from catalog.models import ProductVariant
 from customers.models import Customer
+from external_payments.models import MercadoPagoCheckout
 from organizations.models import Branch, Warehouse
 
 from .models import Order, OrderInventoryMovement, OrderItem
@@ -111,6 +112,26 @@ class OrderSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
+    payment = serializers.SerializerMethodField()
+
+    def get_payment(self, obj):
+        if not self.context.get("include_payment", False):
+            return None
+        try:
+            checkout = obj.mercado_pago_checkout
+        except MercadoPagoCheckout.DoesNotExist:
+            return None
+        return {
+            "id": checkout.id,
+            "status": checkout.status,
+            "provider_status": checkout.provider_status,
+            "provider_status_detail": checkout.provider_status_detail,
+            "last_payment_id": checkout.last_payment_id,
+            "amount": format(checkout.amount, ".2f"),
+            "currency": checkout.currency,
+            "updated_at": checkout.updated_at,
+            "sale": checkout.sale_id,
+        }
     class Meta:
         model = Order
         fields = (
@@ -130,6 +151,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "updated_at",
             "items",
             "total",
+            "payment",
         )
         read_only_fields = fields
 

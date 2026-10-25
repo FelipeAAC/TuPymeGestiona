@@ -403,6 +403,24 @@ export class Orders implements OnDestroy {
     return this.actionOrderId() === order.id && this.actionTransition() === transition;
   }
 
+  paymentLabel(payment: Order['payment']): string {
+    if (!payment) return 'Sin pago online';
+    return ({
+      CREATING: 'Preparando pago',
+      READY: 'Listo para pagar',
+      PENDING: 'Pago pendiente',
+      APPROVED: 'Pago aprobado',
+      REJECTED: 'Pago rechazado',
+      CANCELLED: 'Pago cancelado',
+      REFUNDED: 'Pago devuelto',
+      UNCERTAIN: 'Pago por verificar',
+    } as const)[payment.status];
+  }
+
+  paymentTone(payment: Order['payment']): string {
+    if (!payment) return 'payment-none';
+    return `payment-${payment.status.toLowerCase()}`;
+  }
   statusLabel(status: OrderStatus): string {
     const labels: Record<OrderStatus, string> = {
       DRAFT: 'Borrador',

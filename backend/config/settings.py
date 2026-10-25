@@ -205,3 +205,8 @@ MERCADO_PAGO_WEBHOOK_URL = os.getenv("MERCADO_PAGO_WEBHOOK_URL", "").strip()
 MERCADO_PAGO_HTTP_TIMEOUT = float(os.getenv("MERCADO_PAGO_HTTP_TIMEOUT", "15"))
 MERCADO_PAGO_USE_SANDBOX_INIT_POINT = env_bool("MERCADO_PAGO_USE_SANDBOX_INIT_POINT", False)
 MERCADO_PAGO_ACCEPT_LIVE_MODE = env_bool("MERCADO_PAGO_ACCEPT_LIVE_MODE", False)
+MERCADO_PAGO_TEST_USER_IDS = frozenset(
+    value.strip()
+    for value in os.getenv("MERCADO_PAGO_TEST_USER_IDS", "").split(",")
+    if value.strip()
+)

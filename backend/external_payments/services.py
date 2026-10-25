@@ -228,16 +228,48 @@ def _decimal(value):
         return None
 
 
-def _verify_test_mode(payload):
-    if settings.MERCADO_PAGO_ACCEPT_LIVE_MODE:
-        return
-    if bool(payload.get("live_mode")):
-        raise MercadoPagoConflictError("Se rechazó un pago live_mode porque este slice está configurado solo para pruebas.")
+def _parse_boolean(value, *, field):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off", ""}:
+            return False
+    raise MercadoPagoConflictError(f"Mercado Pago devolviÃ³ {field} con un valor invÃ¡lido.")
+def _configured_test_user_ids():
+    return {str(value).strip() for value in getattr(settings, "MERCADO_PAGO_TEST_USER_IDS", ()) if str(value).strip()}
 
+
+def _payload_collector_id(payload):
+    for key in ("collector_id", "user_id", "seller_id"):
+        value = payload.get(key)
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
+def _verify_test_mode(payload):
+    live_mode = _parse_boolean(payload.get("live_mode"), field="live_mode")
+    if not live_mode:
+        return False
+    if settings.MERCADO_PAGO_ACCEPT_LIVE_MODE:
+        return True
+    collector_id = _payload_collector_id(payload)
+    if collector_id and collector_id in _configured_test_user_ids():
+        return True
+    raise MercadoPagoConflictError(
+        "Mercado Pago informÃ³ un pago live_mode sin un vendedor de prueba autorizado."
+    )
 
 @transaction.atomic
 def apply_payment_payload(*, payload, correlation_id=""):
-    _verify_test_mode(payload)
+    live_mode = _verify_test_mode(payload)
     external_reference = str(payload.get("external_reference") or "")
     checkout = MercadoPagoCheckout.objects.select_for_update().filter(external_reference=external_reference).select_related(
         "order", "portal_account__user", "portal_account__customer", "sale"
@@ -276,7 +308,7 @@ def apply_payment_payload(*, payload, correlation_id=""):
             "status_detail": str(payload.get("status_detail") or "")[:120],
             "transaction_amount": amount,
             "currency_id": currency[:3],
-            "live_mode": bool(payload.get("live_mode")),
+            "live_mode": live_mode,
             "payload_hash": payload_hash,
             "date_created": parse_datetime(str(payload.get("date_created") or "")) if payload.get("date_created") else None,
             "date_approved": parse_datetime(str(payload.get("date_approved") or "")) if payload.get("date_approved") else None,

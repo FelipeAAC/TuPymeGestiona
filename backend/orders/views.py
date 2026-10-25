@@ -132,6 +132,7 @@ def _get_authorized_orders(*, user, company):
         "warehouse",
         "customer",
         "created_by",
+        "mercado_pago_checkout",
     ).prefetch_related(
         "items__variant__product",
         "items__stock_movements__inventory_movement",
@@ -369,6 +370,7 @@ def _list_orders(request):
             "orders": OrderSerializer(
                 order_page.object_list,
                 many=True,
+                context={"include_payment": True},
             ).data,
             "pagination": {
                 "count": paginator.count,
@@ -455,7 +457,7 @@ def _create_order(request):
 
     return Response(
         {
-            "order": OrderSerializer(order).data,
+            "order": OrderSerializer(order, context={"include_payment": True}).data,
         },
         status=status.HTTP_201_CREATED,
     )
@@ -486,7 +488,7 @@ def _retrieve_order(request, *, order_id):
 
     return Response(
         {
-            "order": OrderSerializer(order).data,
+            "order": OrderSerializer(order, context={"include_payment": True}).data,
         }
     )
 
@@ -542,7 +544,7 @@ def _transition_order(request, *, order_id, transition):
 
     return Response(
         {
-            "order": OrderSerializer(order).data,
+            "order": OrderSerializer(order, context={"include_payment": True}).data,
         }
     )
 
@@ -638,6 +640,6 @@ def _update_order(request, *, order_id):
 
     return Response(
         {
-            "order": OrderSerializer(order).data,
+            "order": OrderSerializer(order, context={"include_payment": True}).data,
         }
     )
