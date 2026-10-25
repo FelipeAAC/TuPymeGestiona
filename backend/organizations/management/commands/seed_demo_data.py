@@ -34,32 +34,146 @@ from sales.services import create_pos_sale, create_sale, record_payment
 
 User = get_user_model()
 
-COMPANY_NAMES = [
-    ("Mercado Aurora", "Alimentos y productos gourmet"),
-    ("Casa Nativa", "Hogar, decoración y bienestar"),
-    ("TecnoSur", "Tecnología y accesorios"),
-    ("Verde Vivo", "Productos sustentables y jardinería"),
-    ("Taller Andino", "Diseño, vestuario y manufactura local"),
-    ("Ruta Café", "Café, té y equipamiento"),
-    ("Mundo Mascota", "Alimentos y accesorios para mascotas"),
-    ("Bazar Central", "Comercio minorista multiproducto"),
+DEMO_ACCOUNTS = {
+    "owner": "owner@demo-local-2026.tupyme.local",
+    "customer": "cliente@demo-local-2026.tupyme.local",
+    "platform_admin": "admin@demo-local-2026.tupyme.local",
+}
+DEMO_ACCOUNT_LOCAL_PARTS = {
+    "owner": "owner",
+    "customer": "cliente",
+    "platform_admin": "admin",
+}
+
+COMPANY_PROFILES = [
+    {
+        "name": "TecnoSur",
+        "category": "technology",
+        "activity": "Tecnología, computación y accesorios",
+        "brands": ["Lenovo", "Logitech", "Samsung", "Xiaomi"],
+        "categories": ["Computación", "Accesorios", "Audio", "Conectividad", "Ofertas"],
+        "product_bases": [
+            "Notebook IdeaPad 3",
+            "Monitor Smart 27",
+            "Mouse inalámbrico MX",
+            "Teclado mecánico compacto",
+            "Audífonos Redmi Buds",
+            "Tablet Galaxy Tab",
+            "Disco SSD portátil",
+            "Webcam Full HD",
+            "Cargador USB-C",
+            "Router Wi-Fi 6",
+            "Parlante Bluetooth",
+            "Hub multipuerto USB-C",
+        ],
+        "image_urls": [
+            "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=640&q=80",
+            "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=640&q=80",
+        ],
+    },
+    {
+        "name": "Bienestar Vital",
+        "category": "health",
+        "activity": "Cuidado personal, bienestar y vida saludable",
+        "brands": ["Philips", "Omron", "Oral-B", "Nivea"],
+        "categories": ["Cuidado personal", "Higiene", "Bienestar", "Accesorios", "Ofertas"],
+        "product_bases": [
+            "Monitor de presión arterial",
+            "Cepillo eléctrico recargable",
+            "Masajeador portátil",
+            "Balanza digital",
+            "Kit de cuidado facial",
+            "Termómetro digital",
+            "Humidificador compacto",
+            "Set de higiene oral",
+            "Espejo con luz LED",
+            "Botella térmica deportiva",
+            "Lámpara de lectura",
+            "Organizador de cuidado diario",
+        ],
+        "image_urls": [
+            "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=640&q=80",
+            "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=640&q=80",
+        ],
+    },
+    {
+        "name": "Casa Nativa",
+        "category": "home",
+        "activity": "Hogar, cocina y decoración funcional",
+        "brands": ["IKEA", "Bosch", "Midea", "Tefal"],
+        "categories": ["Cocina", "Organización", "Decoración", "Electrohogar", "Ofertas"],
+        "product_bases": [
+            "Lámpara de escritorio",
+            "Set de almacenamiento",
+            "Cafetera compacta",
+            "Sartén antiadherente",
+            "Aspiradora vertical",
+            "Organizador modular",
+            "Licuadora personal",
+            "Set de vasos de vidrio",
+            "Repisa flotante",
+            "Hervidor eléctrico",
+            "Cojín decorativo",
+            "Batería de cocina",
+        ],
+        "image_urls": [
+            "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=640&q=80",
+            "https://images.unsplash.com/photo-1556912167-f556f1f39fdf?auto=format&fit=crop&w=640&q=80",
+        ],
+    },
+    {
+        "name": "Verde Vivo",
+        "category": "sustainability",
+        "activity": "Jardinería, reutilización y productos sustentables",
+        "brands": ["Tramontina", "Stanley", "Kärcher", "Bialetti"],
+        "categories": ["Jardinería", "Hidratación", "Limpieza", "Vida sustentable", "Ofertas"],
+        "product_bases": [
+            "Kit de herramientas de jardín",
+            "Botella térmica reutilizable",
+            "Macetero de interior",
+            "Compostera doméstica",
+            "Regadera metálica",
+            "Set de semillas de temporada",
+            "Hidrolavadora compacta",
+            "Taza reutilizable",
+            "Guantes de jardinería",
+            "Contenedor hermético",
+            "Cafetera italiana",
+            "Set de bolsas reutilizables",
+        ],
+        "image_urls": [
+            "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=640&q=80",
+            "https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=640&q=80",
+        ],
+    },
+    {
+        "name": "Taller Andino",
+        "category": "workshop",
+        "activity": "Vestuario, outdoor y diseño local",
+        "brands": ["Columbia", "Vans", "Levi's", "The North Face"],
+        "categories": ["Vestuario", "Calzado", "Outdoor", "Accesorios", "Ofertas"],
+        "product_bases": [
+            "Chaqueta impermeable",
+            "Zapatilla urbana",
+            "Jeans clásico",
+            "Polar térmico",
+            "Mochila de uso diario",
+            "Gorro de lana",
+            "Polera de algodón",
+            "Botella para trekking",
+            "Bolso cruzado",
+            "Pantalón outdoor",
+            "Cinturón de cuero",
+            "Calcetines térmicos",
+        ],
+        "image_urls": [
+            "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=640&q=80",
+            "https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?auto=format&fit=crop&w=640&q=80",
+        ],
+    },
 ]
 
-CATEGORY_NAMES = [
-    "Destacados",
-    "Novedades",
-    "Uso diario",
-    "Premium",
-    "Ofertas",
-    "Temporada",
-]
-
-BRAND_NAMES = ["Luma", "Norte", "Küyen", "Brava", "Origen", "Punto", "Nova", "Raíz"]
-PRODUCT_BASES = [
-    "Set artesanal", "Pack esencial", "Edición clásica", "Selección premium",
-    "Kit urbano", "Línea natural", "Colección hogar", "Serie profesional",
-    "Pack familiar", "Edición compacta", "Modelo activo", "Selección local",
-]
+COMPANY_NAMES = [(profile["name"], profile["activity"]) for profile in COMPANY_PROFILES]
 FIRST_NAMES = ["Sofía", "Martín", "Valentina", "Tomás", "Camila", "Diego", "Antonia", "Lucas", "Isidora", "Benjamín"]
 LAST_NAMES = ["Rojas", "Muñoz", "Soto", "Contreras", "Silva", "Martínez", "Sepúlveda", "Pérez", "González", "Torres"]
 COMMUNES = ["Providencia", "Ñuñoa", "Las Condes", "Santiago", "Maipú", "La Florida"]
@@ -109,13 +223,14 @@ class Command(BaseCommand):
         if not Permission.objects.exists():
             raise CommandError("No existen permisos base. Revisa/aplica las migraciones de seeds.")
 
-        companies_count = max(1, min(options["companies"], len(COMPANY_NAMES)))
+        companies_count = max(1, min(options["companies"], len(COMPANY_PROFILES)))
         products_count = max(4, min(options["products"], 120))
         customers_count = max(5, min(options["customers"], 250))
         orders_count = max(4, min(options["orders"], 120))
         seed = _slug(options["seed"])
         password = options["password"].strip() or "DemoLocal2026!"
         marker_domain = f"demo-{seed}.tupyme.local"
+        account_emails = self._account_emails(seed)
 
         existing = Company.objects.filter(contact_email__endswith=f"@{marker_domain}").count()
         if existing:
@@ -133,20 +248,30 @@ class Command(BaseCommand):
         rng = random.Random(seed)
         with transaction.atomic():
             owner = self._user(
-                email=f"owner@{marker_domain}",
+                email=account_emails["owner"],
                 password=password,
                 first_name="Demo",
                 last_name="Propietario",
             )
             client = self._user(
-                email=f"cliente@{marker_domain}",
+                email=account_emails["customer"],
                 password=password,
                 first_name="Demo",
                 last_name="Cliente",
             )
+            platform_admin = self._user(
+                email=account_emails["platform_admin"],
+                password=password,
+                first_name="Admin",
+                last_name="Plataforma",
+            )
+            platform_admin.platform_admin = True
+            platform_admin.save(update_fields=("platform_admin",))
 
             for index in range(companies_count):
-                name, activity = COMPANY_NAMES[index]
+                profile = COMPANY_PROFILES[index]
+                name = profile["name"]
+                activity = profile["activity"]
                 company = create_company_for_user(
                     user=owner,
                     company_data={
@@ -165,12 +290,13 @@ class Command(BaseCommand):
                 branches = self._branches(company, index)
                 warehouses = self._warehouses(company, branches)
                 self._staff(company, branches, seed, index, password)
-                categories = self._categories(company)
-                brands = self._brands(company)
+                categories = self._categories(company, profile)
+                brands = self._brands(company, profile)
                 variants = self._catalog(
                     company,
                     categories,
                     brands,
+                    profile,
                     products_count,
                     index,
                     rng,
@@ -325,32 +451,35 @@ class Command(BaseCommand):
                 branch=None,
             )
 
-    def _categories(self, company):
+    def _categories(self, company, profile):
         return [
             Category.objects.create(
                 company=company,
                 name=name,
                 status=Category.Status.ACTIVE,
             )
-            for name in CATEGORY_NAMES
+            for name in profile["categories"]
         ]
 
-    def _brands(self, company):
-        return [Brand.objects.create(company=company, name=name) for name in BRAND_NAMES]
+    def _brands(self, company, profile):
+        return [Brand.objects.create(company=company, name=name) for name in profile["brands"]]
 
-    def _catalog(self, company, categories, brands, count, company_index, rng):
+    def _catalog(self, company, categories, brands, profile, count, company_index, rng):
         variants = []
         for idx in range(count):
+            brand = brands[idx % len(brands)]
+            product_base = profile["product_bases"][idx % len(profile["product_bases"])]
             product = Product.objects.create(
                 company=company,
                 category=categories[idx % len(categories)],
-                brand=brands[idx % len(brands)],
-                name=f"{PRODUCT_BASES[idx % len(PRODUCT_BASES)]} {idx + 1:02d}",
+                brand=brand,
+                name=f"{brand} {product_base}",
                 description=(
-                    "Producto demo con información comercial completa para probar catálogo, "
-                    "inventario, pedidos, ventas y reportes dentro de TuPymeGestiona."
+                    f"Referencia académica de catálogo para {profile['activity'].lower()}. "
+                    f"Producto de referencia: {brand} {product_base}. "
+                    "Úsalo para probar catálogo, inventario, pedidos, ventas y reportes."
                 ),
-                image_url=f"https://picsum.photos/seed/tupyme-{company_index}-{idx}/640/420",
+                image_url=profile["image_urls"][idx % len(profile["image_urls"])],
                 status=Product.Status.ACTIVE,
             )
             base = Decimal(str(3990 + (idx % 12) * 1750 + company_index * 220)).quantize(Decimal("0.01"))
@@ -574,9 +703,17 @@ class Command(BaseCommand):
             SaleEvent.objects.filter(sale=sale).update(created_at=occurred_at)
 
     def _print_credentials(self, seed, password):
-        marker_domain = f"demo-{seed}.tupyme.local"
+        account_emails = self._account_emails(seed)
         self.stdout.write("\nCredenciales DEMO locales:")
-        self.stdout.write(f"  Propietario: owner@{marker_domain}")
-        self.stdout.write(f"  Cliente:     cliente@{marker_domain}")
+        self.stdout.write(f"  Propietario: {account_emails['owner']}")
+        self.stdout.write(f"  Cliente:     {account_emails['customer']}")
+        self.stdout.write(f"  Mantenedor:  {account_emails['platform_admin']}")
         self.stdout.write(f"  Contraseña:  {password}")
         self.stdout.write("Estas credenciales son únicamente para desarrollo local.")
+
+    def _account_emails(self, seed):
+        marker_domain = f"demo-{seed}.tupyme.local"
+        return {
+            role: f"{local_part}@{marker_domain}"
+            for role, local_part in DEMO_ACCOUNT_LOCAL_PARTS.items()
+        }

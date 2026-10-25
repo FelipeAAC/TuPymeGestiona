@@ -1,86 +1,64 @@
 # TuPymeGestiona
 
-TuPymeGestiona es una plataforma web multiempresa orientada a pequeñas y medianas empresas (PYMES) que combina **gestión operativa** y **experiencia de compra para clientes finales** dentro de un mismo ecosistema.
+TuPymeGestiona es una plataforma web para que pequeñas y medianas empresas
+puedan administrar su operación y, al mismo tiempo, vender a sus clientes
+desde un portal común.
 
-El objetivo del proyecto es que distintas PYMES puedan administrar su operación —productos, categorías, inventario, bodegas, clientes, pedidos, ventas, pagos, usuarios, roles, facturación electrónica, reportes y dashboard— mientras los clientes finales disponen de un Portal Cliente desde el cual pueden descubrir tiendas, consultar catálogos, comprar y revisar su historial.
+Una persona tiene una sola cuenta. Con esa cuenta puede comprar en distintas
+PYMES, crear su propio negocio y entrar a la gestión de las empresas donde
+tiene permisos. El proyecto también incluye una aplicación separada para
+mantenedores globales.
 
-La plataforma no busca ser un clon de un marketplace masivo. La idea central es ofrecer una solución accesible para varias PYMES, donde cada comercio mantiene su propio contexto, información y permisos, pero comparte una infraestructura común y una experiencia de usuario coherente.
+La idea no es construir un marketplace gigante. La idea es entregar una base
+clara para que una PYME pueda manejar productos, inventario, pedidos, ventas,
+clientes, usuarios, permisos y pagos desde un mismo lugar.
 
-Una decisión importante del diseño actual es **persona primero**: una persona crea una única cuenta y, con esa misma identidad, puede comprar en distintas tiendas, crear posteriormente su propia PYME, administrar una o varias empresas y cambiar entre modo cliente y modo gestión **sin cerrar sesión**.
-
----
-
-## ¿Qué es TuPymeGestiona?
-
-TuPymeGestiona cubre dos experiencias principales.
+## Qué incluye
 
 ### Para una PYME
 
-Una empresa puede administrar:
-
-- empresa y sucursales;
-- usuarios, membresías, roles y permisos;
-- categorías, marcas, productos y variantes;
-- proveedores;
-- bodegas e inventario;
-- movimientos y transferencias de stock;
-- clientes;
-- pedidos y sus estados;
+- empresas, sucursales, bodegas y usuarios;
+- roles, permisos y membresías por empresa;
+- categorías, marcas, productos, variantes y proveedores;
+- inventario, movimientos y transferencias;
+- clientes, pedidos y estados de pedido;
 - ventas derivadas de pedidos y ventas directas POS;
-- pagos internos en efectivo, transferencia y canales externos configurados;
-- facturación electrónica y RIDE;
-- reportes PDF/XLS;
-- indicadores de dashboard;
-- parámetros generales no secretos;
-- mantenedores desde una segunda aplicación Angular independiente.
+- pagos internos en efectivo y transferencia;
+- reportes y dashboard;
+- facturación electrónica preparada para el flujo SII;
+- Mercado Pago Checkout Pro para probar pagos externos.
 
-### Para un cliente final
+### Para un cliente
 
-Una persona puede:
+- registro con una identidad única;
+- catálogo de distintas tiendas;
+- carrito y creación de pedidos;
+- historial de compras;
+- pago con Mercado Pago;
+- creación posterior de una PYME con la misma cuenta.
 
-- crear una cuenta sin elegir tienda;
-- iniciar sesión y entrar al Portal Cliente;
-- explorar múltiples PYMES;
-- consultar catálogo y detalle de productos;
-- realizar pedidos;
-- revisar historial y detalle de compras;
-- iniciar pagos Mercado Pago cuando la integración esté activada;
-- crear posteriormente una PYME utilizando la misma cuenta.
+### Para el administrador global
 
----
+La aplicación secundaria de mantenedores permite administrar empresas,
+catálogos, usuarios, roles y revisar la auditoría global. Solo entra una cuenta
+marcada explícitamente como `PLATFORM_ADMIN`.
 
-## Cómo levantar el proyecto localmente
+## Antes de empezar
 
-Los comandos de esta sección parten de la raíz `TuPymeGestiona` y usan
-`pushd`/`popd` para evitar errores de ruta. Cada aplicación debe ejecutarse en
-su propia terminal.
+Este proyecto está pensado para Windows 10/11 y utiliza tres programas locales:
 
-### 1. Requisitos previos
+- Python 3.13 o compatible con Django 6.1;
+- MySQL 8.x;
+- Node.js 22/24 y npm;
+- Git y PowerShell.
 
-Se recomienda disponer de:
+Necesitas tener MySQL iniciado antes de ejecutar Django. Si el servicio de
+MySQL está apagado, las migraciones y el seed van a fallar aunque el código
+esté correcto.
 
-- **Windows 10/11** para usar los ejecutables `.cmd` incluidos;
-- **Python 3.13** o una versión compatible con Django 6.1;
-- **MySQL** para la base de datos real/local del proyecto;
-- **Node.js 22.22.3+, 24.15.0+** o una release posterior soportada por Angular 22;
-- **npm 11.17.0**, declarado en `frontend/package.json` para instalaciones reproducibles;
-- **Git**.
-- **PowerShell 5.1+** (incluido en Windows) para los scripts de preparación y carga.
+## 1. Descargar el proyecto
 
-El backend usa las dependencias fijadas en:
-
-```text
-backend/requirements.txt
-```
-
-El frontend usa:
-
-```text
-frontend/package.json
-frontend/package-lock.json
-```
-
-### 2. Clonar el repositorio
+Desde una consola:
 
 ```cmd
 git clone https://github.com/FelipeAAC/TuPymeGestiona.git
@@ -88,9 +66,13 @@ cd TuPymeGestiona
 git checkout develop-v2
 ```
 
-### 3. Configurar el backend
+Nota: `develop-v2` es la rama que usa el grupo para trabajar y probar los
+avances actuales.
 
-Desde la raíz:
+## 2. Preparar el backend
+
+Primero crea el entorno virtual. Este entorno guarda las dependencias de
+Python separadas de las demás aplicaciones del computador.
 
 ```cmd
 pushd backend
@@ -99,99 +81,123 @@ py -3 -m venv .venv
 popd
 ```
 
-Crear `backend/.env`. Este archivo es local y no debe versionarse.
-
-Ejemplo mínimo para MySQL:
+Ahora crea el archivo `backend/.env`. No copies secretos reales al repositorio.
+Para una instalación local puedes comenzar con esto:
 
 ```text
-DJANGO_SECRET_KEY=una-clave-local-larga
+DJANGO_SECRET_KEY=cambia-esta-clave-local
 DJANGO_DEBUG=true
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+
 DB_ENGINE=mysql
 DB_NAME=tupymegestiona
-DB_USER=tu_usuario
-DB_PASSWORD=tu_password
+DB_USER=tupymegestiona_app
+DB_PASSWORD=tu_password_mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
-```
 
-Variables opcionales relevantes:
-
-```text
 DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:4200,http://127.0.0.1:4200,http://localhost:4300,http://127.0.0.1:4300
 DJANGO_SESSION_COOKIE_SECURE=false
 DJANGO_CSRF_COOKIE_SECURE=false
 DJANGO_SECURE_SSL_REDIRECT=false
-DB_CONN_MAX_AGE=60
+
+MERCADO_PAGO_ENABLED=true
+MERCADO_PAGO_ACCESS_TOKEN_ENV=MERCADO_PAGO_ACCESS_TOKEN
+MERCADO_PAGO_WEBHOOK_SECRET_ENV=MERCADO_PAGO_WEBHOOK_SECRET
+MERCADO_PAGO_ACCESS_TOKEN=REEMPLAZA_CON_ACCESS_TOKEN_DE_PRUEBA
+MERCADO_PAGO_WEBHOOK_SECRET=REEMPLAZA_CON_CLAVE_DE_WEBHOOKS
+MERCADO_PAGO_API_BASE_URL=https://api.mercadopago.com
+MERCADO_PAGO_RETURN_BASE_URL=https://URL_PUBLICA_DEL_FRONTEND
+MERCADO_PAGO_WEBHOOK_URL=https://URL_PUBLICA_DEL_BACKEND/api/portal/payments/mercado-pago/webhook/
+MERCADO_PAGO_HTTP_TIMEOUT=15
+MERCADO_PAGO_USE_SANDBOX_INIT_POINT=false
+MERCADO_PAGO_ACCEPT_LIVE_MODE=false
+MERCADO_PAGO_TEST_USER_IDS=ID_DEL_SELLER_DE_PRUEBA
 ```
 
-### Base nueva
+Mercado Pago está implementado como parte del proyecto. Para probarlo se
+necesitan credenciales de prueba y dos URLs HTTPS públicas; más abajo está el
+procedimiento completo.
 
-Si estás creando una base vacía para desarrollo, primero puedes crearla con el
-archivo SQL incluido:
+## 3. Crear y poblar la base de datos
+
+### Opción recomendada: base limpia
+
+Si quieres empezar de cero, este comando elimina la base local y la vuelve a
+crear. Úsalo solo en tu instalación académica:
+
+```powershell
+Get-Content .\database\00_reset_database.sql | mysql -u root -p
+```
+
+Si no quieres borrar una base existente, usa solamente:
 
 ```powershell
 Get-Content .\database\01_create_database.sql | mysql -u root -p
 ```
 
-El archivo crea `tupymegestiona` con `utf8mb4`. Si usarás otro nombre, cambia
-el identificador del SQL y usa el mismo valor en `DB_NAME` dentro de
-`backend/.env`. Después aplica las migraciones:
+Ahora valida Django y aplica las migraciones:
 
 ```cmd
 pushd backend
 .\.venv\Scripts\python.exe manage.py check
-.\.venv\Scripts\python.exe manage.py migrate
+.\.venv\Scripts\python.exe manage.py migrate --noinput
 popd
 ```
 
-### Base existente
+Nota: las migraciones crean la estructura y los permisos base. Todavía no hay
+empresas, productos ni clientes hasta ejecutar el seed.
 
-Si ya tienes una base MySQL utilizada durante el desarrollo, **no apliques migraciones a ciegas**. Revisa primero el plan y realiza un backup:
+Carga el dataset académico:
 
-```cmd
-pushd backend
-.\.venv\Scripts\python.exe manage.py showmigrations
-.\.venv\Scripts\python.exe manage.py migrate --plan
-popd
+```powershell
+.\database\02_poblar_demo.ps1 -Password "DemoLocal2026!"
 ```
 
-Si el plan muestra migraciones pendientes, aplícalas después del backup con
-`manage.py migrate` y vuelve a revisar el estado de la aplicación.
+El seed crea empresas de tecnología, salud y bienestar, hogar,
+sustentabilidad y vestuario/taller. Usa productos y marcas de referencia para
+que los catálogos tengan sentido al recorrer la aplicación.
 
-### 4. Levantar Django
+También crea estas cuentas locales:
+
+| Tipo | Usuario | Contraseña |
+|---|---|---|
+| Cliente | `cliente@demo-local-2026.tupyme.local` | `DemoLocal2026!` |
+| Propietario de PYME | `owner@demo-local-2026.tupyme.local` | `DemoLocal2026!` |
+| Administrador global | `admin@demo-local-2026.tupyme.local` | `DemoLocal2026!` |
+
+Estas credenciales sirven solo para la base demo local. Si usas otro valor en
+`--seed`, cambia también el dominio que imprime el comando al final.
+
+El seed es determinista. Si lo ejecutas otra vez con el mismo `--seed` y la
+misma cantidad de empresas, no duplica el dataset.
+
+## 4. Levantar las tres aplicaciones
+
+Cada aplicación va en su propia consola.
+
+### Consola 1: backend Django
 
 ```cmd
-pushd backend
+cd /d "C:\ruta\TuPymeGestiona\backend"
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
-popd
 ```
 
-Backend:
+API local:
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:8000/api
 ```
 
-### 5. Instalar frontend
-
-En otra terminal:
+### Consola 2: aplicación principal
 
 ```cmd
-pushd frontend
+cd /d "C:\ruta\TuPymeGestiona\frontend"
 npm ci
-popd
-```
-
-### 6. Levantar aplicación principal
-
-```cmd
-pushd frontend
 npm start
-popd
 ```
 
-Disponible en:
+Aplicación principal:
 
 ```text
 http://localhost:4200
@@ -200,875 +206,261 @@ http://localhost:4200
 Rutas útiles:
 
 ```text
-/portal                         Portal Cliente
-/login                          Login
-/portal/account                 Cuenta e historial
-/portal/seller-onboarding       Crear una PYME
-/app/dashboard                  Dashboard de gestión
-/app/products                   Productos
-/app/inventory                  Inventario
-/app/orders                     Pedidos
-/app/sales                      Ventas de pedidos y caja POS
-/app/reports                    Reportes
+/portal
+/login
+/portal/account
+/portal/seller-onboarding
+/app/dashboard
+/app/products
+/app/inventory
+/app/orders
+/app/sales
+/app/reports
 ```
 
-### 7. Levantar aplicación secundaria de mantenedores
-
-En una tercera terminal:
+### Consola 3: mantenedores
 
 ```cmd
-pushd frontend
+cd /d "C:\ruta\TuPymeGestiona\frontend"
 npm run start:maintainers
-popd
 ```
 
-Disponible en:
+Aplicación secundaria:
 
 ```text
 http://localhost:4300
 ```
 
-La aplicación `maintainers` tiene entrada, `sourceRoot`, servidor y bundle propios, pero comparte el mismo backend Django, sesión, permisos, contexto de empresa y MySQL.
+Para entrar aquí usa:
 
-### Clasificación de cuentas y aplicaciones
+```text
+admin@demo-local-2026.tupyme.local
+DemoLocal2026!
+```
 
-El acceso se calcula en el backend a partir de capacidades acumulables. Una
-persona conserva su cuenta y puede adquirir nuevas capacidades; no se crean
-usuarios duplicados por cada tienda o empresa.
+La cuenta de mantenedores utiliza el mismo backend y la misma sesión Django,
+pero tiene una capacidad global distinta a la de una PYME normal.
 
-| Capacidad | Cómo se obtiene | Aplicación y alcance |
-|---|---|---|
-| `CUSTOMER` | Relación de Portal Cliente activa con una tienda (se crea al registrarse con tienda o al confirmar el primer pedido) | Portal Cliente (`/portal`), catálogos, compras, cuenta e historial |
-| `COMPANY_ADMIN` | Membresía activa con un rol que tenga `administration.manage` | Gestión de las PYMES autorizadas (`/app/*`), siempre aislada por empresa y sucursal |
-| `PLATFORM_ADMIN` | Marcación explícita por un operador mediante `promote_platform_admin` | Aplicación secundaria de mantenedores (`:4300`) y administración transversal de empresas |
-
-Las capacidades no son excluyentes. Si un `CUSTOMER` crea su propia PYME en
-`/portal/seller-onboarding`, conserva el Portal Cliente y además recibe
-`COMPANY_ADMIN` para esa empresa. Una cuenta con más de una capacidad entra al
-selector de aplicación; una cuenta `PLATFORM_ADMIN` abre por defecto la
-aplicación de mantenedores. Ser `is_superuser` por sí solo no concede acceso a
-la aplicación secundaria.
-
-La aplicación de mantenedores nunca se habilita desde el frontend. La ruta
-`/api/maintainers/*` exige una sesión autenticada con `platform_admin=true` y
-sus consultas y mutaciones se vuelven a validar en el backend. La aplicación
-principal no debe mostrar ni abrir mantenedores para cuentas `CUSTOMER` o
-`COMPANY_ADMIN`.
-
-#### Crear y auditar cuentas locales
-
-Registra una cuenta normal desde `/portal/register` o usa el usuario del dataset demo.
-Para darle administración de una PYME, completa el onboarding de vendedor; el
-backend crea la membresía, el rol y sus permisos. Para habilitar un operador
-general existente, ejecuta el comando explícito desde la raíz:
+Por seguridad, el seed no activa automáticamente el permiso de eliminación
+permanente. Si el grupo necesita probar ese flujo destructivo en la base local,
+habilítalo de forma explícita:
 
 ```cmd
-pushd backend
-.\.venv\Scripts\python.exe manage.py promote_platform_admin --email operador@ejemplo.local
-popd
+cd /d "C:\ruta\TuPymeGestiona\backend"
+.\.venv\Scripts\python.exe manage.py promote_platform_destructive_admin --email admin@demo-local-2026.tupyme.local
 ```
 
-El comando no crea cuentas, no cambia contraseñas y no modifica membresías de
-empresa. Es idempotente y falla si el correo no existe o coincide con más de
-una cuenta. Después de cambiar cuentas, genera un informe de solo lectura para
-detectar capacidades acumuladas, cuentas sin clasificación y superusuarios que
-no fueron promovidos explícitamente:
+Ese comando solo modifica la cuenta global demo y no debe ejecutarse con una
+cuenta real o en una base compartida.
 
-```cmd
-pushd backend
-.\.venv\Scripts\python.exe manage.py audit_access_modes
-.\.venv\Scripts\python.exe manage.py audit_access_modes --format json > access-modes.json
-popd
-```
+## 5. Probar el proyecto
 
-`access-modes.json` es una evidencia local temporal; no lo subas si contiene
-correos o datos de clientes.
+### Como cliente
 
-#### Recuperación de contraseña y outbox local
+1. Entra a `http://localhost:4200`.
+2. Inicia sesión con la cuenta cliente.
+3. Abre el catálogo.
+4. Agrega productos y crea un pedido.
+5. Revisa el pedido desde **Mi cuenta**.
+6. Si configuraste Mercado Pago, inicia el pago desde ese pedido.
 
-La recuperación no revela si un correo existe. Configura en `backend/.env` una
-URL de frontend alcanzable por la persona que recibirá el enlace y un plazo
-acorde al entorno:
+### Como propietario de PYME
 
-```text
-PASSWORD_RESET_FRONTEND_BASE_URL=http://localhost:4200/reset-password
-PASSWORD_RESET_TIMEOUT=3600
-TRANSACTIONAL_EMAIL_ENABLED=true
-TRANSACTIONAL_EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
-TRANSACTIONAL_EMAIL_FROM=no-reply@localhost
-```
+1. Cierra sesión y entra con la cuenta propietaria.
+2. Abre **Gestionar mi PYME**.
+3. Cambia de empresa si la cuenta tiene más de una disponible.
+4. Revisa productos, bodegas, inventario, clientes, pedidos, ventas y reportes.
 
-La petición se hace desde `/forgot-password`; el backend crea una notificación
-`PASSWORD_RESET` en el outbox y conserva el enlace cifrado. En local, procesa
-la cola con el backend de consola para ver el mensaje en la terminal de Django:
+### Como administrador global
 
-```cmd
-.\backend\.venv\Scripts\python.exe backend\manage.py process_transactional_notifications --limit 100
-```
+1. Abre `http://localhost:4300`.
+2. Inicia sesión con la cuenta administradora global.
+3. Revisa el contexto, empresas, catálogos, usuarios, roles y auditoría.
 
-Para SMTP real cambia el backend y configura solamente variables de entorno
-para host, puerto, TLS, usuario y contraseña. No guardes esas variables en Git.
-Los envíos que quedaron `SENDING` se marcan `UNCERTAIN`; el comando no los
-reenvía automáticamente para evitar duplicados:
+## 6. Mercado Pago en modo de prueba
 
-```cmd
-.\backend\.venv\Scripts\python.exe backend\manage.py transactional_email_recover_stale
-```
+Mercado Pago forma parte del proyecto. Para verificar el pago completo desde
+un computador local necesitas:
 
-El enlace vence según `PASSWORD_RESET_TIMEOUT`, solo puede consumirse con la
-contraseña nueva válida y no se guarda el token sin cifrar en la base.
+- una aplicación de Mercado Pago;
+- credenciales de prueba;
+- un usuario vendedor de prueba;
+- un usuario comprador de prueba;
+- una URL HTTPS para Angular;
+- una URL HTTPS para Django.
 
-#### Origen local de mantenedores
+### 6.1 Credenciales
 
-Levanta el backend y ambas aplicaciones. La aplicación secundaria usa el mismo
-dominio de sesión que la principal, pero su origen local es distinto:
+En Mercado Pago Developers entra a tu aplicación y abre **Credenciales de
+prueba**. Usa el Access Token del vendedor de prueba en `backend/.env`.
 
-```text
-Principal:   http://localhost:4200
-Mantenedores: http://localhost:4300
-API:         http://127.0.0.1:8000/api
-```
+No pegues el token en Git, en el README ni en `tupymegestion.sql`.
 
-Incluye `http://localhost:4300,http://127.0.0.1:4300` en
-`DJANGO_CSRF_TRUSTED_ORIGINS`. En una demostración con túneles o HTTPS, agrega
-el origen público exacto a `DJANGO_ALLOWED_HOSTS` y
-`DJANGO_CSRF_TRUSTED_ORIGINS`; nunca uses `*` en un entorno compartido.
+### 6.2 Exponer Angular
 
-Las limitaciones deliberadas de esta aplicación son: requiere sesión Django y
-backend activo, no reemplaza un proveedor de identidad externo, no muestra
-credenciales ni secretos de integraciones, y los totales de pedidos/ventas se
-consultan como agregados porque todavía no existe un endpoint de detalle
-transaccional específico para mantenedores. La autorización de cada operación
-continúa siendo responsabilidad del backend.
-
----
-
-## Uso básico
-
-## Registro persona primero
-
-El registro público solicita únicamente datos personales básicos:
-
-```text
-nombre
-apellido
-correo
-contraseña
-```
-
-No obliga a seleccionar una tienda, dirección ni un tipo excluyente de usuario.
-
-Flujo:
-
-```text
-User
-  ↓
-Portal Cliente
-  ↓
-explorar tiendas / comprar
-```
-
-Cuando esa persona compra por primera vez en una tienda, se crea la relación comercial correspondiente:
-
-```text
-User
-  ↓
-CustomerPortalAccount
-  ↓
-Customer de esa Company
-```
-
-Comprar en otra PYME crea otra relación comercial, pero conserva el mismo `User`.
-
-## Registrar una venta POS
-
-La ruta `/app/sales` conserva el flujo de ventas derivadas de pedidos y agrega
-una caja para registrar ventas directas. El cliente es opcional: si no se
-selecciona uno, el backend usa o crea el cliente interno **Consumidor final**
-de la empresa. El POS exige una bodega, valida y descuenta stock dentro de una
-transacción y permite pagar con:
-
-```text
-Efectivo
-Transferencia
-```
-
-El precio y la disponibilidad se toman nuevamente desde el backend. Una venta
-POS pagada puede anularse desde su detalle; la anulación repone el stock y deja
-la trazabilidad del movimiento. Las ventas creadas desde pedidos entregados
-continúan funcionando con su flujo anterior.
-
-## Crear mi PYME
-
-Desde la misma cuenta:
-
-```text
-/portal/seller-onboarding
-```
-
-se puede crear una empresa. El backend crea el contexto empresarial, membresía, rol administrador, permisos, configuración inicial y sucursal base.
-
-Después se puede navegar:
-
-```text
-Portal Cliente ⇄ Gestión PYME
-```
-
-sin cerrar sesión.
-
-En el alcance actual la PYME se habilita inmediatamente. Un despliegue que
-requiera validación comercial puede añadir verificación de identidad del
-representante, RUT, razón social, contacto y existencia comercial.
-
----
-
-## Arquitectura actual
-
-```text
-                              MySQL
-                                ▲
-                                │
-                       Django + Django REST
-                         backend/manage.py
-                         127.0.0.1:8000
-                                │
-                  ┌─────────────┴─────────────┐
-                  │                           │
-         Angular principal            Angular maintainers
-         proyecto frontend            proyecto maintainers
-         localhost:4200               localhost:4300
-                  │
-          ┌───────┴────────┐
-          │                │
-     Portal Cliente    Gestión PYME
-     /portal           /app/*
-```
-
-## Backend
-
-El backend vigente está en:
-
-```text
-backend/
-```
-
-El entrypoint correcto es:
-
-```text
-backend/manage.py
-```
-
-Django/DRF concentra:
-
-- autenticación por sesión;
-- autorización y RBAC;
-- aislamiento multiempresa;
-- reglas de negocio;
-- transacciones;
-- idempotencia;
-- persistencia MySQL;
-- integraciones externas.
-
-## Frontend principal
-
-Proyecto Angular:
-
-```text
-frontend
-```
-
-Source root:
-
-```text
-frontend/src
-```
-
-Build:
-
-```text
-frontend/dist/frontend
-```
-
-## Aplicación secundaria
-
-Proyecto Angular:
-
-```text
-maintainers
-```
-
-Source root:
-
-```text
-frontend/projects/maintainers/src
-```
-
-Build:
-
-```text
-frontend/dist/maintainers
-```
-
-Esta separación proporciona la estructura técnica prevista para RF24. Para
-usarla localmente, levanta ambas aplicaciones y comprueba los mantenedores,
-permisos y flujos con la base demo.
-
-El procedimiento operativo de cuentas, recuperación de contraseña, outbox y
-la matriz de revisión está resumido en
-[`docs/OPERACION_IDENTIDAD_MANTENEDORES.md`](docs/OPERACION_IDENTIDAD_MANTENEDORES.md).
-
-## Código legado eliminado
-
-La implementación histórica ubicada en `panel/`, su SQLite y bytecode Python versionado fueron eliminados durante la limpieza del repositorio. Ya no forman parte de la arquitectura ni de los pasos de ejecución.
-
-La documentación técnica de instalación y alcance está consolidada en este
-`README.md`; el procedimiento operativo detallado de identidad y mantenedores
-vive en `docs/OPERACION_IDENTIDAD_MANTENEDORES.md`.
-Se conservan los scripts de creación y carga MySQL y los comandos que ejecutan
-operaciones reales de correo y facturación electrónica.
-
----
-
-## Módulos implementados
-
-Backend principal:
-
-| Módulo | Responsabilidad |
-|---|---|
-| `accounts` | usuarios, login, sesión |
-| `organizations` | empresas, sucursales, membresías, roles, permisos, bodegas |
-| `catalog` | categorías, marcas, productos, variantes, proveedores |
-| `inventory` | existencias, movimientos y transferencias |
-| `customers` | clientes comerciales por empresa |
-| `orders` | pedidos, items y transiciones de estado |
-| `sales` | ventas de pedidos, ventas POS, abonos, pagos, stock y eventos |
-| `portal` | Portal Cliente, cuenta, pedidos y onboarding |
-| `electronic_tax` | DTE, folios, RIDE, intercambio y operación |
-| `administration` | mantenedores y parámetros generales |
-| `external_payments` | Mercado Pago Checkout Pro |
-| `transactional_notifications` | outbox y envío transaccional |
-| `reports` | reportes de ventas/inventario y exportaciones |
-| `dashboard` | métricas, alertas y actividad reciente |
-
-## Evolución reciente del proyecto
-
-Los slices principales de `develop-v2` incluyen:
-
-```text
-ventas y pagos internos
-facturación electrónica backend
-adaptador SII
-RIDE e intercambio
-Angular DTE
-operación/recuperación tributaria
-administración/mantenedores
-Portal Cliente
-Mercado Pago Sandbox
-notificaciones SMTP/outbox
-reportes PDF/XLS
-dashboard real
-segunda aplicación maintainers
-cierre de identidad/onboarding persona-primero
-```
-
----
-
-## Base de datos MySQL
-
-MySQL es la base de datos del proyecto. La configuración y los scripts de
-entrega están preparados para MySQL 8.x y usan `utf8mb4`; la creación inicial
-usa una collation Unicode compatible con instalaciones MySQL habituales.
-
-El `settings.py` actual usa MySQL por defecto y configura:
-
-- `utf8mb4`;
-- `STRICT_TRANS_TABLES`;
-- conexiones persistentes configurables;
-- health checks de conexión.
-
-## Django y consistencia
-
-El código de dominio aplica validaciones adicionales mediante `clean()`, restricciones de base, transacciones `transaction.atomic`, locks `select_for_update`, idempotencia y autorización servidor.
-
-Los flujos críticos de pedido, inventario, venta y pago no dependen únicamente del frontend para mantener consistencia.
-
----
-
-## Datos demo
-
-Desde la raíz del repositorio, para cargar ejemplos locales ejecuta:
-
-```cmd
-Cargar_Datos_Demo.cmd
-```
-
-Para una base recién creada, el flujo reproducible recomendado desde PowerShell
-es:
-
-```powershell
-.\database\02_poblar_demo.ps1
-```
-
-El script ejecuta `check`, aplica las migraciones pendientes y llama al
-comando oficial `seed_demo_data`. También admite un dataset pequeño para una
-presentación:
-
-```powershell
-.\database\02_poblar_demo.ps1 -Seed presentacion -Companies 1 -Products 12 -Customers 20 -Orders 12
-```
-
-La carga usa los servicios reales del dominio, por lo que las ventas POS
-demo descuentan stock y quedan asociadas a pagos de efectivo y transferencia.
-
-El cargador valida la configuración, aplica las migraciones pendientes y se
-detiene ante cualquier error antes de insertar datos.
-
-## Dataset predeterminado
-
-```text
-5 PYMES
-3 sucursales por PYME
-4 bodegas por PYME
-48 productos por PYME
-2 variantes por producto
-6 categorías por PYME
-8 marcas por PYME
-10 proveedores por PYME
-70 clientes por PYME
-36 pedidos por PYME
-6 pedidos del cliente demo por PYME, distribuidos en distintos estados
-2 ventas POS por PYME (una con Consumidor final y efectivo, otra con cliente y transferencia)
-3 usuarios de personal por PYME
-ventas y pagos derivados
-stock normal, crítico y agotado
-pedidos en varios estados
-ventas pagadas y parciales
-fechas distribuidas en aproximadamente 45 días
-```
-
-Aproximadamente:
-
-```text
-240 productos
-480 variantes
-350 clientes
-355 clientes contando el Consumidor final de cada PYME
-180 pedidos
-10 ventas POS
-```
-
-más empresas, sucursales, usuarios, roles, inventario, movimientos, ventas y pagos.
-
-Los pedidos/ventas usan servicios reales del dominio en lugar de insertar estados arbitrarios.
-
-## Credenciales demo por defecto
-
-Con el seed predeterminado:
-
-```text
-Propietario: owner@demo-local-2026.tupyme.local
-Cliente:     cliente@demo-local-2026.tupyme.local
-Contraseña:  DemoLocal2026!
-```
-
-Son credenciales exclusivamente locales.
-
-## Cambiar el seed
-
-```cmd
-Cargar_Datos_Demo.cmd --seed mi-prueba
-```
-
-También se pueden reducir/aumentar volúmenes:
-
-```cmd
-Cargar_Datos_Demo.cmd --seed prueba2 --companies 3 --products 30 --customers 50 --orders 25
-```
-
-El seed es determinista e idempotente para un mismo identificador: si detecta el dataset completo, no vuelve a duplicarlo.
-Para una presentación limpia, usa una base nueva. Cambiar el seed no limpia
-la base existente y puede coincidir con identificadores empresariales ya creados.
-
-El comando se bloquea con `DEBUG=False`; está pensado únicamente para una
-instancia local o de presentación.
-
-El dataset **no fabrica pagos Mercado Pago ni DTE SII** para evitar presentar integraciones externas falsas.
-Las ventas POS demo sí son operaciones internas completas y reversibles.
-
----
-
-## Optimización y limpieza aplicada
-
-La revisión general del repositorio prioriza cambios conservadores y deja el
-árbol final enfocado en el código ejecutable y sus archivos operativos.
-
-Principales ajustes:
-
-- eliminación completa de `panel/` legado;
-- eliminación de SQLite y `.pyc` que estaban versionados en el legado;
-- eliminación de documentación duplicada/dispersa;
-- consolidación documental en este README;
-- eliminación de imports Python sin uso;
-- eliminación de scaffolding vacío de Django;
-- `noUnusedLocals` y `noUnusedParameters` activos en TypeScript;
-- eliminación de una inyección Angular no utilizada;
-- `DJANGO_SECRET_KEY` explícita y `DJANGO_DEBUG` cerrado por defecto;
-- configuración MySQL endurecida;
-- CSRF preparado para puertos 4200 y 4300;
-- reducción de consultas N+1 del Portal Cliente;
-- selección de bodega con stock en un número fijo de queries;
-- disponibilidad de variantes agregada/prefetch en catálogo;
-- prefetch de sucursales en listado de tiendas;
-- carga demo determinista mediante servicios de dominio.
-
-No se realizaron cambios invasivos en modelos o contratos públicos únicamente por estética.
-
----
-
-## Verificación de instalación
-
-Desde la raíz del repositorio, después de instalar dependencias o cambiar variables de entorno, valida la
-configuración y genera ambos bundles de producción:
-
-```cmd
-pushd backend
-.\.venv\Scripts\python.exe -m pip check
-.\.venv\Scripts\python.exe manage.py check
-.\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
-
-cd ..\frontend
-npm run typecheck
-npm run build
-npm run build:maintainers
-popd
-```
-
-En una instalación Windows completa, agrega además:
-
-```cmd
-pushd backend
-.\.venv\Scripts\python.exe -m pip check
-popd
-pushd frontend
-npm audit
-popd
-git diff --check
-```
-
-Si el entorno no dispone de MySQL o de la virtualenv Windows, registra esa
-limitación explícitamente y ejecuta al menos los chequeos de sintaxis Python,
-los typechecks/builds de Angular y `npm audit`; esos resultados no sustituyen
-la validación Django contra la base real.
-
-Para una presentación, confirma manualmente el recorrido de registro/login,
-cambio de empresa, catálogo, inventario, pedido, caja POS, reversa, reportes y
-la aplicación de mantenedores. Mercado Pago, SMTP y SII necesitan sus propias
-credenciales y ambientes autorizados.
-
----
-
-## Estado actual
-
-El sistema dispone actualmente de:
-
-- backend funcional multiempresa;
-- Portal Cliente;
-- identidad persona-primero;
-- alta de PYME desde cuenta existente;
-- cambio cliente ↔ gestión sin logout;
-- inventario y pedidos;
-- ventas de pedidos y caja POS con pagos internos;
-- facturación electrónica base, RIDE e integración SII en código;
-- Mercado Pago Sandbox en código;
-- outbox y SMTP en código;
-- reportes PDF/XLS;
-- dashboard real;
-- aplicación secundaria de mantenedores;
-- cargador de datos demo poblados, incluyendo ventas POS.
-
-## Pendiente para cierre real/controlado
-
-El flujo local de presentación incluye registro e inicio de sesión, cambio de
-empresa, catálogo, inventario, pedidos, caja POS, pagos internos, reversas,
-reportes y mantenedores. La base se prepara con migraciones Django y puede
-recibir el dataset demo mediante los scripts descritos arriba.
-
-Mercado Pago, SMTP y SII permanecen desactivados por defecto. Para habilitarlos
-en un entorno real se necesitan credenciales, URLs públicas, certificados o un
-servidor de correo autorizados, además de una validación independiente en sus
-ambientes de prueba o producción.
-
-Para validar cada instalación antes de su uso:
-
-1. Realizar un respaldo MySQL.
-2. Revisar `showmigrations` y `migrate --plan`.
-3. Aplicar únicamente las migraciones pendientes.
-4. Cargar datos demo solo si se trata de una base local de presentación.
-5. Comprobar compra, venta POS y reversa con los usuarios de esa instalación.
-6. Revisar permisos, inventario y reportes en las dos aplicaciones.
-7. Validar Mercado Pago Sandbox si se habilitarán pagos externos.
-8. Configurar y comprobar SMTP si se enviarán correos.
-9. Configurar y validar SII con certificados y credenciales autorizadas si se emitirá DTE.
-
----
-
-## Operación de integraciones
-
-## Mercado Pago
-
-Configuración principal por entorno:
-
-```text
-MERCADO_PAGO_ENABLED
-MERCADO_PAGO_ACCESS_TOKEN_ENV
-MERCADO_PAGO_WEBHOOK_SECRET_ENV
-MERCADO_PAGO_RETURN_BASE_URL
-MERCADO_PAGO_WEBHOOK_URL
-MERCADO_PAGO_USE_SANDBOX_INIT_POINT
-MERCADO_PAGO_ACCEPT_LIVE_MODE
-```
-
-Para una prueba local reproducible, copia `backend/.env.mercadopago.example`
-como `backend/.env`, crea una aplicación y cuentas de prueba en Mercado Pago
-y reemplaza únicamente los valores de prueba y las dos URLs públicas. El
-Access Token y la clave del webhook deben permanecer solo en `backend/.env`.
-
-La prueba necesita dos túneles HTTPS porque Angular atiende el retorno del
-comprador en el puerto 4200 y Django recibe el webhook en el puerto 8000:
+Con Angular ejecutándose en el puerto 4200:
 
 ```cmd
 ngrok http 4200
-ngrok http 8000
 ```
 
-Después de completar `backend/.env`, valida la configuración sin realizar un
-cobro:
-
-```cmd
-.\backend\.venv\Scripts\python.exe backend\manage.py mercado_pago_sandbox_check
-```
-
-Luego inicia el backend y frontend, abre la URL pública de Angular en una
-ventana incógnito, crea un pedido confirmado y selecciona `Pagar con Mercado
-Pago`. El webhook confirma el estado consultando el pago remoto; el retorno
-visual por sí solo no marca el pedido como pagado.
-
-No guardar tokens en Git ni en parámetros generales de la PYME.
-
-## Notificaciones transaccionales
-
-Principio:
+Copia la URL HTTPS que entrega ngrok y úsala como:
 
 ```text
-evento de negocio → outbox persistente → procesador SMTP separado
+MERCADO_PAGO_RETURN_BASE_URL=https://tu-url-ngrok
 ```
 
-Desde la raíz del repositorio, procesar outbox:
+### 6.3 Exponer Django
+
+Con Django ejecutándose en el puerto 8000:
 
 ```cmd
-.\backend\.venv\Scripts\python.exe backend\manage.py process_transactional_notifications --limit 100
+npx localtunnel --port 8000 --subdomain tu-subdominio --print-requests
 ```
 
-Recuperar envíos atascados:
-
-```cmd
-.\backend\.venv\Scripts\python.exe backend\manage.py transactional_email_recover_stale
-```
-
-Un envío `UNCERTAIN` no se reenvía ciegamente para evitar duplicados.
-
-## Facturación electrónica / SII
-
-Desde la raíz, actualizar las alertas y encolar consultas de los documentos
-pendientes. Este comando mantiene datos operativos usados por la aplicación:
-
-```cmd
-.\backend\.venv\Scripts\python.exe backend\manage.py electronic_tax_operational_check
-```
-
-Procesamiento de consultas de estado en modo informativo:
-
-```cmd
-.\backend\.venv\Scripts\python.exe backend\manage.py electronic_tax_process_status_checks
-```
-
-Para ejecutar consultas remotas se agrega `--execute` y se requiere
-configuración SII real y autorización explícita.
-
----
-
-## Política de errores API
-
-Semántica general utilizada por el proyecto:
-
-- **400**: entrada inválida o validación;
-- **403**: usuario autenticado sin permiso/contexto requerido;
-- **404**: recurso inexistente o no visible dentro del tenant autorizado;
-- **409**: conflicto de estado, idempotencia o transición de negocio;
-- **5xx**: fallo inesperado; nunca debe exponer secretos o stack traces al usuario final.
-
-La autorización multiempresa se controla en backend, no únicamente ocultando botones en Angular.
-
----
-
-## Seguridad
-
-Nunca versionar:
-
-- `backend/.env`;
-- `DJANGO_SECRET_KEY` productiva;
-- contraseña MySQL;
-- access token/webhook secret de Mercado Pago;
-- usuario/contraseña SMTP;
-- contraseña de certificado SII;
-- PFX/CAF privados;
-- otros secretos productivos.
-
-Para producción:
+Si el subdominio está ocupado, usa el que entregue LocalTunnel y cambia la
+URL en el `.env`.
 
 ```text
-DJANGO_DEBUG=false
-DJANGO_ALLOWED_HOSTS=<dominios reales>
-DJANGO_SESSION_COOKIE_SECURE=true
-DJANGO_CSRF_COOKIE_SECURE=true
-DJANGO_SECURE_SSL_REDIRECT=true
+MERCADO_PAGO_WEBHOOK_URL=https://tu-url-backend/api/portal/payments/mercado-pago/webhook/
 ```
 
----
+Agrega ambos hosts a `DJANGO_ALLOWED_HOSTS` y el origen de Angular a
+`DJANGO_CSRF_TRUSTED_ORIGINS`. Después reinicia Django para que lea el `.env`.
 
-## Comandos útiles
+### 6.4 Configurar Webhooks
 
-Ejecuta cada bloque en una terminal situada en la raíz del repositorio.
+En la configuración de Webhooks de la aplicación de prueba:
 
-## Revisar estado Git
+1. selecciona el modo de prueba;
+2. coloca la URL pública del backend;
+3. selecciona el evento **Pagos**;
+4. guarda la configuración;
+5. copia la clave secreta en `MERCADO_PAGO_WEBHOOK_SECRET`.
 
-```cmd
-git status
-git log --oneline -10
-```
+No uses `Órdenes comerciales` ni `Order (Mercado Pago)` para este flujo: el
+proyecto procesa pagos de Checkout Pro.
 
-## Ver migraciones
+### 6.5 Verificar el pago
+
+Después de pagar, el backend debe registrar una petición `POST` al webhook.
+Puedes revisar los recibos con:
 
 ```cmd
 pushd backend
-.\.venv\Scripts\python.exe manage.py showmigrations
+.\.venv\Scripts\python.exe manage.py shell -c "from external_payments.models import MercadoPagoWebhookReceipt; print(list(MercadoPagoWebhookReceipt.objects.order_by('-created_at').values('notification_id','data_id','result','created_at')[:10]))"
 popd
 ```
 
-## Crear la base MySQL
-
-Ejecuta `database/01_create_database.sql` desde tu cliente MySQL y configura las
-credenciales en `backend/.env`.
-
-## Cargar datos demo
-
-```cmd
-Cargar_Datos_Demo.cmd
-```
-
-## Ejecutar backend
-
-```cmd
-pushd backend
-.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
-popd
-```
-
-## Ejecutar Angular principal
-
-```cmd
-pushd frontend
-npm start
-popd
-```
-
-## Ejecutar mantenedores
-
-```cmd
-pushd frontend
-npm run start:maintainers
-popd
-```
-
----
-
-## Solución de problemas comunes
-
-Los comandos siguientes parten de la raíz del repositorio.
-
-## `DJANGO_SECRET_KEY` no existe
-
-Verifica que `backend/.env` exista y contenga:
+Un webhook procesado muestra:
 
 ```text
-DJANGO_SECRET_KEY=...
+result: PROCESSED
 ```
 
-## No conecta a MySQL
+El retorno del navegador también ejecuta `refresh` para que el estado del
+pedido se actualice aunque el usuario vuelva antes de que llegue el webhook.
 
-Verifica:
+## 7. Comprobar proyecto y builds
 
-```text
-DB_NAME
-DB_USER
-DB_PASSWORD
-DB_HOST
-DB_PORT
-```
-
-Luego ejecuta:
+Backend:
 
 ```cmd
-pushd backend
+cd /d "C:\ruta\TuPymeGestiona\backend"
 .\.venv\Scripts\python.exe manage.py check
-.\.venv\Scripts\python.exe manage.py showmigrations
-popd
+.\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
 ```
 
-## Hay migraciones pendientes
-
-No cargues datos demo todavía. Revisa:
+Frontend:
 
 ```cmd
-pushd backend
-.\.venv\Scripts\python.exe manage.py showmigrations
-.\.venv\Scripts\python.exe manage.py migrate --plan
-popd
+cd /d "C:\ruta\TuPymeGestiona\frontend"
+npm run typecheck
+npm run build
+npm run build:maintainers
 ```
 
-Haz backup antes de aplicar una migración sobre la base real.
+Si aparece `No module named django`, no estás usando `backend\.venv`. Si
+aparece `npm error Missing script`, revisa que no se hayan pegado dos comandos
+en la misma línea.
 
-## Advertencias `LF will be replaced by CRLF`
+## 8. Crear el dump SQL completo
 
-Son normales en Git sobre Windows mientras `git diff --check` no reporte un error real de whitespace.
+Después de limpiar, migrar y poblar la base, ejecuta desde la raíz:
 
-## Puerto ocupado
+```powershell
+.\database\03_generar_tupymegestion_sql.ps1
+```
 
-Puertos esperados:
+El script genera:
 
 ```text
-8000 Django
-4200 Angular principal
-4300 Angular maintainers
+database/tupymegestion.sql
 ```
 
----
+El archivo contiene el esquema y los datos de la base demo, incluidas claves
+primarias, foráneas, índices e inserciones. Desactiva temporalmente las
+comprobaciones de claves foráneas durante la restauración y las vuelve a activar
+al terminar.
 
-## Estructura del repositorio
+Para restaurarlo en otra base con el mismo nombre:
+
+```powershell
+Get-Content .\database\tupymegestion.sql | mysql -u root -p
+```
+
+Después de restaurar, configura `backend/.env` con el usuario y contraseña de
+esa instalación y ejecuta `manage.py check`.
+
+## Problemas comunes
+
+### MySQL no conecta
+
+Comprueba que el servicio MySQL esté iniciado y que `DB_NAME`, `DB_USER`,
+`DB_PASSWORD`, `DB_HOST` y `DB_PORT` coincidan con `backend/.env`.
+
+### Django responde 403
+
+Comprueba que la URL del navegador esté incluida en
+`DJANGO_CSRF_TRUSTED_ORIGINS`, reinicia Django y vuelve a solicitar `/api/auth/csrf/`.
+
+### Mercado Pago responde 401 en el webhook
+
+Comprueba que la URL pública llegue a Django, que el evento sea **Pagos**, que
+la clave secreta pertenezca a la misma configuración de Webhooks y que Django
+haya sido reiniciado después de cambiar el `.env`.
+
+### La base demo no se duplica
+
+El seed usa un identificador. Si ya existe el mismo dataset, informa que no lo
+duplica. Para una demo completamente nueva usa `00_reset_database.sql` o un
+`--seed` diferente.
+
+### Mantenedores no permite entrar
+
+Usa la cuenta `admin@demo-local-2026.tupyme.local`. Una cuenta PYME normal no
+obtiene acceso global solo por tener una membresía de empresa.
+
+## Estructura principal
 
 ```text
 TuPymeGestiona/
-├── README.md
-├── Cargar_Datos_Demo.cmd
+├── backend/                         Django, DRF y reglas de negocio
+├── frontend/                        Angular principal y mantenedores
 ├── database/
-│   ├── 01_create_database.sql
-│   └── 02_poblar_demo.ps1
-├── backend/
-├── frontend/
-├── .gitignore
-└── .gitattributes
+│   ├── 00_reset_database.sql        reinicio local destructivo
+│   ├── 01_create_database.sql       creación no destructiva
+│   ├── 02_poblar_demo.ps1           migraciones y seed
+│   ├── 03_generar_tupymegestion_sql.ps1
+│   └── tupymegestion.sql            snapshot generado desde MySQL
+├── Cargar_Datos_Demo.cmd            atajo local para el seed
+└── README.md
 ```
 
-La intención es mantener el repositorio centrado en código ejecutable, los
-scripts de base necesarios y una única fuente de documentación humana: este
-README.
+## Idea central
+
+TuPymeGestiona busca que una PYME pueda ordenar su operación sin tener que
+combinar varias herramientas desconectadas. El proyecto está pensado para
+aprender, probar y discutir en equipo: cada integrante puede levantarlo en su
+computador, recorrer los mismos datos demo y proponer cambios sobre una base
+común.

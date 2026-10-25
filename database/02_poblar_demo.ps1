@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$Seed = "local-2026",
-    [ValidateRange(1, 8)]
+    [ValidateRange(1, 5)]
     [int]$Companies = 5,
     [ValidateRange(4, 120)]
     [int]$Products = 48,
