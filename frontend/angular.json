@@ -60,7 +60,10 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "options": {
-            "proxyConfig": "src/proxy.conf.json"
+            "proxyConfig": "src/proxy.conf.json",
+            "allowedHosts": [
+              "*"
+            ]
           },
           "configurations": {
             "production": {
@@ -123,7 +126,10 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "options": {
-            "proxyConfig": "projects/maintainers/src/proxy.conf.json"
+            "proxyConfig": "projects/maintainers/src/proxy.conf.json",
+            "allowedHosts": [
+              "*"
+            ]
           },
           "configurations": {
             "production": {

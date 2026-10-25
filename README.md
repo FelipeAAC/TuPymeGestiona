@@ -174,7 +174,27 @@ misma cantidad de empresas, no duplica el dataset.
 
 ## 4. Levantar las tres aplicaciones
 
-Cada aplicación va en su propia consola.
+Cada aplicación va en su propia consola. MySQL debe estar iniciado antes de
+levantar Django.
+
+Para navegar por la aplicación normalmente necesitas estas tres consolas:
+
+| Consola | Proceso | Puerto | Uso |
+|---|---|---:|---|
+| 1 | Django | 8000 | API y sesiones |
+| 2 | Angular principal | 4200 | Portal cliente y gestión PYME |
+| 3 | Angular mantenedores | 4300 | Administración global |
+
+Para probar el pago completo con Mercado Pago debes mantener abiertas además:
+
+| Consola | Proceso | Función |
+|---|---|---|
+| 4 | `ngrok http 4200` | URL pública de Angular para volver desde Mercado Pago |
+| 5 | `npx localtunnel --port 8000 ...` | URL pública del webhook de Django |
+
+Si cierras una de las consolas 4 o 5 durante el pago, el pago puede aprobarse
+pero el navegador no podrá volver a la tienda o Mercado Pago no podrá entregar
+el webhook.
 
 ### Consola 1: backend Django
 
@@ -253,6 +273,27 @@ cd /d "C:\ruta\TuPymeGestiona\backend"
 Ese comando solo modifica la cuenta global demo y no debe ejecutarse con una
 cuenta real o en una base compartida.
 
+Después de ejecutarlo, cierra sesión y vuelve a entrar en la aplicación de
+mantenedores. El botón **Eliminar** aparecerá junto a los recursos que el
+administrador puede borrar permanentemente.
+
+Para probar este flujo sin tocar el dataset principal:
+
+1. Crea una empresa y una sucursal con nombres que indiquen que son de prueba.
+2. Edita ambos registros y comprueba que los cambios se reflejen en pantalla.
+3. Elimina primero la sucursal y después la empresa.
+4. Revisa el resumen de impacto antes de confirmar.
+5. Escribe exactamente la frase que muestra la ventana.
+6. Indica el motivo, marca la confirmación y mantén pulsado el botón durante
+   cinco segundos.
+7. Abre **Auditoría global** y comprueba los eventos de creación, modificación
+   y eliminación permanente.
+
+La cuenta administradora funciona normalmente sin esta capacidad especial. La
+eliminación permanente se delega solo cuando alguien decide probarla de forma
+consciente. Si vuelves a crear la base con `00_reset_database.sql` y ejecutas
+el seed, el administrador demo vuelve a quedar sin la capacidad destructiva.
+
 ## 5. Probar el proyecto
 
 ### Como cliente
@@ -298,21 +339,44 @@ No pegues el token en Git, en el README ni en `tupymegestion.sql`.
 
 ### 6.2 Exponer Angular
 
-Con Angular ejecutándose en el puerto 4200:
+Con Angular ejecutándose en el puerto 4200, abre una cuarta consola y déjala
+abierta durante toda la prueba:
 
 ```cmd
 ngrok http 4200
 ```
 
-Copia la URL HTTPS que entrega ngrok y úsala como:
+Copia la URL HTTPS que entrega ngrok. Esa URL será la dirección que debes abrir
+en el navegador para hacer la prueba de pago. No uses `localhost:4200` para
+este flujo.
+
+Ejemplo:
+
+```text
+https://wildlife-quail-untagged.ngrok-free.dev
+```
+
+En `backend/.env` configura:
 
 ```text
 MERCADO_PAGO_RETURN_BASE_URL=https://tu-url-ngrok
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,tu-url-ngrok.ngrok-free.dev
+DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:4200,http://127.0.0.1:4200,https://tu-url-ngrok.ngrok-free.dev
 ```
+
+La URL gratuita de ngrok puede cambiar. Si cambia, actualiza el `.env` y
+reinicia Django. Si aparece `ERR_NGROK_3200`, la consola de ngrok se cerró o
+el túnel está fuera de línea.
+
+El `angular.json` del proyecto usa `allowedHosts: ["*"]` únicamente para el
+servidor local de desarrollo. Esto permite que cada integrante use su propia
+URL temporal de ngrok sin modificar el código de la aplicación. No uses esta
+configuración como servidor de producción.
 
 ### 6.3 Exponer Django
 
-Con Django ejecutándose en el puerto 8000:
+Con Django ejecutándose en el puerto 8000, abre una quinta consola y déjala
+abierta para recibir los webhooks:
 
 ```cmd
 npx localtunnel --port 8000 --subdomain tu-subdominio --print-requests
@@ -325,8 +389,33 @@ URL en el `.env`.
 MERCADO_PAGO_WEBHOOK_URL=https://tu-url-backend/api/portal/payments/mercado-pago/webhook/
 ```
 
-Agrega ambos hosts a `DJANGO_ALLOWED_HOSTS` y el origen de Angular a
-`DJANGO_CSRF_TRUSTED_ORIGINS`. Después reinicia Django para que lea el `.env`.
+Ejemplo:
+
+```text
+https://few-jobs-behave.loca.lt/api/portal/payments/mercado-pago/webhook/
+```
+
+Agrega el host del frontend público a `DJANGO_ALLOWED_HOSTS` y el origen
+público de Angular a `DJANGO_CSRF_TRUSTED_ORIGINS`. Después de modificar
+`backend/.env`, reinicia Django.
+
+### 6.4 Orden correcto para probar un pago
+
+1. Inicia MySQL.
+2. Inicia Django en el puerto 8000.
+3. Inicia Angular en el puerto 4200.
+4. Inicia ngrok para el puerto 4200.
+5. Inicia LocalTunnel para el puerto 8000.
+6. Abre la URL pública de ngrok.
+7. Entra con la cuenta cliente y crea un pedido.
+8. Pulsa **Pagar con Mercado Pago**.
+9. Completa el pago con el usuario comprador de prueba.
+10. Vuelve a la tienda y actualiza **Mis pedidos**.
+
+El pedido debe mostrar el pago aprobado. El retorno del navegador ejecuta una
+actualización del estado y el webhook deja el registro correspondiente en
+Django. No cierres ngrok ni LocalTunnel hasta terminar el retorno y comprobar
+el pedido.
 
 ### 6.4 Configurar Webhooks
 
@@ -361,7 +450,32 @@ result: PROCESSED
 El retorno del navegador también ejecuta `refresh` para que el estado del
 pedido se actualice aunque el usuario vuelva antes de que llegue el webhook.
 
-## 7. Comprobar proyecto y builds
+## 7. Limpiar la base después de las pruebas
+
+Durante las pruebas manuales se pueden crear pedidos de Mercado Pago, empresas
+de prueba, sucursales y registros de auditoría. Antes de entregar el proyecto
+al resto del grupo, vuelve a generar una base limpia y un dump reproducible.
+
+Este proceso elimina la base local completa y conserva solamente el dataset
+académico creado por el seed. Los pedidos demo intencionales del cliente se
+mantienen para que se puedan revisar los estados de pedido; desaparecen los
+pedidos y pagos creados durante tus pruebas manuales.
+
+Desde la raíz del repositorio ejecuta:
+
+```powershell
+Get-Content .\database\00_reset_database.sql | mysql -u root -p
+.\database\02_poblar_demo.ps1 -Password "DemoLocal2026!"
+.\database\03_generar_tupymegestion_sql.ps1 -MysqlDump "C:\Program Files\MySQL\MySQL Server 8.4\bin\mysqldump.exe"
+```
+
+Si tu ejecutable de MySQL está en otra carpeta, cambia solamente la ruta de
+`-MysqlDump`. El último comando actualiza `database/tupymegestion.sql` con el
+esquema y los datos limpios. El seed deja la cuenta global como administrador
+de plataforma normal; la capacidad destructiva se habilita después solo con el
+comando indicado en la sección de mantenedores.
+
+## 8. Comprobar proyecto y builds
 
 Backend:
 
@@ -384,7 +498,7 @@ Si aparece `No module named django`, no estás usando `backend\.venv`. Si
 aparece `npm error Missing script`, revisa que no se hayan pegado dos comandos
 en la misma línea.
 
-## 8. Crear el dump SQL completo
+## 9. Crear el dump SQL completo
 
 Después de limpiar, migrar y poblar la base, ejecuta desde la raíz:
 
@@ -440,6 +554,19 @@ duplica. Para una demo completamente nueva usa `00_reset_database.sql` o un
 
 Usa la cuenta `admin@demo-local-2026.tupyme.local`. Una cuenta PYME normal no
 obtiene acceso global solo por tener una membresía de empresa.
+
+### No aparece el botón Eliminar
+
+Es normal que no aparezca en una cuenta recién creada. El seed entrega acceso
+global, pero no activa la capacidad destructiva. Ejecuta el comando
+`promote_platform_destructive_admin`, cierra sesión, vuelve a entrar y actualiza
+la pantalla.
+
+### Después de cerrar sesión aparece un 403 en `/api/auth/me/`
+
+Es una respuesta esperada: el navegador está preguntando por la sesión después
+de haberla cerrado. Al iniciar sesión nuevamente, `/api/auth/me/` debe responder
+`200`.
 
 ## Estructura principal
 
