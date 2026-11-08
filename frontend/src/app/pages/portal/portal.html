@@ -99,21 +99,23 @@
                   }
                 </button>
                 <div class="product-body">
-                  <small>{{ product.category.name }}</small>
-                  <h3>{{ product.name }}</h3>
-                  <p>{{ product.description || 'Producto disponible en el catálogo de esta tienda.' }}</p>
-                  @for (variant of product.variants; track variant.id) {
-                    <div class="variant-row">
-                      <div>
-                        <strong>${{ variant.base_price }}</strong>
-                        <span>{{ variant.sku }}</span>
+                  <p class="product-image-spacing" aria-hidden="true"></p>
+                  <h3 class="product-title">{{ product.name }}</h3>
+
+                  <div class="product-prices">
+                    @for (variant of product.variants; track variant.id) {
+                      <div class="price-row">
+                        <strong>{{ variant.sku }}</strong>
+                        <span>${{ variant.base_price }}</span>
                       </div>
-                      <button type="button" [disabled]="!variant.available" (click)="addToCart(product, variant)">
-                        {{ variant.available ? 'Agregar' : 'Sin stock' }}
-                      </button>
-                    </div>
-                  }
-                  <button class="detail-link" type="button" (click)="openProduct(product)">Ver detalle</button>
+                    }
+                  </div>
+
+                  <h3 class="detail-link-heading">
+                    <button class="detail-link" type="button" (click)="openProduct(product)">
+                      Ver detalle
+                    </button>
+                  </h3>
                 </div>
               </article>
             }
